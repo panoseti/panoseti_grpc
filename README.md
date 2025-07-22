@@ -9,13 +9,13 @@ Follow steps below to prepare your environment:
 2. Clone this (`panoseti_grpc`) repo onto a [data acquisition node](https://github.com/panoseti/panoseti/wiki/Nodes-and-modules#daq-nodes) (DAQ node).
 3. Run the following commands to create the `grpc-py39` environment. 
 ```bash
-cd panoseti/grpc
+git clone https://github.com/panoseti/panoseti_grpc.git
+cd panoseti_grpc
 conda create -n grpc-py39 python=3.9
 conda activate grpc-py39
 conda install -c conda-forge grpcio-tools
 pip install -r requirements
 ```
-
 
 # DaqData Service
 ![DaqData_StreamImages.png](docs/DaqData_StreamImages_overview.png)
@@ -38,12 +38,12 @@ pip install -r requirements
 - $N \leq 1$ `InitHpIo` clients may be active at any given time. If an `InitHpIo` client is active, no other client may be.
 
 
-## Working with the Experimental Visualization API
+## Working with the gRPC DaqData API
 
 ### Using the Demo Client Script
 
 ```
-./demo_daq_data_client.py
+demo_daq_data_client.py  - demonstrates real-time pulse-height and movie-mode visualizations using the gRPC DaqData API.
 
 usage: demo_daq_data_client.py [-h] [--host HOST] [--init CFG_PATH] [--init-sim] [--plot-view] [--plot-phdist] [--module-ids [MODULE_IDS ...]]
 
@@ -55,19 +55,21 @@ optional arguments:
   --plot-view           whether to create a live data previewer
   --plot-phdist         whether to create a live pulse-height distribution for the specified module id
   --module-ids [MODULE_IDS ...]
-                        whitelist for the module ids to stream data from. If empty, data from all available modules are returned.
-
+                        whitelist for the module ids to stream data from. If empty, data from all available modules is returned.
 ```
 
-Assuming `daq_data` as the working directory, here’s an example workflow for viewing real-time data products produced by a production observing run:
+Below is an example workflow for viewing real-time data products during an observing run.
+Note that because panoseti_grpc has a package structure, for commands 4+ your working directory should be the repo root, `panoseti_grpc/`, and each command should be prefixed with **`python -m daq_data.`** This is why the full command for step 4 is **`python -m daq_data.daq_data_server.py`**, instead of something like `./daq_data_server.py`
 
-1. Setup your environment as described above.
-2. Update your `hp_io_config.json` file (see docs below).
+1. Set up your environment as described above.
+2. Update your `hp_io_config.json` file or create a new one (see docs below).
 3. Run `start.py` in the `panoseti/control` directory to start Hashpipe on the DAQ node.
-4. Run `daq_data/daq_data_server.py` on a DAQ node, with hostname `H`.
-5. Run `demo_daq_data_client.py --host H` on any computer to verify its network connection to the DAQ node.
-6. Run `demo_daq_data_client.py --host H --init config/hp_io_config_example.json` to initialize the server with an `InitHpIo` request based on the configuration given in `config/hp_io_config_example.json`.
-7. Run `demo_daq_data_client.py --host H --plot-phdist` to make a `StreamImages` request and open a real-time pulse-height distribution visualization app.
+4. Run `python -m daq_data.daq_data_server.py` on the DAQ node, with hostname `H`.
+5. Run `python -m daq_data.demo_daq_data_client.py -h` to see the available options.
+6. Run `python -m daq_data.demo_daq_data_client.py --host H` on any computer to verify its network connection to the DAQ node.
+7. Run `python -m daq_data.demo_daq_data_client.py --host H --init daq_data/config/hp_io_config_example.json` to initialize the server with an `InitHpIo` request based on the configuration given in `hp_io_config_example.json`.
+8. Run `python -m daq_data.demo_daq_data_client.py --host H --plot-phdist` to make a `StreamImages` request and open a real-time pulse-height distribution visualization app.
+
 
 ### The hp_io_config.json file
 
@@ -94,7 +96,7 @@ Assuming `daq_data` as the working directory, here’s an example workflow for v
     - If empty, the server will broadcast data snapshots from all active modules (detected automatically).
     - If non-empty, the server will only broadcast data from the specified modules.
 
-## Developing Real-Time Visualizations with the API
+## Developing Real-Time Visualizations with the gRPC DaqData API
 
 [todo: expand]
 
