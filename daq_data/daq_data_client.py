@@ -31,13 +31,15 @@ from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf import timestamp_pb2
 
 # protoc-generated marshalling / demarshalling code
-import daq_data_pb2
-import daq_data_pb2_grpc
-from daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse
+from daq_data import (
+    daq_data_pb2,
+    daq_data_pb2_grpc,
+)
+from .daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse
 
 ## daq_data utils
-from daq_data_resources import format_stream_images_response, make_rich_logger, unpack_pano_image, reflect_services
-from daq_data_testing import run_all_tests, is_os_posix
+from .daq_data_resources import format_stream_images_response, make_rich_logger, unpack_pano_image, reflect_services
+from .daq_data_testing import run_all_tests, is_os_posix
 
 
 def stream_images(

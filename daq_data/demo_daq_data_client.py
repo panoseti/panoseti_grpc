@@ -13,12 +13,14 @@ import sys
 import grpc
 from google.protobuf.json_format import MessageToDict
 
-import daq_data_pb2
-import daq_data_pb2_grpc
-from daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
+from daq_data import (
+    daq_data_pb2,
+    daq_data_pb2_grpc
+)
+from .daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
 
-from daq_data_client import reflect_services, unpack_pano_image, format_stream_images_response, init_hp_io
-from daq_data_resources import make_rich_logger
+from .daq_data_client import reflect_services, unpack_pano_image, format_stream_images_response, init_hp_io
+from .daq_data_resources import make_rich_logger, CFG_DIR
 
 import numpy as np
 import seaborn as sns
@@ -327,7 +329,7 @@ def run(args):
     if args.init_sim or args.cfg_path is not None:
         do_init_hp_io = True
         if args.init_sim:
-            hp_io_cfg_path = 'config/hp_io_config_simulate_daq.json'
+            hp_io_cfg_path = f'{CFG_DIR}/hp_io_config_simulate_daq.json'
         elif args.cfg_file:
             hp_io_cfg_path = f'{args.cfg_file}'
         else:

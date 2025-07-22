@@ -8,7 +8,6 @@ Requires following to function correctly:
     2. All Python packages specified in requirements.txt.
     3. A connection to a panoseti module.
 """
-from curses.ascii import isdigit
 from pathlib import Path
 import os
 import asyncio
@@ -36,16 +35,14 @@ from google.protobuf import timestamp_pb2
 from pandas.core.computation.ops import isnumeric
 
 # protoc-generated marshalling / demarshalling code
-import daq_data_pb2
-import daq_data_pb2_grpc
-from daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse
+from daq_data import daq_data_pb2, daq_data_pb2_grpc
+from .daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse
 
 ## --- daq_data utils ---
-from daq_data_resources import make_rich_logger, get_dp_cfg
-from daq_data_testing import is_os_posix
+from .daq_data_resources import make_rich_logger, get_dp_cfg, CFG_DIR
+from .daq_data_testing import is_os_posix
 
-## --- panoseti utils ---
-from panoseti_util import pff, config_file, panoseti_util
+from panoseti_util import pff, config_file, control_utils
 
 
 """ hp_io test macros """
@@ -568,7 +565,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self.logger = make_rich_logger(__name__, level=logging.INFO)
 
         # Load default hahspipe_io configuration
-        with open(cfg_dir/self._server_cfg["default_hp_io_config_file"], "r") as f:
+        with open(CFG_DIR/self._server_cfg["default_hp_io_config_file"], "r") as f:
             self._hp_io_cfg = json.load(f)
 
         # State for single producer, multiple consumer hp_io access
@@ -1154,12 +1151,11 @@ async def serve(server_cfg):
 if __name__ == "__main__":
 
     # Load server configuration
-    cfg_dir = Path('config')
     default_hp_io_config_file = 'default_hp_io_config.json'
 
     # Configuration
     server_cfg_file = "daq_data_server_config.json"
-    with open(cfg_dir / server_cfg_file, "r") as f:
+    with open(CFG_DIR / server_cfg_file, "r") as f:
         server_cfg = json.load(f)
 
     try:

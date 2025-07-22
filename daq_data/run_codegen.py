@@ -20,9 +20,9 @@ from grpc_tools import protoc
 protoc.main(
     (
         "",
-        "-I../protos",
-        "--python_out=.",
-        "--grpc_python_out=.",
-        "../protos/daq_data.proto",
+        "-Iprotos",
+        "--python_out=daq_data",
+        "--grpc_python_out=daq_data",
+        "protos/daq_data.proto",
     )
 )

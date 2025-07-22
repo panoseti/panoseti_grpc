@@ -1,7 +1,7 @@
 """
 Common functions for the DaqData clients and servers
 """
-import sys, signal
+from pathlib import Path
 import logging
 from typing import List, Callable, Tuple, Any, Dict, AsyncIterator
 import numpy as np
@@ -29,11 +29,13 @@ from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf import timestamp_pb2
 
 # protoc-generated marshalling / demarshalling code
-import daq_data_pb2
-import daq_data_pb2_grpc
-from daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
+# from .daq_data_pb2
+# import daq_data_pb2_grpc
+from daq_data import daq_data_pb2
+from daq_data.daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
+from panoseti_util import pff
 
-
+CFG_DIR = Path('daq_data/config')
 
 def get_dp_cfg(dps):
     """Returns a dictionary of static properties for the given data products."""
@@ -113,7 +115,7 @@ def reflect_services(channel: grpc.Channel) -> None:
     for method in service_desc.methods:
         print(f"\tfound: {format_rpc_service(method)}")
 
-def parse_pano_timestamps(pano_image: daq_data_pb2.PanoImage) -> Dict[str, Any]:
+def parse_pano_timestamps(pano_image: PanoImage) -> Dict[str, Any]:
     """Parse PanoImage header to get nanosecond-precision timestamps."""
     h = MessageToDict(pano_image.header)
     td = {}
