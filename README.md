@@ -43,9 +43,9 @@ pip install -r requirements
 ### Using the Demo Client Script
 
 ```
-daq_data/demo_daq_data_client.py  - demonstrates real-time pulse-height and movie-mode visualizations using the gRPC DaqData API.
+daq_data/demo_client.py  - demonstrates real-time pulse-height and movie-mode visualizations using the gRPC DaqData API.
 
-usage: demo_daq_data_client.py [-h] [--host HOST] [--init CFG_PATH] [--init-sim] [--plot-view] [--plot-phdist] [--module-ids [MODULE_IDS ...]]
+usage: demo_client.py [-h] [--host HOST] [--init CFG_PATH] [--init-sim] [--plot-view] [--plot-phdist] [--module-ids [MODULE_IDS ...]]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -65,10 +65,10 @@ Note that because panoseti_grpc has a package structure, when running commands 4
 2. Update your `hp_io_config.json` file or create a new one (see docs below).
 3. Run `start.py` in the `panoseti/control` directory to start Hashpipe on the DAQ node.
 4. Run `python -m daq_data.daq_data_server` on the DAQ node, with hostname `H`.
-5. Run `python -m daq_data.demo_daq_data_client -h` to see the available options.
-6. Run `python -m daq_data.demo_daq_data_client --host H` on any computer to verify its network connection to the DAQ node.
-7. Run `python -m daq_data.demo_daq_data_client --host H --init daq_data/config/hp_io_config_simulate_daq.json` to initialize the server with an `InitHpIo` request based on the configuration given in `hp_io_config_simulate_daq.json`. Of course, please substitute this file name with one you create.
-8. Run `python -m daq_data.demo_daq_data_client --host H --plot-phdist` to make a `StreamImages` request and launch a real-time pulse-height distribution visualization app.
+5. Run `python -m daq_data.demo_client -h` to see the available options.
+6. Run `python -m daq_data.demo_client --host H` on any computer to verify its network connection to the DAQ node.
+7. Run `python -m daq_data.demo_client --host H --init daq_data/config/hp_io_config_simulate_daq.json` to initialize the server with an `InitHpIo` request based on the configuration given in `hp_io_config_simulate_daq.json`. Of course, please substitute this file name with one you create.
+8. Run `python -m daq_data.demo_client --host H --plot-phdist` to make a `StreamImages` request and launch a real-time pulse-height distribution visualization app.
 
 
 ### The hp_io_config.json file

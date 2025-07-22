@@ -330,8 +330,8 @@ def run(args):
         do_init_hp_io = True
         if args.init_sim:
             hp_io_cfg_path = f'{CFG_DIR}/hp_io_config_simulate_daq.json'
-        elif args.cfg_file:
-            hp_io_cfg_path = f'{args.cfg_file}'
+        elif args.cfg_path is not None:
+            hp_io_cfg_path = f'{args.cfg_path}'
         else:
             hp_io_cfg_path = None
 
