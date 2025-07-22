@@ -45,10 +45,7 @@ from daq_data_resources import make_rich_logger, get_dp_cfg
 from daq_data_testing import is_os_posix
 
 ## --- panoseti utils ---
-sys.path.append("../../util")
-import pff, config_file
-sys.path.append("../../control")
-import util
+from panoseti_util import pff, config_file, panoseti_util
 
 
 """ hp_io test macros """
@@ -85,7 +82,7 @@ def is_daq_active(simulate_daq, sim_cfg=None):
         daq_active_files = [get_daq_active_file(sim_cfg, mid) for mid in sim_cfg['sim_module_ids']]
         daq_active = any([os.path.exists(file) for file in daq_active_files])
     else:
-        daq_active = util.is_hashpipe_running()
+        daq_active = panoseti_util.is_hashpipe_running()
     return daq_active
 
 

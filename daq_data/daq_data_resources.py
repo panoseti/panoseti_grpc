@@ -33,9 +33,6 @@ import daq_data_pb2
 import daq_data_pb2_grpc
 from daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
 
-# panoseti utils
-sys.path.append('../../util')
-import pff
 
 
 def get_dp_cfg(dps):
