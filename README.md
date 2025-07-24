@@ -6,7 +6,7 @@ Contains gRPC code for the PANOSETI project. See [here](https://github.com/panos
 Follow steps below to prepare your environment:
 
 1. Install `miniconda` ([link](https://www.anaconda.com/docs/getting-started/miniconda/install))
-2. Clone this (`panoseti_grpc`) repo onto a [data acquisition node](https://github.com/panoseti/panoseti/wiki/Nodes-and-modules#daq-nodes) (DAQ node).
+2. Clone this (`panoseti_grpc`) repo onto a DAQ node or any client computer.
 3. Run the following commands to create the `grpc-py39` environment. 
 ```bash
 git clone https://github.com/panoseti/panoseti_grpc.git
@@ -14,7 +14,7 @@ cd panoseti_grpc
 conda create -n grpc-py39 python=3.9
 conda activate grpc-py39
 conda install -c conda-forge grpcio-tools
-pip install -r requirements
+pip install -r requirements.txt
 ```
 
 # DaqData Service

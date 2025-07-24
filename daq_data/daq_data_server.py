@@ -79,7 +79,7 @@ def is_daq_active(simulate_daq, sim_cfg=None):
         daq_active_files = [get_daq_active_file(sim_cfg, mid) for mid in sim_cfg['sim_module_ids']]
         daq_active = any([os.path.exists(file) for file in daq_active_files])
     else:
-        daq_active = panoseti_util.is_hashpipe_running()
+        daq_active = control_utils.is_hashpipe_running()
     return daq_active
 
 
