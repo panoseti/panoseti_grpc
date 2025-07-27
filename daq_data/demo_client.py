@@ -134,7 +134,6 @@ class PanoImagePreviewer:
             self,
             stream_movie_data: bool,
             stream_pulse_height_data: bool,
-            update_interval_seconds: float,
             module_id_whitelist: list[int],
             logger: logging.Logger,
             text_width=25,
@@ -144,7 +143,6 @@ class PanoImagePreviewer:
     ) -> None:
         self.stream_movie_data = stream_movie_data
         self.stream_pulse_height_data = stream_pulse_height_data
-        self.update_interval_seconds = update_interval_seconds
         self.module_id_whitelist = module_id_whitelist
         self.logger = logger
 
@@ -307,7 +305,7 @@ def run_pano_image_preview(
     logger.info(f"stream_images_request={MessageToDict(stream_images_request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)}")
     stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=wait_for_ready)
     previewer = PanoImagePreviewer(
-        stream_movie_data, stream_pulse_height_data, update_interval_seconds,
+        stream_movie_data, stream_pulse_height_data,
         module_ids, logger, row_height=3, font_size=6, text_width=30, window_size=1000
     )
 
@@ -329,7 +327,7 @@ def run(args):
     if args.init_sim or args.cfg_path is not None:
         do_init_hp_io = True
         if args.init_sim:
-            hp_io_cfg_path = f'{CFG_DIR}/hp_io_config_simulate_daq.json'
+            hp_io_cfg_path = f'{CFG_DIR}/hp_io_config_simulate.json'
         elif args.cfg_path is not None:
             hp_io_cfg_path = f'{args.cfg_path}'
         else:

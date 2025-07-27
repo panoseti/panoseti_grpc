@@ -60,7 +60,7 @@ class DaqDataClient(ABC):
             self.daq_nodes[daq_host] = {'config': daq_node_cfg}
             self.daq_nodes[daq_host]['channel']: grpc.Channel = None
         self.daq_grpc_state = {}
-        self.logger = make_rich_logger(__name__, level=logging.INFO)
+        self.logger = make_rich_logger(__name__, level=logging.ERROR)
         self.valid_daq_hosts = []
 
     def __enter__(self):
@@ -74,25 +74,35 @@ class DaqDataClient(ABC):
             except grpc.RpcError as rpc_error:
                 self.logger.error(f"{type(rpc_error)}\n{repr(rpc_error)}")
                 continue
-        return self.valid_daq_hosts
+        return self
 
     def __exit__(self, etype, value, traceback):
-        for daq_node, dgs in zip(self.daq_nodes, self.daq_grpc_state):
+        self.logger.setLevel(logging.INFO)
+        for daq_host, daq_node in self.daq_nodes.items():
             if daq_node['channel'] is not None:
                 daq_node['channel'].close()
-        return True
+                self.logger.info(f"closed channel to {daq_node['connection_target']}")
+        self.logger.info(f"{etype=}, {value=}, {traceback=}")
+        if isinstance(value, KeyboardInterrupt):
+            return True
+        return False
 
-    def reflect_services(self):
-        for daq_node in self.daq_nodes:
-            channel = daq_node['channel']
-            if channel is not None:
-                self.logger.info(f"Reflecting services on {daq_node['connection_target']}:")
-                reflect_services(channel)
+    def get_valid_daq_hosts(self):
+        return self.valid_daq_hosts
 
     def is_daq_host_valid(self, daq_host):
         return daq_host in self.valid_daq_hosts
 
-    @contextmanager
+    def reflect_services(self, daq_host):
+        if not self.is_daq_host_valid(daq_host):
+            raise ValueError(
+                f"daq_host={daq_host} does not have a valid gRPC server channel. Valid daq_hosts: {self.valid_daq_hosts}")
+        daq_node = self.daq_nodes[daq_host]
+        channel = daq_node['channel']
+        if channel is not None:
+            self.logger.info(f"Reflecting services on {daq_node['connection_target']}:")
+            reflect_services(channel)
+
     def stream_images( self,
             daq_host: str,
             stream_movie_data: bool,
@@ -113,18 +123,10 @@ class DaqDataClient(ABC):
             stream_pulse_height_data=stream_pulse_height_data,
             update_interval_seconds=update_interval_seconds,
         )
-        stream_images_responses: StreamImagesResponse = None
-        try:
-            # Call the RPC
-            stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=wait_for_ready)
-            yield stream_images_responses
-        finally:
-            # Gracefully cancel RPC before exiting
-            self.logger.info(f"cancelling StreamImages request")
-            if stream_images_responses is not None:
-                stream_images_responses.cancel()
+        # Call the RPC
+        stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=wait_for_ready)
+        return stream_images_responses
 
-    @contextmanager
     def init_hp_io(self,
         daq_host: str,
         hp_io_cfg: str or Path,
@@ -146,16 +148,9 @@ class DaqDataClient(ABC):
         )
         self.logger.info(f"Initializing the hp_io thread with "
                         f"{MessageToDict(init_hp_io_request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)}")
-        init_hp_io_response = None
-        try:
-            # Call RPC
-            init_hp_io_response = stub.InitHpIo(init_hp_io_request, timeout=timeout)
-            yield init_hp_io_response
-        finally:
-            # Gracefully cancel RPC before exiting
-            self.logger.info(f"cancelling StreamImages request")
-            if init_hp_io_response is not None:
-                init_hp_io_response.cancel()
+        # Call RPC
+        init_hp_io_response = stub.InitHpIo(init_hp_io_request, timeout=timeout)
+        return init_hp_io_response
 
 def init_hp_io(
     stub: daq_data_pb2_grpc.DaqDataStub,
