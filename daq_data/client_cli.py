@@ -321,7 +321,7 @@ def run_pano_image_preview(
     last_t = time.monotonic()
     for parsed_pano_image in response_stream:
         curr_t = time.monotonic()
-        print(f"time elapsed: {curr_t - last_t:.2f} s")
+        # print(f"time elapsed: {curr_t - last_t:.2f} s")
         last_t = curr_t
 
         previewer.update(parsed_pano_image)

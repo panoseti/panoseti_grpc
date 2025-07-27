@@ -70,7 +70,7 @@ def get_dp_cfg(dps):
     return dp_cfg
 
 
-def make_rich_logger(name, level=logging.INFO):
+def make_rich_logger(name, level=logging.WARNING):
     LOG_FORMAT = (
         "[tid=%(thread)d] [%(funcName)s()] %(message)s "
     )
