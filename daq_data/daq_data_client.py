@@ -82,9 +82,11 @@ class DaqDataClient(ABC):
             if daq_node['channel'] is not None:
                 daq_node['channel'].close()
                 self.logger.info(f"closed channel to {daq_node['connection_target']}")
-        self.logger.info(f"{etype=}, {value=}, {traceback=}")
-        if isinstance(value, KeyboardInterrupt):
+        self.logger.setLevel(logging.ERROR)
+        if isinstance(value, KeyboardInterrupt) or value is None:
+            self.logger.info(f"{etype=}, {value=}, {traceback=}")
             return True
+        self.logger.error(f"{etype=}, {value=}, {traceback=}")
         return False
 
     def get_valid_daq_hosts(self):

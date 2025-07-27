@@ -213,6 +213,7 @@ async def hp_io_task_fn(
         reader_states: List[Dict],
         stop_io: Event,
         valid: Event,
+        max_reader_enqueue_timeouts,
         dp_queue: asyncio.Queue,
         logger: logging.Logger,
         sim_cfg: Dict[str, Any],
@@ -434,7 +435,10 @@ async def hp_io_task_fn(
         ph_clients = movie_clients = 0
         allocated_reader_states = [rs for rs in reader_states if rs['is_allocated']]
         for rs in allocated_reader_states:
-            if (curr_t - rs['last_update_t']) >= rs['config']['update_interval_seconds']:
+            if rs['enqueue_timeouts'] >= max_reader_enqueue_timeouts:
+                logger.warning(f"client {rs['client_ip']} is too slow, cancelling this client")
+                continue
+            elif (curr_t - rs['last_update_t']) >= rs['config']['update_interval_seconds']:
                 ph_clients += rs['config']['stream_pulse_height_data']
                 movie_clients += rs['config']['stream_movie_data']
                 ready_list.append(rs)
@@ -483,6 +487,7 @@ async def hp_io_task_fn(
         # signal the hp_io task is ready to service client requests for data preview
         valid.set()
         last_daq_active_check_t = time.monotonic()
+        last_sleep_t = time.monotonic()
         while not stop_io.is_set():
             # check if any active readers are ready to receive data
             curr_t = time.monotonic()
@@ -509,19 +514,27 @@ async def hp_io_task_fn(
                             if rs['config']['stream_movie_data']:
                                 for movie_data in data_to_broadcast[module_id]['movie']:
                                     rq.put_nowait(movie_data)
+                        rs['enqueue_timeouts'] = 0
                     except asyncio.QueueFull:
                         logger.warning(f"hp_io task is unable to broadcast image data to reader {rs['client_ip']}")
+                        rs['enqueue_timeouts'] += 1
                     rs['last_update_t'] = curr_t
             # Every 10 seconds, check if the DAQ software stopped
+            curr_t = time.monotonic()
             if curr_t - last_daq_active_check_t >= 10:
                 last_daq_active_check_t = curr_t
                 if not is_daq_active(simulate_daq, sim_cfg=sim_cfg):
                     logger.warning("DAQ data flow stopped.")
                     return
-            await asyncio.sleep(update_interval_seconds)
+            curr_t = time.monotonic()
+            sleep_duration = max(update_interval_seconds - (curr_t - last_sleep_t), 0)
+            last_sleep_t = curr_t
+            # if sleep_duration < update_interval_seconds * 1e-2:
+            #     logger.warning(f"hp_io task is falling behind: {sleep_duration=} and {update_interval_seconds=}")
+            await asyncio.sleep(sleep_duration)
     except Exception as err:
         logger.error(f"hp_io task encountered a fatal exception! '{repr(err)}'")
-        pass
+        raise
     finally:
         valid.clear()
         logger.info("hp_io task exited")
@@ -582,7 +595,9 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         #   - "queue": Queue implementing single producer (hp_io), multiple independent consumer model
         #   - "config": Keyword configuration options
         #   - "last_update_t": strictly monotonic timestamp for rate limiting
+        #   - "enqueue_timeouts": number of consecutive timeouts from queue.put()
         #   - "timeouts": number of consecutive timeouts from queue.get()
+        #   - "client_ip": info about an active client
         for _ in range(server_cfg['max_reader_clients']):
             default_config = {
                 "stream_movie_data": True,
@@ -596,7 +611,9 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 "queue": asyncio.Queue(maxsize=server_cfg['max_read_queue_size']),
                 "config": default_config,
                 "last_update_t": time.monotonic(),
-                "timeouts": 0,
+                'client_ip': None,
+                'enqueue_timeouts': 0,
+                'dequeue_timeouts': 0,
             }
             self._reader_states.append(default_reader_state)
         self._stop_io = Event()  # Signals hp_io task to exit
@@ -713,6 +730,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 self._reader_states,
                 self._stop_io,
                 self._hp_io_valid,
+                self._server_cfg['max_reader_enqueue_timeouts'],
                 active_data_products_queue,
                 self.logger,
                 simulate_daq_cfg
@@ -775,7 +793,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
     @asynccontextmanager
     async def _rw_lock_writer(self, context, force=False):
-        uid = uuid.uuid4()
+        uid: uuid.UUID = None
         active = False
         try:
             async with self._hp_io_lock:
@@ -826,6 +844,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 # activate the writer
                 self._rw_lock_state['aw'] += 1
                 active = True
+                uid = uuid.uuid4()
                 self._active_clients[uid] = {
                     "client_ip": urllib.parse.unquote(context.peer()),
                     "type": "writer",
@@ -857,7 +876,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
     @asynccontextmanager
     async def _rw_lock_reader(self, context):
         reader_idx = -1  # remember which reader_states dict corresponds to this task
-        uid = uuid.uuid4()
+        uid: uuid.UUID = None
         active = False
         try:
             async with self._hp_io_lock:
@@ -922,10 +941,13 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 # activate the reader
                 self._rw_lock_state['ar'] += 1
                 active = True
+                uid = uuid.uuid4()
+                client_ip = urllib.parse.unquote(context.peer())
                 self._active_clients[uid] = {
-                    "client_ip": urllib.parse.unquote(context.peer()),
+                    "client_ip": client_ip,
                     "type": "reader",
                 }
+                self._reader_states[reader_idx]['client_ip'] = client_ip
                 self.logger.debug(f"(reader) check-in (end):\t\t{self._rw_lock_state=}, fmap_idx={reader_idx}"
                                   f"\n{[rs['is_allocated'] for rs in self._reader_states]=}")
                 # END check-in critical section
@@ -992,7 +1014,8 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             reader_state['config']['stream_movie_data'] = request.stream_movie_data
             reader_state['config']['stream_pulse_height_data'] = request.stream_pulse_height_data
             reader_state['config']['module_ids'] = request.module_ids
-            reader_state['timeouts'] = 0
+            reader_state['enqueue_timeouts'] = 0
+            reader_state['dequeue_timeouts'] = 0
             self.logger.debug(f"{reader_state=}")
 
             # Clear old data from the read_queue
@@ -1005,7 +1028,8 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 res &= self._is_hp_io_valid()
                 res &= not self._shutdown_event.is_set()
                 res &= not self._cancel_readers_event.is_set()
-                res &= reader_state['timeouts'] < self._server_cfg['max_reader_timeouts']
+                res &= reader_state['dequeue_timeouts'] < self._server_cfg['max_reader_dequeue_timeouts']
+                res &= reader_state['enqueue_timeouts'] < self._server_cfg['max_reader_enqueue_timeouts']
                 return res
 
             # Valid server state -> start streaming!
@@ -1013,9 +1037,9 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 # await the next PanoImage to broadcast from the hp_io task
                 try:
                     pano_image = await asyncio.wait_for(reader_queue.get(), timeout=self._server_cfg['reader_timeout'])
-                    reader_state['timeouts'] = 0
+                    reader_state['dequeue_timeouts'] = 0
                 except asyncio.TimeoutError:
-                    reader_state['timeouts'] += 1
+                    reader_state['dequeue_timeouts'] += 1
                     continue
                 if not isinstance(pano_image, PanoImage):
                     break
@@ -1035,13 +1059,23 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 await context.abort(grpc.StatusCode.CANCELLED, emsg)
             elif self._cancel_readers_event.is_set():
                 emsg = "cancel_all_readers: another client has likely forced a write to server state"
+                self.logger.warning(emsg)
                 await context.abort(grpc.StatusCode.CANCELLED, emsg)
             elif context.cancelled():
                 emsg = "client context terminated"
                 self.logger.info(emsg)
                 await context.abort(grpc.StatusCode.CANCELLED, emsg)
-            elif reader_state['timeouts'] >= self._server_cfg['max_reader_timeouts']:
-                emsg = f"reader reached max number of consecutive read timeouts: ({self._server_cfg['max_reader_timeouts']})."
+            elif reader_state['dequeue_timeouts'] >= self._server_cfg['max_reader_dequeue_timeouts']:
+                emsg = (f"Reader reached max number of consecutive read dequeue timeouts: "
+                        f"({self._server_cfg['max_reader_dequeue_timeouts']}).")
+                self.logger.warning(emsg)
+                await context.abort(grpc.StatusCode.CANCELLED, emsg)
+            elif reader_state['enqueue_timeouts'] >= self._server_cfg['max_reader_enqueue_timeouts']:
+                emsg = (f"Reader reached max number of consecutive read enqueue timeouts: "
+                        f"({self._server_cfg['max_reader_enqueue_timeouts']}). "
+                        f"The reader process is likely too slow for the requested update interval "
+                        f"{reader_state['config']['update_interval_seconds']}.")
+                self.logger.warning(emsg)
                 await context.abort(grpc.StatusCode.CANCELLED, emsg)
             elif not self._stop_io.is_set():
                 emsg = (f"The hp_io task data stream became invalid! "
