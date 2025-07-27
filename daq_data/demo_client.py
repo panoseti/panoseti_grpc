@@ -383,7 +383,7 @@ def run(args):
                         stub,
                         stream_movie_data=True,
                         stream_pulse_height_data=True,
-                        update_interval_seconds=2.0, #np.random.uniform(1.0, 1.0),
+                        update_interval_seconds=0.1, #np.random.uniform(1.0, 1.0),
                         module_ids=module_ids,
                         wait_for_ready=True,
                         logger=logger

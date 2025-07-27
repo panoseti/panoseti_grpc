@@ -67,7 +67,7 @@ Note that because panoseti_grpc has a package structure, when running commands 4
 4. Run `python -m daq_data.daq_data_server` on the DAQ node, with hostname `H`.
 5. Run `python -m daq_data.demo_client -h` to see the available options.
 6. Run `python -m daq_data.demo_client --host H` on any computer to verify its network connection to the DAQ node.
-7. Run `python -m daq_data.demo_client --host H --init daq_data/config/hp_io_config_simulate_daq.json` to initialize the server with an `InitHpIo` request based on the configuration given in `hp_io_config_simulate_daq.json`. Of course, please substitute this file name with one you create.
+7. Run `python -m daq_data.demo_client --host H --init daq_data/config/hp_io_config_simulate.json` to initialize the server with an `InitHpIo` request based on the configuration given in `hp_io_config_simulate.json`. Of course, please substitute this file name with one you create.
 8. Run `python -m daq_data.demo_client --host H --plot-phdist` to make a `StreamImages` request and launch a real-time pulse-height distribution visualization app.
 
 

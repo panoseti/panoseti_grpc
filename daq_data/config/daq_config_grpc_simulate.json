@@ -1,0 +1,12 @@
+{
+    "head_node_data_dir": "",
+    "head_node_ip_addr": "localhost",
+    "daq_nodes": [
+        {
+            "ip_addr": "localhost",
+            "user_name": "",
+            "data_dir": "simulated_data_dir",
+            "module_ids": "0-255"
+        }
+    ]
+}
