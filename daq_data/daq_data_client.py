@@ -46,9 +46,11 @@ from .daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest, 
 from .daq_data_resources import format_stream_images_response, make_rich_logger, unpack_pano_image, reflect_services
 from .daq_data_testing import run_all_tests, is_os_posix
 
+hp_io_config_simulate_path = "daq_data/config/hp_io_config_simulate.json"
 
 class DaqDataClient(ABC):
     GRPC_PORT = 50051
+
     def __init__(self, daq_config_path):
         self.daq_nodes = {}
         with open(daq_config_path, 'r') as f:
@@ -129,11 +131,13 @@ class DaqDataClient(ABC):
         stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=wait_for_ready)
         return stream_images_responses
 
-    def init_hp_io(self,
-        daq_host: str,
-        hp_io_cfg: str or Path,
-        timeout: float = 5.0,
-   ):
+    def init_sim(self, daq_host: str, hp_io_sim_cfg_path=hp_io_config_simulate_path,timeout=5.0) -> bool:
+        with open(hp_io_sim_cfg_path, 'r') as f:
+            hp_io_config = json.load(f)
+            assert hp_io_config['simulate_daq'] is True, f"{hp_io_sim_cfg_path} used init_sim must have simulate_daq=True"
+        return self.init_hp_io(daq_host, hp_io_config, timeout=timeout)
+
+    def init_hp_io(self, daq_host: str, hp_io_cfg: dict, timeout=5.0) -> bool:
         if not self.is_daq_host_valid(daq_host):
             raise ValueError(f"daq_host={daq_host} does not have a valid gRPC server channel. Valid daq_hosts: {self.valid_daq_hosts}")
 
@@ -152,7 +156,7 @@ class DaqDataClient(ABC):
                         f"{MessageToDict(init_hp_io_request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)}")
         # Call RPC
         init_hp_io_response = stub.InitHpIo(init_hp_io_request, timeout=timeout)
-        return init_hp_io_response
+        return init_hp_io_response.success
 
 def init_hp_io(
     stub: daq_data_pb2_grpc.DaqDataStub,
