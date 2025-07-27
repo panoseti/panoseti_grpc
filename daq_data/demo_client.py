@@ -19,8 +19,8 @@ from daq_data import (
 )
 from .daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
 
-from .daq_data_client import reflect_services, parse_pano_image, format_stream_images_response, init_hp_io
-from .daq_data_resources import make_rich_logger, CFG_DIR
+from .daq_data_client import reflect_services, parse_pano_image, init_hp_io
+from .daq_data_resources import make_rich_logger, CFG_DIR, format_stream_images_response
 
 import numpy as np
 import seaborn as sns
@@ -199,7 +199,15 @@ class PanoImagePreviewer:
         plt.ion()
         plt.show()
 
-    def update(self, frame_number, file, pano_type, header, img, module_id):
+    def update(self, pano_image):
+        parsed_pano_image = parse_pano_image(pano_image)
+        module_id = parsed_pano_image['module_id']
+        pano_type = parsed_pano_image['type']
+        header = parsed_pano_image['header']
+        img = parsed_pano_image['image_array']
+        frame_number = parsed_pano_image['frame_number']
+        file = parsed_pano_image['file']
+
         # check if this module is new
         if module_id not in self.seen_modules:
             self.seen_modules.add(module_id)
@@ -218,6 +226,8 @@ class PanoImagePreviewer:
         cbar.ax.tick_params(labelsize=8)
         cbar.locator = MaxNLocator(nbins=6)
         cbar.update_ticks()
+        cbar.ax.set_ylabel('ADC', rotation=270, labelpad=10, fontsize=8)
+        cbar.ax.yaxis.set_label_position("right")
         ax = self.axes_map.get((module_id, pano_type))
         if ax is None:
             return
@@ -323,14 +333,7 @@ def run_pano_image_preview(
         formatted_response = format_stream_images_response(stream_images_response)
         logger.info(formatted_response)
 
-        parsed_pano_image = parse_pano_image(stream_images_response.pano_image)
-        module_id = parsed_pano_image['module_id']
-        pano_type = parsed_pano_image['type']
-        header = parsed_pano_image['header']
-        img = parsed_pano_image['image_array']
-        frame_number = parsed_pano_image['frame_number']
-        file = parsed_pano_image['file']
-        previewer.update(frame_number, file, pano_type, header, img, module_id)
+        previewer.update(stream_images_response.pano_image)
 
 
 def run_demo_grpc(args):
@@ -354,6 +357,7 @@ def run_demo_grpc(args):
             with open(hp_io_cfg_path, "r") as f:
                 hp_io_cfg = json.load(f)
 
+    # parse args for plotting
     do_plot = args.plot_view or args.plot_phdist
     module_ids = args.module_ids
     if args.plot_phdist:
@@ -387,7 +391,7 @@ def run_demo_grpc(args):
                     logger=logger
                 )
 
-            if do_plot:
+            elif do_plot:
                 print("-------------- StreamImages --------------")
                 if args.plot_view:
                     run_pano_image_preview(
@@ -424,6 +428,14 @@ if __name__ == "__main__":
         signal.signal(sig, signal_handler)
 
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "daq_config_path",
+        help="path to daq_config.json file for the current observing run",
+    )
+    parser.add_argument(
+        "--list-hosts",
+        help="list available DAQ node hosts",
+    )
     parser.add_argument(
         "--host",
         help="DaqData server hostname or IP address. Default: 'localhost'",

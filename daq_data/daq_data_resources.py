@@ -129,20 +129,12 @@ def parse_pano_timestamps(pano_image: PanoImage) -> Dict[str, Any]:
     td['pandas_unix_timestamp'] = to_datetime(nanoseconds_since_epoch, unit='ns')
     return td
 
-def unpack_pano_image(
-        pano_image: daq_data_pb2.PanoImage
-) -> Tuple[int, str, Dict[str, Any], np.ndarray] or Tuple[None, None, None, None]:
-    """Unpacks a PanoImage message into its components:
-    module_id, pano_type, header, image_array
-    """
-    if pano_image is None:
-        return None, None, None, None
-    pano_type = PanoImage.Type.Name(pano_image.type)
-    # Parse header
-    h = MessageToDict(pano_image.header)
+def parse_pano_image(pano_image: daq_data_pb2.PanoImage) -> Dict[str, Any]:
+    """Unpacks a PanoImage message into its components"""
+    parsed_pano_image = MessageToDict(pano_image, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)
     pano_timestamps = parse_pano_timestamps(pano_image)
-    h.update(pano_timestamps)
-
+    parsed_pano_image['header'].update(pano_timestamps)
+    pano_type = parsed_pano_image['type']
     image_array = np.array(pano_image.image_array).reshape(pano_image.shape)
     bytes_per_pixel = pano_image.bytes_per_pixel
     if bytes_per_pixel == 1:
@@ -155,15 +147,18 @@ def unpack_pano_image(
     else:
         raise ValueError(f"unsupported bytes_per_pixel: {bytes_per_pixel}")
 
-    module_id = pano_image.module_id
-    return module_id, pano_type, h, image_array
+    parsed_pano_image['image_array'] = image_array
+    return parsed_pano_image
 
 def format_stream_images_response(stream_images_response: StreamImagesResponse) -> str:
-    pano_image = stream_images_response.pano_image
-    module_id, pano_type, header, image_array = unpack_pano_image(pano_image)
+    parsed_pano_image = parse_pano_image(stream_images_response.pano_image)
+    module_id = parsed_pano_image['module_id']
+    pano_type = parsed_pano_image['type']
+    header = parsed_pano_image['header']
+    img = parsed_pano_image['image_array']
+    frame_number = parsed_pano_image['frame_number']
+    file = parsed_pano_image['file']
     name = stream_images_response.name
     message = stream_images_response.message
-    file = pano_image.file
-    frame_number = pano_image.frame_number
     server_timestamp = stream_images_response.timestamp.ToDatetime().isoformat()
     return f"{name=} {server_timestamp=} {file} (f#{frame_number}) {pano_type=} "
