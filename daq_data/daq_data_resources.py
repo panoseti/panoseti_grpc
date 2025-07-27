@@ -95,7 +95,7 @@ def make_rich_logger(name, level=logging.INFO):
     return logging.getLogger(name)
 
 
-def reflect_services(channel: grpc.Channel) -> None:
+def reflect_services(channel: grpc.Channel) -> str:
     """Prints all available RPCs for a DaqData service represented by [channel]."""
     def format_rpc_service(method):
         name = method.name
@@ -107,13 +107,14 @@ def reflect_services(channel: grpc.Channel) -> None:
         return f"rpc {name}({client_stream}{input_type}) returns ({server_stream}{output_type})"
     reflection_db = ProtoReflectionDescriptorDatabase(channel)
     services = reflection_db.get_services()
-    print(f"found services: {services}")
+    msg = f"found services: {services}"
 
     desc_pool = DescriptorPool(reflection_db)
     service_desc = desc_pool.FindServiceByName("daqdata.DaqData")
-    print(f"found [yellow]DaqData[/yellow] service with name: [yellow]{service_desc.full_name}[/yellow]")
+    msg += f"found [yellow]DaqData[/yellow] service with name: [yellow]{service_desc.full_name}[/yellow]"
     for method in service_desc.methods:
-        print(f"\tfound: {format_rpc_service(method)}")
+        msg += f"\n\tfound: {format_rpc_service(method)}"
+    return msg
 
 def parse_pano_timestamps(pano_image: PanoImage) -> Dict[str, Any]:
     """Parse PanoImage header to get nanosecond-precision timestamps."""
