@@ -19,13 +19,13 @@ service DaqData {
 
   // Stream hashpipe status buffer information from hashpipe. TODO: implement this
   // [reader: acquires server_state lock in shared state]
-  rpc StreamHashpipeStatus(StreamHashpipeStatusRequest) returns (stream StreamHashpipeStatusResponse) {}
+//  rpc StreamHashpipeStatus(StreamHashpipeStatusRequest) returns (stream StreamHashpipeStatusResponse) {}
 
   // Set the server's configuration attributes.
   // Enables re-configuration without service restart.
   // [writer: acquires server_state lock in exclusive state]
   // TODO: implement
-  rpc SetConfiguration(SetConfigurationRequest) returns (SetConfigurationResponse) {}
+//  rpc SetConfiguration(SetConfigurationRequest) returns (SetConfigurationResponse) {}
 
   // Initialize (or re-initialize) the hp_io thread.
   rpc InitHpIo(InitHpIoRequest) returns (InitHpIoResponse) {}

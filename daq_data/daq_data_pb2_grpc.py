@@ -40,16 +40,6 @@ class DaqDataStub(object):
                 request_serializer=daq__data__pb2.StreamImagesRequest.SerializeToString,
                 response_deserializer=daq__data__pb2.StreamImagesResponse.FromString,
                 _registered_method=True)
-        self.StreamHashpipeStatus = channel.unary_stream(
-                '/daqdata.DaqData/StreamHashpipeStatus',
-                request_serializer=daq__data__pb2.StreamHashpipeStatusRequest.SerializeToString,
-                response_deserializer=daq__data__pb2.StreamHashpipeStatusResponse.FromString,
-                _registered_method=True)
-        self.SetConfiguration = channel.unary_unary(
-                '/daqdata.DaqData/SetConfiguration',
-                request_serializer=daq__data__pb2.SetConfigurationRequest.SerializeToString,
-                response_deserializer=daq__data__pb2.SetConfigurationResponse.FromString,
-                _registered_method=True)
         self.InitHpIo = channel.unary_unary(
                 '/daqdata.DaqData/InitHpIo',
                 request_serializer=daq__data__pb2.InitHpIoRequest.SerializeToString,
@@ -69,26 +59,18 @@ class DaqDataServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def StreamHashpipeStatus(self, request, context):
+    def InitHpIo(self, request, context):
         """Stream hashpipe status buffer information from hashpipe. TODO: implement this
         [reader: acquires server_state lock in shared state]
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
+        rpc StreamHashpipeStatus(StreamHashpipeStatusRequest) returns (stream StreamHashpipeStatusResponse) {}
 
-    def SetConfiguration(self, request, context):
-        """Set the server's configuration attributes.
+        Set the server's configuration attributes.
         Enables re-configuration without service restart.
         [writer: acquires server_state lock in exclusive state]
         TODO: implement
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
+        rpc SetConfiguration(SetConfigurationRequest) returns (SetConfigurationResponse) {}
 
-    def InitHpIo(self, request, context):
-        """Initialize (or re-initialize) the hp_io thread.
+        Initialize (or re-initialize) the hp_io thread.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -101,16 +83,6 @@ def add_DaqDataServicer_to_server(servicer, server):
                     servicer.StreamImages,
                     request_deserializer=daq__data__pb2.StreamImagesRequest.FromString,
                     response_serializer=daq__data__pb2.StreamImagesResponse.SerializeToString,
-            ),
-            'StreamHashpipeStatus': grpc.unary_stream_rpc_method_handler(
-                    servicer.StreamHashpipeStatus,
-                    request_deserializer=daq__data__pb2.StreamHashpipeStatusRequest.FromString,
-                    response_serializer=daq__data__pb2.StreamHashpipeStatusResponse.SerializeToString,
-            ),
-            'SetConfiguration': grpc.unary_unary_rpc_method_handler(
-                    servicer.SetConfiguration,
-                    request_deserializer=daq__data__pb2.SetConfigurationRequest.FromString,
-                    response_serializer=daq__data__pb2.SetConfigurationResponse.SerializeToString,
             ),
             'InitHpIo': grpc.unary_unary_rpc_method_handler(
                     servicer.InitHpIo,
@@ -146,60 +118,6 @@ class DaqData(object):
             '/daqdata.DaqData/StreamImages',
             daq__data__pb2.StreamImagesRequest.SerializeToString,
             daq__data__pb2.StreamImagesResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def StreamHashpipeStatus(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_stream(
-            request,
-            target,
-            '/daqdata.DaqData/StreamHashpipeStatus',
-            daq__data__pb2.StreamHashpipeStatusRequest.SerializeToString,
-            daq__data__pb2.StreamHashpipeStatusResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def SetConfiguration(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/daqdata.DaqData/SetConfiguration',
-            daq__data__pb2.SetConfigurationRequest.SerializeToString,
-            daq__data__pb2.SetConfigurationResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -310,7 +310,11 @@ def run_pano_image_preview(
     )
 
     # Process responses
+    last_t = time.monotonic()
     for stream_images_response in stream_images_responses:
+        curr_t = time.monotonic()
+        logger.info(f"time elapsed: {curr_t - last_t:.2f} s")
+        last_t = curr_t
         # log response metadata
         formatted_response = format_stream_images_response(stream_images_response)
         logger.info(formatted_response)
@@ -381,7 +385,7 @@ def run(args):
                         stub,
                         stream_movie_data=True,
                         stream_pulse_height_data=True,
-                        update_interval_seconds=0.1, #np.random.uniform(1.0, 1.0),
+                        update_interval_seconds=0.5, #np.random.uniform(1.0, 1.0),
                         module_ids=module_ids,
                         wait_for_ready=True,
                         logger=logger
