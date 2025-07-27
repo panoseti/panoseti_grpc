@@ -19,7 +19,7 @@ from daq_data import (
 )
 from .daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
 
-from .daq_data_client import reflect_services, unpack_pano_image, format_stream_images_response, init_hp_io
+from .daq_data_client import reflect_services, parse_pano_image, format_stream_images_response, init_hp_io
 from .daq_data_resources import make_rich_logger, CFG_DIR
 
 import numpy as np
@@ -244,7 +244,6 @@ class PanoImagePreviewer:
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
 
-
 def run_pulse_height_distribution(
     stub,
     plot_update_interval: float,
@@ -272,8 +271,13 @@ def run_pulse_height_distribution(
             logger.info(formatted_stream_images_response)
 
         # unpack pano image
-        pano_image = response.pano_image
-        module_id, pano_type, header, img = unpack_pano_image(pano_image)
+        parsed_pano_image = parse_pano_image(response.pano_image)
+        module_id = parsed_pano_image['module_id']
+        pano_type = parsed_pano_image['type']
+        header = parsed_pano_image['header']
+        img = parsed_pano_image['image_array']
+        frame_number = parsed_pano_image['frame_number']
+        file = parsed_pano_image['file']
 
         if pano_type == 'PULSE_HEIGHT':
             # img += np.random.poisson(lam=50, size=img.shape)
@@ -319,12 +323,17 @@ def run_pano_image_preview(
         formatted_response = format_stream_images_response(stream_images_response)
         logger.info(formatted_response)
 
-        pano_image = stream_images_response.pano_image
-        module_id, pano_type, header, img = unpack_pano_image(stream_images_response.pano_image)
-        previewer.update(pano_image.frame_number, pano_image.file, pano_type, header, img, module_id)
+        parsed_pano_image = parse_pano_image(stream_images_response.pano_image)
+        module_id = parsed_pano_image['module_id']
+        pano_type = parsed_pano_image['type']
+        header = parsed_pano_image['header']
+        img = parsed_pano_image['image_array']
+        frame_number = parsed_pano_image['frame_number']
+        file = parsed_pano_image['file']
+        previewer.update(frame_number, file, pano_type, header, img, module_id)
 
 
-def run(args):
+def run_demo_grpc(args):
     logger = make_rich_logger(__name__, level=logging.INFO)
     hp_io_cfg = None
     do_init_hp_io = False
@@ -455,4 +464,4 @@ if __name__ == "__main__":
 
     # run(host="10.0.0.60")
     args = parser.parse_args()
-    run(args)
+    run_demo_grpc(args)

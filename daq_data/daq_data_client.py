@@ -7,6 +7,7 @@ Requires the following to work:
 Run this on the headnode to configure the u-blox GNSS receivers in remote domes.
 """
 from abc import ABC, abstractmethod
+from typing import List, Callable, Tuple, Any, Dict, AsyncIterator
 import argparse
 import logging
 import os
@@ -43,7 +44,7 @@ from daq_data import (
 from .daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse
 
 ## daq_data utils
-from .daq_data_resources import format_stream_images_response, make_rich_logger, unpack_pano_image, reflect_services
+from .daq_data_resources import format_stream_images_response, make_rich_logger, reflect_services, parse_pano_timestamps
 from .daq_data_testing import run_all_tests, is_os_posix
 
 hp_io_config_simulate_path = "daq_data/config/hp_io_config_simulate.json"
@@ -112,7 +113,8 @@ class DaqDataClient(ABC):
             stream_movie_data: bool,
             stream_pulse_height_data: bool,
             update_interval_seconds: float,
-            wait_for_ready: bool = False,
+            wait_for_ready=False,
+            parse_response=True,
     ):
         """Streams PanoImages from an active observing run."""
         if not self.is_daq_host_valid(daq_host):
@@ -129,7 +131,18 @@ class DaqDataClient(ABC):
         )
         # Call the RPC
         stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=wait_for_ready)
-        return stream_images_responses
+
+        if not parse_response:
+            return stream_images_responses
+
+        def parsed_pano_image_generator():
+            """Yields a stream of parsed PanoImage messages from a StreamImagesResponse stream."""
+            while True:
+                stream_images_response = next(stream_images_responses)
+                parsed_pano_image = unpack_pano_image(stream_images_response.pano_image)
+                yield parsed_pano_image
+
+        return parsed_pano_image_generator()
 
     def init_sim(self, daq_host: str, hp_io_sim_cfg_path=hp_io_config_simulate_path,timeout=5.0) -> bool:
         with open(hp_io_sim_cfg_path, 'r') as f:
@@ -157,6 +170,28 @@ class DaqDataClient(ABC):
         # Call RPC
         init_hp_io_response = stub.InitHpIo(init_hp_io_request, timeout=timeout)
         return init_hp_io_response.success
+
+def parse_pano_image(pano_image: daq_data_pb2.PanoImage) -> Dict[str, Any]:
+    """Unpacks a PanoImage message into its components"""
+    parsed_pano_image = MessageToDict(pano_image, preserving_proto_field_name=True)
+    pano_timestamps = parse_pano_timestamps(pano_image)
+    parsed_pano_image['header'].update(pano_timestamps)
+    pano_type = parsed_pano_image['type']
+    image_array = np.array(pano_image.image_array).reshape(pano_image.shape)
+    bytes_per_pixel = pano_image.bytes_per_pixel
+    if bytes_per_pixel == 1:
+        image_array = image_array.astype(np.uint8)
+    elif bytes_per_pixel == 2:
+        if pano_type == 'MOVIE':
+            image_array = image_array.astype(np.uint16)
+        elif pano_type == 'PULSE_HEIGHT':
+            image_array = image_array.astype(np.int16)
+    else:
+        raise ValueError(f"unsupported bytes_per_pixel: {bytes_per_pixel}")
+
+    parsed_pano_image['image_array'] = image_array
+    return parsed_pano_image
+
 
 def init_hp_io(
     stub: daq_data_pb2_grpc.DaqDataStub,
