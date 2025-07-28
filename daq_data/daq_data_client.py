@@ -7,7 +7,7 @@ Requires the following to work:
 Run this on the headnode to configure the u-blox GNSS receivers in remote domes.
 """
 from abc import ABC, abstractmethod
-from typing import List, Callable, Tuple, Any, Dict, Generator, AsyncIterator
+from typing import Set, List, Callable, Tuple, Any, Dict, Generator, AsyncIterator
 import argparse
 import logging
 import os
@@ -32,6 +32,7 @@ from grpc_reflection.v1alpha.proto_reflection_descriptor_database import (
     ProtoReflectionDescriptorDatabase,
 )
 # Standard gRPC protobuf types
+from google.protobuf.empty_pb2 import Empty
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf import timestamp_pb2
@@ -62,7 +63,7 @@ class DaqDataClient:
             self.daq_nodes[daq_host]['channel']: grpc.Channel = None
         self.daq_grpc_state = {}
         self.logger = make_rich_logger(__name__, level=log_level)
-        self.valid_daq_hosts = []
+        self.valid_daq_hosts = set()
 
     def __enter__(self):
         for daq_host, daq_node in self.daq_nodes.items():
@@ -71,7 +72,8 @@ class DaqDataClient:
             try:
                 channel = grpc.insecure_channel(grpc_connection_target)
                 daq_node['channel'] = channel
-                self.valid_daq_hosts.append(daq_host)
+                if self.ping(daq_host):
+                    self.valid_daq_hosts.add(daq_host)
             except grpc.RpcError as rpc_error:
                 self.logger.error(f"{type(rpc_error)}\n{repr(rpc_error)}")
                 continue
@@ -90,11 +92,17 @@ class DaqDataClient:
         self.logger.error(f"{etype=}, {value=}, {traceback=}")
         return False
 
-    def get_valid_daq_hosts(self) -> List[str]:
+    def get_valid_daq_hosts(self) -> Set[str]:
         return self.valid_daq_hosts
 
     def is_daq_host_valid(self, daq_host: str) -> bool:
-        return daq_host in self.valid_daq_hosts
+        if daq_host not in self.daq_nodes:
+            return False
+        if not self.ping(daq_host):
+            if daq_host in self.valid_daq_hosts:
+                return False
+        self.valid_daq_hosts.add(daq_host)
+        return True
 
     def reflect_services(self, daq_host: str) -> str:
         if not self.is_daq_host_valid(daq_host):
@@ -105,6 +113,7 @@ class DaqDataClient:
         if channel is not None:
             self.logger.info(f"Reflecting services on {daq_node['connection_target']}:")
             return reflect_services(channel)
+        return ""
 
     def stream_images(
         self,
@@ -132,6 +141,7 @@ class DaqDataClient:
         )
         self.logger.info(
             f"stream_images_request={MessageToDict(stream_images_request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)}")
+
         # Call the RPC
         stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=wait_for_ready)
 
@@ -174,3 +184,18 @@ class DaqDataClient:
         init_hp_io_response = stub.InitHpIo(init_hp_io_request, timeout=timeout)
         self.logger.info(f"{init_hp_io_response.success=}")
         return init_hp_io_response.success
+
+    def ping(self, daq_host: str, timeout=0.5) -> bool:
+        """Returns True iff there is an active DaqData server on daq_host"""
+        if daq_host not in self.daq_nodes:
+            return False
+        channel = self.daq_nodes[daq_host]['channel']
+        stub = daq_data_pb2_grpc.DaqDataStub(channel)
+        ping_request = Empty()
+        try:
+            stub.Ping(ping_request, timeout=timeout)
+            return True
+        except grpc.RpcError as e:
+            # self.logger.error(f"{e=}")
+            return False
+

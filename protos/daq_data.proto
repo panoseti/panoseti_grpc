@@ -9,7 +9,7 @@ package daqdata;
 
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
-//import "google/protobuf/empty.proto";
+import "google/protobuf/empty.proto";
 
 // The DaqData service definition.
 service DaqData {
@@ -17,19 +17,11 @@ service DaqData {
   // [reader: acquires server_state lock in shared state]
   rpc StreamImages(StreamImagesRequest) returns (stream StreamImagesResponse) {}
 
-  // Stream hashpipe status buffer information from hashpipe. TODO: implement this
-  // [reader: acquires server_state lock in shared state]
-//  rpc StreamHashpipeStatus(StreamHashpipeStatusRequest) returns (stream StreamHashpipeStatusResponse) {}
-
-  // Set the server's configuration attributes.
-  // Enables re-configuration without service restart.
-  // [writer: acquires server_state lock in exclusive state]
-  // TODO: implement
-//  rpc SetConfiguration(SetConfigurationRequest) returns (SetConfigurationResponse) {}
-
   // Initialize (or re-initialize) the hp_io thread.
   rpc InitHpIo(InitHpIoRequest) returns (InitHpIoResponse) {}
 
+  // Ping server
+  rpc Ping(google.protobuf.Empty) returns (google.protobuf.Empty) {}
 }
 
 // Image represents a panoseti movie-mode or pulse-height image and associated header metadata

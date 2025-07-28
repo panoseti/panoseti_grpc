@@ -22,6 +22,7 @@ import sys
 import time
 import urllib.parse
 
+import google
 ## --- gRPC imports ---
 import grpc
 
@@ -30,6 +31,7 @@ from grpc_reflection.v1alpha import reflection
 
 # standard gRPC protobuf types + utility functions
 from google.protobuf.struct_pb2 import Struct
+from google.protobuf.empty_pb2 import Empty
 from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf import timestamp_pb2
 from pandas.core.computation.ops import isnumeric
@@ -1150,6 +1152,11 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 self.logger.warning(emsg)
 
             return InitHpIoResponse(success=start_success)
+
+
+    async def Ping(self, request, context):
+        """Returns the Empty message to verify client-server connection."""
+        return Empty()
 
 async def serve(server_cfg):
     """Create the gRPC server and start providing the UbloxControl service."""

@@ -73,18 +73,18 @@ Below is an example workflow for using `daq_data/client_cli.py` to view real-tim
 1. Start an observing session ([docs](https://github.com/panoseti/panoseti/wiki/sessions-and-configuration)).
 2. Run `start.py` in the `panoseti/control` directory to start an observing run.
 
-#### On a DAQ Node (with hostname `H`)
+#### On a DAQ Node with Hostname `H`
 1. Set up the `grpc-py39` environment as described above.
 2. Set your working directory to `panoseti_grpc/`.
 3. Run `python -m daq_data.daq_data_server`.
 
-#### Client Computer (any device connected to DAQ Node `H`)
+#### On Any Computer Connected to the DAQ Node `H`
 1. Set up the `grpc-py39` environment as described above.
 2. Update your `hp_io_config.json` file or create a new one (see docs below).
 3. Set your working directory to `panoseti_grpc/`.
 4. (optional) Run `export DAQ_CFG="/path/to/daq_config.json"` to create a convenient variable for `/path/to/daq_config.json`. If you don't want to do this, replace `$DAQ_CFG` in all following commands with `/path/to/daq_config.json`.
 5. Run `python -m daq_data.client_cli -h` to see the available options.
-6. Run `python -m daq_data.client_cli $DAQ_CFG --list-hosts`on any computer to find DAQ node hosts with valid gRPC servers. The hostname `H` in the following commands should be in the list of valid hosts returned by this command.
+6. Run `python -m daq_data.client_cli $DAQ_CFG --list-hosts` to find DAQ node hosts running valid DaqData gRPC servers. The hostname `H` in the following commands should be in the list of valid hosts returned by this command.
 7. Initialize the `hp_io` thread on the DaqData server on DAQ node `H`:
    - (Real data) Run `python -m daq_data.client_cli $DAQ_CFG --host H --init /path/to/hp_io_config.json` to initialize with`hp_io_config.json`.
    - (Simulated data) Run `python -m daq_data.client_cli $DAQ_CFG --host H --init-sim` to initialize with `daq_data/config/hp_io_config_simulate.json`. This starts a stream of simulated data.
@@ -122,7 +122,8 @@ Notes:
     - If empty, the server will broadcast data snapshots from all active modules (detected automatically).
     - If non-empty, the server will only broadcast data from the specified modules.
 
-## Developing Real-Time Visualizations with the gRPC DaqData API
+## Developing Real-Time Visualizations with the DaqData API
+
 
 [todo: expand]
 

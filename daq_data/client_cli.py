@@ -320,15 +320,12 @@ def run_pano_image_preview(
     # Process responses
     last_t = time.monotonic()
     for parsed_pano_image in response_stream:
-        curr_t = time.monotonic()
-        # print(f"time elapsed: {curr_t - last_t:.2f} s")
-        last_t = curr_t
-
         previewer.update(parsed_pano_image)
 
 def run_demo_api(args):
     with open(args.daq_config_path, "r") as f:
         daq_config = json.load(f)
+    # get hp_io_cfg
     hp_io_cfg = None
     do_init_hp_io = False
     if args.init_sim or args.cfg_path is not None:
@@ -347,12 +344,14 @@ def run_demo_api(args):
             with open(hp_io_cfg_path, "r") as f:
                 hp_io_cfg = json.load(f)
 
-    # parse args for plotting
-    do_plot = args.plot_view or args.plot_phdist
     do_list_hosts = args.list_hosts
     do_reflect_services = args.reflect_services
     host = args.host
+    do_ping = args.ping
     module_ids = args.module_ids
+
+    # parse args for plotting
+    do_plot = args.plot_view or args.plot_phdist
     if args.plot_phdist:
         if len(module_ids) == 0:
             print("no module_ids specified, using data from all modules to make ph distribution")
@@ -373,10 +372,18 @@ def run_demo_api(args):
 
     try:
         with DaqDataClient(daq_config, log_level=log_level) as ddc:
+
+            if do_ping:
+                if host is None:
+                    raise ValueError("host must be specified for initializing hp_io")
+                if ddc.ping(host):
+                    print(f"PING {host=}: [green] success [/green]")
+                else:
+                    print(f"PING {host=}: [red] failed [/red]")
+
             valid_daq_hosts = ddc.get_valid_daq_hosts()
 
             if do_list_hosts:
-                print("-------------- ListHosts --------------")
                 print(f"Valid DAQ hosts: {valid_daq_hosts}")
 
             if do_reflect_services:
@@ -442,6 +449,18 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--host",
+        help="DaqData server hostname or IP address. Default: 'localhost'",
+        default="localhost"
+    )
+
+    parser.add_argument(
+        "--ping",
+        help="ping the specified host",
+        action="store_true",
+    )
+
+    parser.add_argument(
         "--list-hosts",
         help="list available DAQ node hosts",
         action="store_true",
@@ -454,14 +473,8 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--host",
-        help="DaqData server hostname or IP address. Default: 'localhost'",
-        default="localhost"
-    )
-
-    parser.add_argument(
         "--init",
-        help="initialize the hp_io thread from the file [CFG] in config/ to track an in-progress run directory",
+        help="initialize the hp_io thread with CFG_PATH='/path/to/hp_io_config.json'",
         type=str,
         dest="cfg_path"
     )
@@ -484,20 +497,20 @@ if __name__ == "__main__":
         action="store_true",
     )
 
-    default_log_level = 'info'
-    parser.add_argument(
-        "--log-level",
-        help=f"set the log level for the DaqDataClient logger. Default: '{default_log_level}'",
-        choices=["debug", "info", "warning", "error", "critical"],
-        default=default_log_level
-    )
-
     parser.add_argument(
         "--module-ids",
         help="whitelist for the module ids to stream data from. If empty, data from all available modules are returned.",
         nargs="*",
         type=int,
         default=[],
+    )
+
+    default_log_level = 'info'
+    parser.add_argument(
+        "--log-level",
+        help=f"set the log level for the DaqDataClient logger. Default: '{default_log_level}'",
+        choices=["debug", "info", "warning", "error", "critical"],
+        default=default_log_level
     )
 
     # run(host="10.0.0.60")

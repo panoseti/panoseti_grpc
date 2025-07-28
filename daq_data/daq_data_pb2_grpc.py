@@ -4,6 +4,7 @@ import grpc
 import warnings
 
 from . import daq_data_pb2 as daq__data__pb2
+from google.protobuf import empty_pb2 as google_dot_protobuf_dot_empty__pb2
 
 GRPC_GENERATED_VERSION = '1.73.1'
 GRPC_VERSION = grpc.__version__
@@ -45,6 +46,11 @@ class DaqDataStub(object):
                 request_serializer=daq__data__pb2.InitHpIoRequest.SerializeToString,
                 response_deserializer=daq__data__pb2.InitHpIoResponse.FromString,
                 _registered_method=True)
+        self.Ping = channel.unary_unary(
+                '/daqdata.DaqData/Ping',
+                request_serializer=google_dot_protobuf_dot_empty__pb2.Empty.SerializeToString,
+                response_deserializer=google_dot_protobuf_dot_empty__pb2.Empty.FromString,
+                _registered_method=True)
 
 
 class DaqDataServicer(object):
@@ -60,17 +66,14 @@ class DaqDataServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def InitHpIo(self, request, context):
-        """Stream hashpipe status buffer information from hashpipe. TODO: implement this
-        [reader: acquires server_state lock in shared state]
-        rpc StreamHashpipeStatus(StreamHashpipeStatusRequest) returns (stream StreamHashpipeStatusResponse) {}
+        """Initialize (or re-initialize) the hp_io thread.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
 
-        Set the server's configuration attributes.
-        Enables re-configuration without service restart.
-        [writer: acquires server_state lock in exclusive state]
-        TODO: implement
-        rpc SetConfiguration(SetConfigurationRequest) returns (SetConfigurationResponse) {}
-
-        Initialize (or re-initialize) the hp_io thread.
+    def Ping(self, request, context):
+        """Ping server
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -88,6 +91,11 @@ def add_DaqDataServicer_to_server(servicer, server):
                     servicer.InitHpIo,
                     request_deserializer=daq__data__pb2.InitHpIoRequest.FromString,
                     response_serializer=daq__data__pb2.InitHpIoResponse.SerializeToString,
+            ),
+            'Ping': grpc.unary_unary_rpc_method_handler(
+                    servicer.Ping,
+                    request_deserializer=google_dot_protobuf_dot_empty__pb2.Empty.FromString,
+                    response_serializer=google_dot_protobuf_dot_empty__pb2.Empty.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -145,6 +153,33 @@ class DaqData(object):
             '/daqdata.DaqData/InitHpIo',
             daq__data__pb2.InitHpIoRequest.SerializeToString,
             daq__data__pb2.InitHpIoResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Ping(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/daqdata.DaqData/Ping',
+            google_dot_protobuf_dot_empty__pb2.Empty.SerializeToString,
+            google_dot_protobuf_dot_empty__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,
