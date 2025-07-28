@@ -56,7 +56,7 @@ with DaqDataClient(daq_config) as ddc:
 
 
 <p align="center">
-  <img src="docs/demo_figure.png" alt="Example visualization with simualted data" width="500">
+  <img src="docs/demo_figure.png" alt="Example visualization with simualted data" width="500"> <br>
     Figure 1. `PanoImagePreviewer` visualizing a simulated observing run replaying data from 2024-07-25.
 </p>
 
