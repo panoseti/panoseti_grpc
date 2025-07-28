@@ -95,26 +95,26 @@ def make_rich_logger(name, level=logging.WARNING):
     return logging.getLogger(name)
 
 
-def reflect_services(channel: grpc.Channel) -> str:
-    """Prints all available RPCs for a DaqData service represented by [channel]."""
-    def format_rpc_service(method):
-        name = method.name
-        input_type = method.input_type.name
-        output_type = method.output_type.name
-        stream_fmt = '[magenta]stream[/magenta] '
-        client_stream = stream_fmt if method.client_streaming else ""
-        server_stream = stream_fmt if method.server_streaming else ""
-        return f"rpc {name}({client_stream}{input_type}) returns ({server_stream}{output_type})"
-    reflection_db = ProtoReflectionDescriptorDatabase(channel)
-    services = reflection_db.get_services()
-    msg = f"found services: {services}"
-
-    desc_pool = DescriptorPool(reflection_db)
-    service_desc = desc_pool.FindServiceByName("daqdata.DaqData")
-    msg += f"found [yellow]DaqData[/yellow] service with name: [yellow]{service_desc.full_name}[/yellow]"
-    for method in service_desc.methods:
-        msg += f"\n\tfound: {format_rpc_service(method)}"
-    return msg
+# def reflect_services(channel: grpc.Channel) -> str:
+#     """Prints all available RPCs for a DaqData service represented by [channel]."""
+#     def format_rpc_service(method):
+#         name = method.name
+#         input_type = method.input_type.name
+#         output_type = method.output_type.name
+#         stream_fmt = '[magenta]stream[/magenta] '
+#         client_stream = stream_fmt if method.client_streaming else ""
+#         server_stream = stream_fmt if method.server_streaming else ""
+#         return f"rpc {name}({client_stream}{input_type}) returns ({server_stream}{output_type})"
+#     reflection_db = ProtoReflectionDescriptorDatabase(channel)
+#     services = reflection_db.get_services()
+#     msg = f"found services: {services}"
+#
+#     desc_pool = DescriptorPool(reflection_db)
+#     service_desc = desc_pool.FindServiceByName("daqdata.DaqData")
+#     msg += f"found [yellow]DaqData[/yellow] service with name: [yellow]{service_desc.full_name}[/yellow]"
+#     for method in service_desc.methods:
+#         msg += f"\n\tfound: {format_rpc_service(method)}"
+#     return msg
 
 def parse_pano_timestamps(pano_image: PanoImage) -> Dict[str, Any]:
     """Parse PanoImage header to get nanosecond-precision timestamps."""

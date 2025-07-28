@@ -45,8 +45,8 @@ pip install -r requirements.txt
 ```
 daq_data/client_cli.py  - demonstrates real-time pulse-height and movie-mode visualizations using the DaqData API.
 
-usage: client_cli.py [-h] [--list-hosts] [--reflect-services] [--host HOST] [--init CFG_PATH] [--init-sim] [--plot-view] [--plot-phdist]
-                     [--log-level {debug,info,warning,error,critical}] [--module-ids [MODULE_IDS ...]]
+usage: client_cli.py [-h] [--host HOST] [--ping] [--list-hosts] [--reflect-services] [--init CFG_PATH] [--init-sim] [--plot-view] [--plot-phdist] [--module-ids [MODULE_IDS ...]]
+                     [--log-level {debug,info,warning,error,critical}]
                      daq_config_path
 
 positional arguments:
@@ -54,17 +54,18 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
+  --host HOST           DaqData server hostname or IP address.
+  --ping                ping the specified host
   --list-hosts          list available DAQ node hosts
   --reflect-services    list available gRPC services on the DAQ node
-  --host HOST           DaqData server hostname or IP address. Default: 'localhost'
-  --init CFG_PATH       initialize the hp_io thread from the file [CFG] in config/ to track an in-progress run directory
+  --init CFG_PATH       initialize the hp_io thread with CFG_PATH='/path/to/hp_io_config.json'
   --init-sim            initialize the hp_io thread to track a simulated run directory
   --plot-view           whether to create a live data previewer
   --plot-phdist         whether to create a live pulse-height distribution for the specified module id
-  --log-level {debug,info,warning,error,critical}
-                        set the log level for the DaqDataClient logger. Default: 'info'
   --module-ids [MODULE_IDS ...]
                         whitelist for the module ids to stream data from. If empty, data from all available modules are returned.
+  --log-level {debug,info,warning,error,critical}
+                        set the log level for the DaqDataClient logger. Default: 'info'
 ```
 
 Below is an example workflow for using `daq_data/client_cli.py` to view real-time data from a real or simulated observing run directory.
@@ -73,24 +74,24 @@ Below is an example workflow for using `daq_data/client_cli.py` to view real-tim
 1. Start an observing session ([docs](https://github.com/panoseti/panoseti/wiki/sessions-and-configuration)).
 2. Run `start.py` in the `panoseti/control` directory to start an observing run.
 
-#### On a DAQ Node with Hostname `H`
+#### On each DAQ Node in `/path/to/daq_config.json`
 1. Set up the `grpc-py39` environment as described above.
-2. Set your working directory to `panoseti_grpc/`.
+2. Set the working directory to `panoseti_grpc/`.
 3. Run `python -m daq_data.daq_data_server`.
 
-#### On Any Computer Connected to the DAQ Node `H`
+#### On Any Computer 
 1. Set up the `grpc-py39` environment as described above.
-2. Update your `hp_io_config.json` file or create a new one (see docs below).
-3. Set your working directory to `panoseti_grpc/`.
-4. (optional) Run `export DAQ_CFG="/path/to/daq_config.json"` to create a convenient variable for `/path/to/daq_config.json`. If you don't want to do this, replace `$DAQ_CFG` in all following commands with `/path/to/daq_config.json`.
+2. Update `hp_io_config.json` or create a new one (see docs below).
+3. Set the working directory to `panoseti_grpc/`.
+4. (optional) Run `export DAQ_CFG=/path/to/daq_config.json` to create a convenient variable for `/path/to/daq_config.json`. If you don't want to do this, replace `$DAQ_CFG` in all following commands with `/path/to/daq_config.json`.
 5. Run `python -m daq_data.client_cli -h` to see the available options.
 6. Run `python -m daq_data.client_cli $DAQ_CFG --list-hosts` to find DAQ node hosts running valid DaqData gRPC servers. The hostname `H` in the following commands should be in the list of valid hosts returned by this command.
 7. Initialize the `hp_io` thread on the DaqData server on DAQ node `H`:
-   - (Real data) Run `python -m daq_data.client_cli $DAQ_CFG --host H --init /path/to/hp_io_config.json` to initialize with`hp_io_config.json`.
-   - (Simulated data) Run `python -m daq_data.client_cli $DAQ_CFG --host H --init-sim` to initialize with `daq_data/config/hp_io_config_simulate.json`. This starts a stream of simulated data.
+   - (Real data) Run `python -m daq_data.client_cli $DAQ_CFG --init /path/to/hp_io_config.json` to initialize with`hp_io_config.json`.
+   - (Simulated data) Run `python -m daq_data.client_cli $DAQ_CFG --init-sim` to initialize with `daq_data/config/hp_io_config_simulate.json`. This starts a stream of simulated data.
 8. Start visualization apps:
-   - Run `python -m daq_data.client_cli $DAQ_CFG --host H --plot-phdist` to make a  request and launch a real-time pulse-height distribution visualization app.
-   - Run `python -m daq_data.client_cli $DAQ_CFG --host H --plot-view` to make a `StreamImages` request and launch a real-time pulse-height and movie-mode visualization app.
+   - Run `python -m daq_data.client_cli $DAQ_CFG --plot-phdist` to make a  request and launch a real-time pulse-height distribution visualization app.
+   - Run `python -m daq_data.client_cli $DAQ_CFG --plot-view` to make a `StreamImages` request and launch a real-time pulse-height and movie-mode visualization app.
 
 Notes: 
 - On Linux, the `Ctrl+P` keyboard shortcut loads commands from your command history. Useful for running the `python -m daq_data.client_cli` module with different options.

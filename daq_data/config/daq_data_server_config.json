@@ -17,7 +17,7 @@
         "movie_type": "img16",
         "ph_type": "ph256",
         "frames_per_pff": 300,
-        "sim_module_ids": [24],
+        "sim_module_ids": [224],
         "real_module_id": 1,
         "files": {
             "data_dir": "daq_data/simulated_data_dir",

@@ -136,9 +136,7 @@ def run_demo_api(args):
 
             if do_reflect_services:
                 print("-------------- ReflectServices --------------")
-                if host is None:
-                    raise ValueError("ReflectServices: host must be specified with --host")
-                elif host not in valid_daq_hosts:
+                if host is not None and host not in valid_daq_hosts:
                     raise ValueError(f"Invalid host: {host}. Valid hosts: {valid_daq_hosts}")
                 services = ddc.reflect_services(host)
                 print(services)
@@ -146,18 +144,14 @@ def run_demo_api(args):
             if do_init_hp_io:
                 print("-------------- InitHpIo --------------")
                 # check host
-                if host is None:
-                    raise ValueError("InitHpIo: host must be specified with --host")
-                elif host not in valid_daq_hosts:
+                if host is not None and host not in valid_daq_hosts:
                     raise ValueError(f"Invalid host: {host}. Valid hosts: {valid_daq_hosts}")
                 success = ddc.init_hp_io(host, hp_io_cfg, timeout=15.0)
 
             if do_plot:
                 print("-------------- StreamImages --------------")
                 # check host
-                if host is None:
-                    raise ValueError("host must be specified for plotting")
-                elif host not in valid_daq_hosts:
+                if host is not None and host not in valid_daq_hosts:
                     raise ValueError(f"Invalid host: {host}. Valid hosts: {valid_daq_hosts}")
                 if args.plot_view:
                     run_pano_image_preview(
@@ -165,7 +159,7 @@ def run_demo_api(args):
                         host,
                         stream_movie_data=True,
                         stream_pulse_height_data=True,
-                        update_interval_seconds=0.5,  # np.random.uniform(1.0, 1.0),
+                        update_interval_seconds=2.0,  # np.random.uniform(1.0, 1.0),
                         module_ids=module_ids,
                         wait_for_ready=True,
                     )
