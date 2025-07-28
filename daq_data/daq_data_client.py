@@ -54,6 +54,8 @@ class DaqDataClient:
     GRPC_PORT = 50051
 
     def __init__(self, daq_config: Dict[str, Any], log_level=logging.INFO):
+        if 'daq_nodes' not in daq_config or daq_config['daq_nodes'] is None or len(daq_config['daq_nodes']) == 0:
+            raise ValueError(f"daq_nodes is empty: {daq_config=}")
         self.daq_nodes = {}
         for daq_node_cfg in daq_config['daq_nodes']:
             if 'ip_addr' not in daq_node_cfg:
@@ -86,7 +88,13 @@ class DaqDataClient:
                 daq_node['channel'].close()
                 self.logger.debug(f"DaqDataClient closed channel to {daq_node['connection_target']}")
         self.logger.setLevel(logging.ERROR)
-        if isinstance(value, KeyboardInterrupt) or value is None:
+        exit_ok = False
+        if value is None or isinstance(value, KeyboardInterrupt):
+            exit_ok = True
+        elif isinstance(value, SystemExit) and value.code == 0:
+            exit_ok = True
+
+        if exit_ok:
             self.logger.debug(f"{etype=}, {value=}, {traceback=}")
             return True
         self.logger.error(f"{etype=}, {value=}, {traceback=}")
@@ -155,6 +163,7 @@ class DaqDataClient:
                     yield parse_pano_image(stream_images_response.pano_image)
                 else:
                     yield stream_images_response
+        self.logger.info(f"Stream created")
         return response_generator()
 
     def init_sim(self, daq_host: str, hp_io_sim_cfg_path=hp_io_config_simulate_path,timeout=5.0) -> bool:
@@ -196,6 +205,5 @@ class DaqDataClient:
             stub.Ping(ping_request, timeout=timeout)
             return True
         except grpc.RpcError as e:
-            # self.logger.error(f"{e=}")
             return False
 
