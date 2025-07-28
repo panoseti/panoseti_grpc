@@ -7,6 +7,7 @@ Requires the following to work:
 Run this on the headnode to configure the u-blox GNSS receivers in remote domes.
 """
 from abc import ABC, abstractmethod
+import asyncio
 from typing import Set, List, Callable, Tuple, Any, Dict, Generator, AsyncIterator
 import argparse
 import logging
@@ -63,6 +64,7 @@ class DaqDataClient:
             daq_host = daq_node_cfg['ip_addr']
             self.daq_nodes[daq_host] = {'config': daq_node_cfg}
             self.daq_nodes[daq_host]['channel']: grpc.Channel = None
+            self.daq_nodes[daq_host]['stub']: daq_data_pb2_grpc.DaqDataStub = None
         self.daq_grpc_state = {}
         self.logger = make_rich_logger(__name__, level=log_level)
         self.valid_daq_hosts = set()
@@ -72,8 +74,10 @@ class DaqDataClient:
             grpc_connection_target = f"{daq_host}:{self.GRPC_PORT}"
             daq_node['connection_target'] = grpc_connection_target
             try:
+                # channel = grpc.insecure_channel(grpc_connection_target)
                 channel = grpc.insecure_channel(grpc_connection_target)
                 daq_node['channel'] = channel
+                daq_node['stub'] = daq_data_pb2_grpc.DaqDataStub(channel)
                 if self.ping(daq_host):
                     self.valid_daq_hosts.add(daq_host)
             except grpc.RpcError as rpc_error:
@@ -137,8 +141,7 @@ class DaqDataClient:
         if not self.is_daq_host_valid(daq_host):
             raise ValueError(f"daq_host={daq_host} does not have a valid gRPC server channel. Valid daq_hosts: {self.valid_daq_hosts}")
         daq_node = self.daq_nodes[daq_host]
-        channel = daq_node['channel']
-        stub = daq_data_pb2_grpc.DaqDataStub(channel)
+        stub = daq_node['stub']
 
         # Create the request message
         stream_images_request = StreamImagesRequest(
@@ -177,8 +180,7 @@ class DaqDataClient:
             raise ValueError(f"daq_host={daq_host} does not have a valid gRPC server channel. Valid daq_hosts: {self.valid_daq_hosts}")
 
         daq_node = self.daq_nodes[daq_host]
-        channel = daq_node['channel']
-        stub = daq_data_pb2_grpc.DaqDataStub(channel)
+        stub = daq_node['stub']
 
         init_hp_io_request = InitHpIoRequest(
             data_dir=daq_node['config']['data_dir'],
@@ -198,11 +200,9 @@ class DaqDataClient:
         """Returns True iff there is an active DaqData server on daq_host"""
         if daq_host not in self.daq_nodes:
             return False
-        channel = self.daq_nodes[daq_host]['channel']
-        stub = daq_data_pb2_grpc.DaqDataStub(channel)
-        ping_request = Empty()
+        stub = self.daq_nodes[daq_host]['stub']
         try:
-            stub.Ping(ping_request, timeout=timeout)
+            stub.Ping(Empty(), timeout=timeout)
             return True
         except grpc.RpcError as e:
             return False

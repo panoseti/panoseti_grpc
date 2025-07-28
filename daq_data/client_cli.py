@@ -152,7 +152,7 @@ def run_demo_api(args):
                     raise ValueError(f"Invalid host: {host}. Valid hosts: {valid_daq_hosts}")
                 success = ddc.init_hp_io(host, hp_io_cfg, timeout=15.0)
 
-            elif do_plot:
+            if do_plot:
                 print("-------------- StreamImages --------------")
                 # check host
                 if host is None:
