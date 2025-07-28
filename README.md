@@ -86,12 +86,12 @@ Below is an example workflow for using `daq_data/client_cli.py` to view real-tim
 4. (optional) Run `export DAQ_CFG=/path/to/daq_config.json` to create a convenient variable for `/path/to/daq_config.json`. If you don't want to do this, replace `$DAQ_CFG` in all following commands with `/path/to/daq_config.json`.
 5. Run `python -m daq_data.client_cli -h` to see the available options.
 6. Run `python -m daq_data.client_cli $DAQ_CFG --list-hosts` to find DAQ node hosts running valid DaqData gRPC servers. The hostname `H` in the following commands should be in the list of valid hosts returned by this command.
-7. Initialize the `hp_io` thread on the DaqData server on DAQ node `H`:
+7. Initialize the `hp_io` thread on all DaqData servers:
    - (Real data) Run `python -m daq_data.client_cli $DAQ_CFG --init /path/to/hp_io_config.json` to initialize with`hp_io_config.json`.
    - (Simulated data) Run `python -m daq_data.client_cli $DAQ_CFG --init-sim` to initialize with `daq_data/config/hp_io_config_simulate.json`. This starts a stream of simulated data.
 8. Start visualization apps:
-   - Run `python -m daq_data.client_cli $DAQ_CFG --plot-phdist` to make a  request and launch a real-time pulse-height distribution visualization app.
-   - Run `python -m daq_data.client_cli $DAQ_CFG --plot-view` to make a `StreamImages` request and launch a real-time pulse-height and movie-mode visualization app.
+   - Run `python -m daq_data.client_cli $DAQ_CFG --plot-phdist` to make a `StreamImages` request and launch a real-time pulse-height distribution app.
+   - Run `python -m daq_data.client_cli $DAQ_CFG --plot-view` to make a `StreamImages` request and launch a real-time frame viewer app.
 
 Notes: 
 - On Linux, the `Ctrl+P` keyboard shortcut loads commands from your command history. Useful for running the `python -m daq_data.client_cli` module with different options.
