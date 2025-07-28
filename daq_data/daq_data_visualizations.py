@@ -130,7 +130,7 @@ class PanoImagePreviewer:
             self,
             stream_movie_data: bool,
             stream_pulse_height_data: bool,
-            module_id_whitelist: tuple[int],
+            module_id_whitelist: tuple[int]=(),
             text_width=30,
             font_size=6,
             row_height=3,

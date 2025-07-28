@@ -1,7 +1,7 @@
 # panoseti_grpc
 Contains gRPC code for the PANOSETI project. See [here](https://github.com/panoseti/panoseti) for the main software repo.
 
-## Environment Setup for gRPC Clients and Servers
+# Environment Setup for gRPC Clients and Servers
 
 Follow the steps below to prepare your environment to run gRPC code:
 
@@ -17,14 +17,51 @@ conda install -c conda-forge grpcio-tools
 pip install -r requirements.txt
 ```
 
-# DaqData Service
 
-## Using the DaqDataClient API
+# Using the DaqDataClient API
 The `DaqDataClient` is a Python gRPC client interface for the PANOSETI DaqData service. It provides a user-friendly API for scientists and developers to connect to DAQ nodes, initialize observing runs, and stream real-time image data for analysis and visualization.
 
 See [daq_data_client.py](daq_data/daq_data_client.py) for the implementation.
 
-### Client Initialization
+## Developing Real-Time Visualizations
+
+1. Define a visualization class.
+2. Implement an `update` method to modify the visualization given a new panoseti image.
+3. Follow the code pattern below to receive data with the `DaqDataClient` API:
+
+```python
+from daq_data.daq_data_client import DaqDataClient
+from daq_data.daq_data_visualizations import PanoImagePreviewer
+...
+# 1. Connect to all DAQ nodes
+with DaqDataClient(daq_config) as ddc:
+    
+    # 2. Instantiate visualization class
+    previewer = PanoImagePreviewer(stream_movie_data=True, stream_pulse_height_data=True)
+    
+    # 3. Call the StreamImages RPC on all valid DAQ nodes
+    pano_image_stream = ddc.stream_images(
+        hosts=[],
+        stream_movie_data=True,
+        stream_pulse_height_data=True,
+        update_interval_seconds=2.0,
+        wait_for_ready=True,
+        parse_pano_images=True,
+    )
+
+    # 4. Update visualization for each pano_image
+    for pano_image in pano_image_stream:
+        previewer.update(pano_image)
+```
+
+
+<p align="center">
+  <img src="docs/demo_figure.png" alt="Example visualization with simualted data" width="500">
+    Figure 1. `PanoImagePreviewer` visualizing a simulated observing run replaying data from 2024-07-25.
+</p>
+
+
+## Client Initialization
 The DaqDataClient requires a configuration dictionary specifying the IP addresses and data directories of the DAQ nodes. This is most conveniently loaded from [daq_config.json](https://github.com/panoseti/panoseti/wiki/Configuration-files#daq-config-daq_configjson).
 The client should be used as a [context manager](https://book.pythontips.com/en/latest/context_managers.html) to ensure network resources are handled correctly.
 
@@ -45,7 +82,7 @@ with DaqDataClient(daq_config) as client:
 
 ## API Reference
 All methods can accept a single host string or a list of host strings. If the `hosts` argument is omitted, the method will run on all available DAQ nodes that are responsive.
-See [The Core DaqData RPCs](#the-core-daqdata-rpcs) for implementation details.
+See [The DaqData Service](#the-daqdata-service) for implementation details.
 
 ### Checking Server Status
 These methods help you verify connectivity and discover the services available on the DAQ nodes.
@@ -72,11 +109,11 @@ with DaqDataClient(daq_config) as client:
 Before you can stream images, you must initialize the `hp_io` thread on the server. This thread monitors the observing run directory for new data files.
 See [InitHpIo](#inithpio) for implementation details.
 
-### `init_hp_io(hosts, hp_io_cfg)`
+#### `init_hp_io(hosts, hp_io_cfg)`
 Initializes the hp_io thread for a real observing run.
 
 - `hosts`: The DAQ node(s) to initialize.
-- `hp_io_cfg`: A dictionary with configuration parameters, as specified in [The InitHpIo Config File](#the-inithpio-config-file).
+- `hp_io_cfg`: A dictionary with configuration parameters, as explained in [The hp_io_config.json File](#the-hp_io_configjson-file).
 
 ```python
 # Load hp_io configuration from a file
@@ -89,7 +126,7 @@ with DaqDataClient(daq_config) as client:
     if success:
         print("Successfully initialized hp_io on all DAQ nodes.")
 ```
-### `init_sim(host)`
+#### `init_sim(host)`
 A convenience function to initialize the server in simulation mode, which streams archived data for testing and development.
 
 ```python
@@ -100,8 +137,8 @@ with DaqDataClient(daq_config) as client:
     if success:
         print(f"Successfully initialized simulation on {host}.")
 ```
-## Streaming Image Data
-### stream_images(...)
+### Streaming Image Data
+#### stream_images(...)
 The primary method for receiving real-time data. It returns an infinite generator that yields image data as it becomes available from the server.
 See [StreamImages](#streamimages) for implementation details.
 
@@ -146,7 +183,7 @@ This example demonstrates a complete workflow: initialize the server for a simul
 import json
 from daq_data.daq_data_client import DaqDataClient
 
-# Load DAQ configuration
+# 0. Load DAQ configuration
 with open('daq_data/config/daq_config_grpc_simulate.json', 'r') as f:
     daq_config = json.load(f)
 
@@ -159,7 +196,7 @@ try:
         print(f"Connected to: {valid_hosts}")
 
         # 2. Initialize servers in simulation mode
-        all_init_success = all(client.init_sim(host) for host in valid_hosts)
+        all_init_success = client.init_sim(valid_hosts)
         if not all_init_success:
             raise RuntimeError("Failed to initialize one or more servers.")
         print("All servers initialized for simulation.")
@@ -189,14 +226,6 @@ except KeyboardInterrupt:
 except Exception as e:
     print(f"An error occurred: {e}")
 ```
-## Developing Real-Time Visualizations with the DaqData API
-
-[todo: expand]
-
-1. Define a visualization class.
-2. Implement a method that updates a visualization given a new panoseti image.
-3. Follow the following code pattern:
-   ![viz_api_code_demo.png](docs/viz_api_code_demo.png)
 
 ## Using the DaqData Client CLI
 
@@ -245,7 +274,7 @@ Below is an example workflow for using `daq_data/client_cli.py` to view real-tim
 5. `python -m daq_data.client_cli -h`: see the available options.
 6. `python -m daq_data.client_cli $DAQ_CFG --list-hosts`: find DAQ node hosts running valid DaqData gRPC servers. The hostname `H` in the following commands should be in the list of valid hosts returned by this command.
 7. Initialize the `hp_io` thread on all DaqData servers:
-    - (Real data) `python -m daq_data.client_cli $DAQ_CFG --init /path/to/hp_io_config.json`: initialize `hp_io` from `hp_io_config.json`. See [The InitHpIo Config File](#the-inithpio-config-file) for details about this config file.
+    - (Real data) `python -m daq_data.client_cli $DAQ_CFG --init /path/to/hp_io_config.json`: initialize `hp_io` from `hp_io_config.json`. See [The hp_io_config.json File](#the-hp_io_configjson-file) for details about this config file.
     - (Simulated data) `python -m daq_data.client_cli $DAQ_CFG --init-sim`: initialize `hp_io` from `daq_data/config/hp_io_config_simulate.json`. This starts a stream of simulated data.
 8. Start visualization apps:
     - `python -m daq_data.client_cli $DAQ_CFG --plot-phdist`: make a `StreamImages` request and launch a real-time pulse-height distribution app.
@@ -256,8 +285,41 @@ Notes:
 - `panoseti_grpc` has a package structure, so your working directory should be the repo root, `panoseti_grpc/`, when running modules in `panoseti_grpc/daq_data/`.
 - Each script (e.g. `daq_data_server.py`) should be prefixed with **`python -m daq_data.`** and, because it is a module, be called without the `.py` extension. Following these guidelines gives the example command for step 4: **`python -m daq_data.daq_data_server`**, instead of `./daq_data_server.py` or  `python -m daq_data.daq_data_server.py`.
 
+# The DaqData Service
+See [daq_data.proto](protos/daq_data.proto) for the protobuf specification of this service.
+## Service Architecture 
 
-## The InitHpIo Config File
+<p align="center">
+  <img src="docs/DaqData_StreamImages_overview.png" alt="DaqData Architecture" width="500">
+</p>
+
+## Core Remote Procedure Calls
+
+### `StreamImages`
+
+<p align="center">
+  <img src="docs/DaqData_StreamImages_hp-io.png" alt="DaqData StreamImages hp-io" width="500">
+</p>
+
+- The gRPC server's `hp_io` thread compares consecutive snapshots of the current run directory to identify the last image frame for each Hashpipe data product, including `ph256`, `ph1024`, `img8`, `img16`. These image frames are subsequently broadcast to ready `StreamImages` clients.
+- A given image frame of type `dp` from module `N` will be sent to a client when the following conditions are satisfied:
+    1. The time since the last server response to this client is at least as long as the client’s requested `update_interval_seconds`.
+    2. The client has requested data of type `dp`.
+    3. Module `N` is on the client’s whitelist.
+- $N \geq 0$ `StreamImages` clients may be concurrently connected to the server.
+
+### `InitHpIo`
+
+- Enables reconfiguration of the `hp_io` thread during an observing run.
+- Requires an observing run to be active to succeed.
+- $N \leq 1$ `InitHpIo` clients may be active at any given time. If an `InitHpIo` client is active, no other client may be.
+
+### `Ping`
+- Succeeds only if a client can contact the DaqData server. 
+
+
+
+## The `hp_io_config.json` File
 
 `hp_io_config.json` is used to configure `InitHpIo` RPCs to initialize the gRPC server's `hp_io` thread.
 
@@ -281,25 +343,6 @@ Notes:
 - `module_ids`: whitelist of module data sources.
     - If empty, the server will broadcast data snapshots from all active modules (detected automatically).
     - If non-empty, the server will only broadcast data from the specified modules.
-
-
-## The Core DaqData RPCs
-![DaqData_StreamImages.png](docs/DaqData_StreamImages_overview.png)
-### `StreamImages`
-
-![DaqData_StreamImages_hp-io.png](docs/DaqData_StreamImages_hp-io.png)
-- The gRPC server's `hp_io` thread compares consecutive snapshots of the current run directory to identify the last image frame for each Hashpipe data product, including `ph256`, `ph1024`, `img8`, `img16`. These image frames are subsequently broadcast to ready `StreamImages` clients.
-- A given image frame of type `dp` from module `N` will be sent to a client when the following conditions are satisfied:
-    1. The time since the last server response to this client is at least as long as the client’s requested `update_interval_seconds`.
-    2. The client has requested data of type `dp`.
-    3. Module `N` is on the client’s whitelist.
-- $N \geq 0$ `StreamImages` clients may be concurrently connected to the server.
-
-### `InitHpIo`
-
-- Enables reconfiguration of the `hp_io` thread during an observing run.
-- Requires an observing run to be active to succeed.
-- $N \leq 1$ `InitHpIo` clients may be active at any given time. If an `InitHpIo` client is active, no other client may be.
 
 
 
