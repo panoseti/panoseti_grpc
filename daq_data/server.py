@@ -41,8 +41,8 @@ from daq_data import daq_data_pb2, daq_data_pb2_grpc
 from .daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse
 
 ## --- daq_data utils ---
-from .daq_data_resources import make_rich_logger, get_dp_cfg, CFG_DIR
-from .daq_data_testing import is_os_posix
+from .resources import make_rich_logger, get_dp_cfg, CFG_DIR
+from .testing import is_os_posix
 
 from panoseti_util import pff, config_file, control_utils
 

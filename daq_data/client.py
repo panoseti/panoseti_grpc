@@ -46,7 +46,7 @@ from daq_data import (
 from .daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse
 
 ## daq_data utils
-from .daq_data_resources import make_rich_logger, parse_pano_image, format_stream_images_response
+from .resources import make_rich_logger, parse_pano_image, format_stream_images_response
 
 
 hp_io_config_simulate_path = "daq_data/config/hp_io_config_simulate.json"
@@ -144,6 +144,13 @@ class DaqDataClient:
             Set[str]: A set of IP addresses or hostnames of responsive DAQ nodes.
         """
         return self.valid_daq_hosts
+
+    def get_daq_host_status(self) -> Dict[str, bool]:
+        valid_status = {}
+        for host in self.daq_nodes:
+            connection_target = self.daq_nodes[host]['connection_target']
+            valid_status[connection_target] = self.is_daq_host_valid(host)
+        return valid_status
 
     def is_daq_host_valid(self, host: str) -> bool:
         """

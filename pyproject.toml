@@ -4,16 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "panoseti-grpc"
-version = "0.1.0"
-description = "gRPC code and DAQ client for the PANOSETI observatory project."
+version = "0.1.0.6"
+description = "gRPC for the PANOSETI project."
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [
-    { name="PANOSETI Team", email="contact@panoseti.org" },
+    { name="nraultwang", email="nraultwang@berkeley.edu" },
 ]
 license = { file="LICENSE" }
 keywords = [
-    "panoseti", "grpc", "observatory", "DAQ", "astronomy", "live-visualization"
+    "panoseti", "gRPC", "observatory", "DAQ", "astronomy", "live-visualization"
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -67,10 +67,17 @@ Issues = "https://github.com/panoseti/panoseti_grpc/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["daq_data*"]
+include = [
+    "daq_data*",
+    "panoseti_util*",
+]
 
 [tool.setuptools]
 include-package-data = true
+
+[tool.setuptools.package-data]
+daq_data = ["config/*", "simulated_data_dir/*.pffd/*"]
+
 
 [tool.black]
 line-length = 88

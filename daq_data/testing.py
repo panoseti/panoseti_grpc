@@ -17,7 +17,7 @@ from typing import List, Callable, Tuple, Any, Dict
 
 from rich import print
 
-from .daq_data_resources import make_rich_logger
+from .resources import make_rich_logger
 from .daq_data_pb2 import StreamImagesResponse, StreamImagesRequest
 
 """ Testing utils """

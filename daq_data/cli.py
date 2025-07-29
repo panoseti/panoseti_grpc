@@ -6,6 +6,7 @@ import json
 import os.path
 import sys
 from rich import print
+from rich.pretty import pprint
 from pathlib import Path
 
 import grpc
@@ -16,8 +17,8 @@ from daq_data import (
     daq_data_pb2_grpc
 )
 from .daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
-from .daq_data_client import DaqDataClient
-from .daq_data_visualizations import PulseHeightDistribution, PanoImagePreviewer
+from .client import DaqDataClient
+from .plot import PulseHeightDistribution, PanoImagePreviewer
 
 CFG_DIR = Path('daq_data/config')
 
@@ -123,7 +124,7 @@ def run_demo_api(args):
 
             if do_ping:
                 if host is None:
-                    raise ValueError("host must be specified for ping")
+                    raise ValueError("--host must be specified for --ping")
                 if ddc.ping(host):
                     print(f"PING {host=}: [green] success [/green]")
                 else:
@@ -132,7 +133,8 @@ def run_demo_api(args):
             valid_daq_hosts = ddc.get_valid_daq_hosts()
 
             if do_list_hosts:
-                print(f"Valid DAQ hosts: {valid_daq_hosts}")
+                print(f"DAQ host status (True = valid, False = invalid):")
+                pprint(ddc.get_daq_host_status(), expand_all=True)
 
             if do_reflect_services:
                 print("-------------- ReflectServices --------------")
