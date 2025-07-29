@@ -1204,5 +1204,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt as e:
         pass
     finally:
+        time.sleep(0.1)
         print("Exiting the server.")
-        # time.sleep(0.1)

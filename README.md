@@ -21,7 +21,7 @@ pip install panoseti-grpc
 # Using the DaqDataClient API
 The `DaqDataClient` is a Python gRPC client interface for the PANOSETI DaqData service. It provides a user-friendly API for scientists and developers to connect to DAQ nodes, initialize observing runs, and stream real-time image data for analysis and visualization.
 
-See [daq_data_client.py](daq_data/client.py) for the implementation and [daq_data_client_demo.ipynb](daq_data_client_demo.ipynb) for code examples showing how to use it.
+See [client.py](daq_data/client.py) for the implementation and [daq_data_client_demo.ipynb](daq_data_client_demo.ipynb) for code examples showing how to use it.
 
 ## Developing Real-Time Visualizations
 
