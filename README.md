@@ -3,19 +3,19 @@ Contains gRPC code for the PANOSETI project. See [here](https://github.com/panos
 
 # Environment Setup for gRPC Clients and Servers
 
-Follow the steps below to prepare your environment to run gRPC code:
-
 1. Install `miniconda` ([link](https://www.anaconda.com/docs/getting-started/miniconda/install))
 2. Clone this (`panoseti_grpc`) repo onto a DAQ node or any client computer.
-3. Run the following commands to create the `grpc-py39` environment. 
+2. Run the following commands to create the `grpc-py39` environment. 
 ```bash
 git clone https://github.com/panoseti/panoseti_grpc.git
 cd panoseti_grpc
 conda create -n grpc-py39 python=3.9
 conda activate grpc-py39
 conda install -c conda-forge grpcio-tools
-pip install -r requirements.txt
+pip install panoseti-grpc
 ```
+
+[//]: # (pip install -r requirements.txt)
 
 
 # Using the DaqDataClient API
@@ -54,11 +54,7 @@ with DaqDataClient(daq_config) as ddc:
         previewer.update(pano_image)
 ```
 
-
-<p align="center">
-  <img src="docs/demo_figure.png" alt="Example visualization with simualted data" width="500"> <br>
-    Figure 1. `PanoImagePreviewer` visualizing a simulated observing run replaying data from 2024-07-25.
-</p>
+<p style="text-align: center;"> <img src="https://github.com/panoseti/panoseti_grpc/raw/main/docs/demo_figure.png" alt="Example visualization with simulated data" width="400"> <br> Figure 1. PanoImagePreviewer visualizing a simulated observing run replaying data from 2024-07-25. </p>
 
 
 ## Client Initialization
@@ -287,19 +283,25 @@ Notes:
 
 # The DaqData Service
 See [daq_data.proto](protos/daq_data.proto) for the protobuf specification of this service.
-## Service Architecture 
 
-<p align="center">
-  <img src="docs/DaqData_StreamImages_overview.png" alt="DaqData Architecture" width="500">
-</p>
+
+<table>
+  <tr>
+    <td style="text-align: center;">
+      <img src="https://github.com/panoseti/panoseti_grpc/raw/main/docs/DaqData_StreamImages_overview.png" alt="DaqData Architecture" width="500"/><br>
+      <em>Figure A. DaqData Architecture</em>
+    </td>
+    <td style="text-align: center;">
+      <img src="https://github.com/panoseti/panoseti_grpc/raw/main/docs/DaqData_StreamImages_hp-io.png" alt="DaqData StreamImages hp-io" width="300"/><br>
+      <em>Figure B. StreamImages RPC Flow</em>
+    </td>
+  </tr>
+</table>
+
 
 ## Core Remote Procedure Calls
 
 ### `StreamImages`
-
-<p align="center">
-  <img src="docs/DaqData_StreamImages_hp-io.png" alt="DaqData StreamImages hp-io" width="500">
-</p>
 
 - The gRPC server's `hp_io` thread compares consecutive snapshots of the current run directory to identify the last image frame for each Hashpipe data product, including `ph256`, `ph1024`, `img8`, `img16`. These image frames are subsequently broadcast to ready `StreamImages` clients.
 - A given image frame of type `dp` from module `N` will be sent to a client when the following conditions are satisfied:

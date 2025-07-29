@@ -1,0 +1,89 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "panoseti-grpc"
+version = "0.1.0"
+description = "gRPC code and DAQ client for the PANOSETI observatory project."
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    { name="PANOSETI Team", email="contact@panoseti.org" },
+]
+license = { file="LICENSE" }
+keywords = [
+    "panoseti", "grpc", "observatory", "DAQ", "astronomy", "live-visualization"
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: MIT License",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Framework :: AsyncIO",
+]
+
+dependencies = [
+    "grpcio>=1.73.0",
+    "grpcio-reflection>=1.73.0",
+    "grpcio-tools>=1.73.0",
+    "protobuf>=6.30.0,<7.0.0",
+    "coverage>=4.0",
+    "cython>=3.1.1",
+    "wheel>=0.29",
+    "rich>=14.0.0",
+    "redis>=3.5.3",
+    "snakeviz>=2.2.2",
+    "pyserial>=3.5",
+    "pyubx2>=1.2.43",
+    "seaborn>=0.13.2",
+    "matplotlib>=3.8.4",
+    "pandas>=2.3.0",
+    "numpy>=1.26.4",
+    "jupyter>=1.1.1",
+    "netifaces>=0.11.0",
+    "psutil>=7.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "flake8",
+    "ipython",
+]
+docs = [
+    "sphinx",
+    "myst-parser",
+    "sphinx-autodoc-typehints",
+]
+
+[project.urls]
+Homepage = "https://github.com/panoseti/panoseti_grpc"
+Documentation = "https://github.com/panoseti/panoseti_grpc/blob/main/README.md"
+Repository = "https://github.com/panoseti/panoseti_grpc"
+Issues = "https://github.com/panoseti/panoseti_grpc/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["daq_data*"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.black]
+line-length = 88
+target-version = ["py39"]
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["E203", "W503"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
+

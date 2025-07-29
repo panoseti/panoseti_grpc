@@ -123,7 +123,7 @@ def run_demo_api(args):
 
             if do_ping:
                 if host is None:
-                    raise ValueError("host must be specified for initializing hp_io")
+                    raise ValueError("host must be specified for ping")
                 if ddc.ping(host):
                     print(f"PING {host=}: [green] success [/green]")
                 else:
