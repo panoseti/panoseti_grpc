@@ -148,6 +148,7 @@ class DaqDataClient:
     def get_daq_host_status(self) -> Dict[str, bool]:
         valid_status = {}
         for host in self.daq_nodes:
+            # print(host, self.is_daq_host_valid(host))
             connection_target = self.daq_nodes[host]['connection_target']
             valid_status[connection_target] = self.is_daq_host_valid(host)
         return valid_status
@@ -166,7 +167,8 @@ class DaqDataClient:
             return False
         if not self.ping(host):
             if host in self.valid_daq_hosts:
-                return False
+                self.valid_daq_hosts.remove(host)
+            return False
         self.valid_daq_hosts.add(host)
         return True
 
@@ -392,7 +394,7 @@ class DaqDataClient:
             return False
         stub = self.daq_nodes[host]['stub']
         try:
-            stub.Ping(Empty(), timeout=timeout)
+            ping_response = stub.Ping(Empty(), timeout=timeout)
             return True
         except grpc.RpcError as e:
             return False
