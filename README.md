@@ -411,6 +411,26 @@ See [daq_data.proto](protos/daq_data.proto) for the protobuf specification of th
 ### `StreamImages`
 
 - The gRPC server's `hp_io` thread compares consecutive snapshots of the current run directory to identify the last image frame for each Hashpipe data product, including `ph256`, `ph1024`, `img8`, `img16`. These image frames are subsequently broadcast to ready `StreamImages` clients.
+  - Details: `hp_io` assumes that `data_dir/` has the following structure and tracks updates to each `*.pff` file within it.
+    ```text
+    data_dir/
+        ├── module_1/
+        │   ├── obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd
+        │   │   ├── start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_0.pff
+        │   │   ├── start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_1.pff
+        │   │   ...
+        │   │   
+        │   ├── obs_*/  
+        │   │   ...
+        │   ...
+        │
+        ├── module_2/
+        │   └── obs_*/
+        │       ...
+        │
+        └── module_N/
+            └── obs_*/
+    ```
 - A given image frame of type `dp` from module `N` will be sent to a client when the following conditions are satisfied:
     1. The time since the last server response to this client is at least as long as the client’s requested `update_interval_seconds`.
     2. The client has requested data of type `dp`.
