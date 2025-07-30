@@ -21,6 +21,7 @@ import json
 import sys
 import time
 import urllib.parse
+# import numpy as np
 
 import google
 ## --- gRPC imports ---
@@ -122,7 +123,16 @@ def daq_sim_thread_fn(
     frames_per_pff = sim_cfg['frames_per_pff']
     movie_type = sim_cfg['movie_type']
     ph_type = sim_cfg['ph_type']
-    data_products = [movie_type, ph_type]
+    do_ph = do_movie = False
+    if sim_cfg['do_ph'] and sim_cfg['do_movie']:
+        do_ph = do_movie = True
+    elif sim_cfg['do_ph']:
+        do_ph = True
+    elif sim_cfg['do_movie']:
+        do_movie = True
+    else:
+        raise ValueError("at least one of 'do_ph' and 'do_movie' must be True in sim_cfg['data_products']!")
+    data_products = [ph_type, movie_type]
     dp_cfg = get_dp_cfg(data_products)
 
     simulated_data_files = []
@@ -146,7 +156,7 @@ def daq_sim_thread_fn(
         # open real pff files for reading
         movie_src_path = get_sim_pff_path(sim_cfg, module_id=sim_cfg['real_module_id'], seqno=0, is_ph=False, is_simulated=False)
         ph_src_path = get_sim_pff_path(sim_cfg, module_id=sim_cfg['real_module_id'], seqno=0, is_ph=True, is_simulated=False)
-        with open(movie_src_path, "rb") as movie_src, open(ph_src_path, "rb") as ph_src:
+        with (open(movie_src_path, "rb") as movie_src, open(ph_src_path, "rb") as ph_src):
             # get file info, e.g. frame size from the ph and img source files
             (movie_frame_size, movie_nframes, first_t, last_t) = pff.img_info(movie_src, dp_cfg[movie_type]['bytes_per_image'])
             movie_src.seek(0, os.SEEK_SET)
@@ -157,34 +167,58 @@ def daq_sim_thread_fn(
             ph_src.seek(0, os.SEEK_SET)
 
             # copy frames from [dp]_src to dp_dst to simulate data acquisition software
-            fnum = 0
-            seqno = -1
+            # fnum = 0
+            ph_fnum = movie_fnum = 0
+            ph_seqno = movie_seqno = -1
             sim_valid.set()
-            while not stop_io.is_set() and fnum < min(ph_nframes, movie_nframes):
+            while not stop_io.is_set() and ph_fnum < ph_nframes and movie_fnum < movie_nframes:
                 # check if new simulated files should be created
-                if int(fnum / frames_per_pff) > seqno:
-                    seqno += 1
-                    logger.debug(f"new seqno={seqno}")
+                if int(ph_fnum / frames_per_pff) > ph_seqno:
+                    ph_seqno += 1
+                    logger.debug(f"new ph_seqno={ph_seqno}")
                     for module_id in sim_cfg['sim_module_ids']:
-                        movie_dest_path = get_sim_pff_path(sim_cfg, module_id, seqno=seqno, is_ph=False, is_simulated=True)
-                        ph_dest_path = get_sim_pff_path(sim_cfg, module_id, seqno=seqno, is_ph=True, is_simulated=True)
-                        active_pff_files[module_id] = {'movie': movie_dest_path, 'ph': ph_dest_path}
-                        simulated_data_files.extend([movie_dest_path, ph_dest_path])
-                        logger.debug(f"{movie_dest_path=}, {ph_dest_path=}")
-                # read data from real pff files
-                ph_data = ph_src.read(ph_frame_size)
-                movie_data = movie_src.read(movie_frame_size)
-                fnum += 1
-                # broadcast to all simulated run directories
-                for module_id in sim_cfg['sim_module_ids']:
-                    movie_dest_path = active_pff_files[module_id]['movie']
-                    ph_dest_path = active_pff_files[module_id]['ph']
-                    # logger.debug( f"Creating new simulated data files: {movie_dest_file=}, {ph_dest_file=}, {seqno=}, {fnum=}" )
-                    with open(movie_dest_path, "ab") as movie_dst, open(ph_dest_path, "ab") as ph_dst:
-                        ph_nbytes_written = ph_dst.write(ph_data)
-                        movie_nbytes_written = movie_dst.write(movie_data)
+                        if module_id not in active_pff_files:
+                            active_pff_files[module_id] = {'movie': None, 'ph': None}
+                        elif active_pff_files[module_id]['ph'] is not None:
+                            active_pff_files[module_id]['ph'].close()
+                        ph_dest_path = get_sim_pff_path(sim_cfg, module_id, seqno=ph_seqno, is_ph=True, is_simulated=True)
+                        active_pff_files[module_id]['ph'] = open(ph_dest_path, 'ab')
+                        simulated_data_files.append(ph_dest_path)
+                        logger.debug(f"new {ph_dest_path=}")
+
+                if int(movie_fnum / frames_per_pff) > movie_seqno:
+                    movie_seqno += 1
+                    logger.debug(f"new movie_seqno={movie_seqno}")
+                    for module_id in sim_cfg['sim_module_ids']:
+                        if module_id not in active_pff_files:
+                            active_pff_files[module_id] = {'movie': None, 'ph': None}
+                        elif active_pff_files[module_id]['movie'] is not None:
+                            active_pff_files[module_id]['movie'].close()
+                        movie_dest_path = get_sim_pff_path(sim_cfg, module_id, seqno=movie_seqno, is_ph=False, is_simulated=True)
+                        active_pff_files[module_id]['movie'] = open(movie_dest_path, 'ab')
+                        simulated_data_files.append(movie_dest_path)
+                        logger.debug(f"new {movie_dest_path=}")
+
+                # read data from real pff files and broadcast it to all simulated run directories
+                if do_ph:
+                    ph_data = ph_src.read(ph_frame_size)
+                    # ph_data += np.random.poisson(lam=750, size=dp_cfg[ph_type]['shape'])
+                    for module_id in sim_cfg['sim_module_ids']:
+                        ph_dst = active_pff_files[module_id]['ph']
+                        ph_dst.write(ph_data)
                         ph_dst.flush()
+                    ph_fnum += 1
+
+                if do_movie:
+                    movie_data = movie_src.read(movie_frame_size)
+                    # movie_data += np.random.poisson(lam=100, size=dp_cfg[movie_type]['shape'])
+                    for module_id in sim_cfg['sim_module_ids']:
+                        movie_dst = active_pff_files[module_id]['movie']
+                        movie_dst.write(movie_data)
                         movie_dst.flush()
+                    movie_fnum += 1
+
+                # logger.debug( f"Creating new simulated data files: {movie_dest_file=}, {ph_dest_file=}, {seqno=}, {fnum=}" )
                 # simulation rate limiting
                 time.sleep(update_interval)
                 if 'early_exit' in sim_cfg:
@@ -192,18 +226,25 @@ def daq_sim_thread_fn(
                         sim_cfg['early_exit']['nframes_before_exit'] -= 1
                         if sim_cfg['early_exit']['nframes_before_exit'] <= 0:
                             raise TimeoutError("test hp_io task unexpected termination")
-            if fnum >= min(ph_nframes, movie_nframes):
-                logger.warning(f"simulated data acquisition reached EOF: {fnum=} >= {min(ph_nframes, movie_nframes)=}")
+            if ph_fnum >= ph_nframes:
+                logger.warning(f"simulated ph data acquisition reached EOF: {ph_fnum=} >= {ph_nframes=}")
+            if movie_fnum >= movie_nframes:
+                logger.warning(f"simulated movie data acquisition reached EOF: {movie_fnum=} >= {movie_nframes=}")
     finally:
         sim_valid.clear()
         logger.debug(f"{simulated_data_files=}")
         logger.debug(f"{daq_active_files=}")
-        logger.info("hp_sim thread exited")
+        for module_id in active_pff_files:
+            if active_pff_files[module_id]['ph'] is not None:
+                active_pff_files[module_id]['ph'].close()
+            if active_pff_files[module_id]['movie'] is not None:
+                active_pff_files[module_id]['movie'].close()
         for daq_active_file in daq_active_files:
             if os.path.exists(daq_active_file):
                 os.unlink(daq_active_file)
         for file in simulated_data_files:
             os.unlink(file)
+        logger.info("hp_sim thread exited")
 
 
 async def hp_io_task_fn(
@@ -780,7 +821,8 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         if self._hp_io_task is not None and not self._hp_io_task.done():
             try:
                 await self._hp_io_task
-                await asyncio.to_thread(self._daq_sim_thread.join)
+                if self._daq_sim_thread is not None and self._daq_sim_thread.is_alive():
+                    await asyncio.to_thread(self._daq_sim_thread.join)
             except RuntimeError as rerr:
                 self.logger.critical(f"encountered runtime error while stopping hp_io task: {rerr}")
                 self._server_cfg['hp_io_init'] = False
