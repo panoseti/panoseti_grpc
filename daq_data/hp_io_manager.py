@@ -149,6 +149,8 @@ class HpIoManager:
         self.sim_cfg = sim_cfg
 
         self.modules: Dict[int, ModuleState] = {}
+        self.latest_data_cache: Dict[int, Dict[str, PanoImage]] = defaultdict(lambda: {'ph': None, 'movie': None})
+        self.change_queue = asyncio.Queue()
 
     async def run(self):
         """Main entry point to start the monitoring and broadcasting task."""
@@ -160,23 +162,34 @@ class HpIoManager:
                 return
 
             self.valid.set()
-            await self._watch_loop()
+            for mid, module in self.modules.items():
+                self.logger.info(f"{module.dp_configs=}")
+
+            # Start producer and consumer tasks concurrently
+            watcher_task = asyncio.create_task(self._file_watcher())
+            processing_task = asyncio.create_task(self._processing_loop())
+
+            await asyncio.gather(watcher_task, processing_task)
+
         except Exception as err:
             self.logger.error(f"HpIoManager task encountered a fatal exception: {err}", exc_info=True)
+            # Cancel tasks on error to ensure clean shutdown
+            if 'watcher_task' in locals() and not watcher_task.done():
+                watcher_task.cancel()
+            if 'processing_task' in locals() and not processing_task.done():
+                processing_task.cancel()
             raise
         finally:
             self.valid.clear()
             self.logger.info("HpIoManager task exited.")
 
     async def _initialize_all_modules(self) -> bool:
-        """Discovers and initializes all target PANOSETI modules."""
         if not await is_daq_active(self.simulate_daq, self.sim_cfg, retries=2, delay=0.5):
             raise EnvironmentError("DAQ data flow not active.")
 
         module_dirs = glob(str(self.data_dir / "module_*"))
         all_module_ids = [int(os.path.basename(m).split('_')[1]) for m in module_dirs if
                           os.path.isdir(m) and os.path.basename(m).split('_')[1].isdigit()]
-
         target_ids = set(all_module_ids)
         if self.module_id_whitelist:
             target_ids.intersection_update(self.module_id_whitelist)
@@ -188,8 +201,6 @@ class HpIoManager:
             init_tasks.append(module.initialize())
 
         results = await asyncio.gather(*init_tasks)
-
-        # Prune failed modules and collect active data products
         active_dps_union = set()
         for is_active, mid in zip(results, target_ids):
             if not is_active:
@@ -197,7 +208,6 @@ class HpIoManager:
             else:
                 active_dps = self.modules[mid].dp_configs.keys()
                 active_dps_union.update(active_dps)
-                self.logger.info(f"Successfully initialized Module {mid} with data products: {list(active_dps)}")
 
         if not self.modules:
             return False
@@ -205,67 +215,86 @@ class HpIoManager:
         await self.dp_queue.put(active_dps_union)
         return True
 
-    async def _watch_loop(self):
-        """The main event loop that watches for file changes."""
+    async def _file_watcher(self):
+        """Producer: Watches for file changes and puts them on the queue."""
         watch_paths = list(set(m.run_path for m in self.modules.values() if m.run_path))
         if not watch_paths:
-            self.logger.error("No valid run_paths to watch. Exiting loop.")
             return
 
-        self.logger.info(f"Watching directories: {watch_paths}")
-        last_daq_check = time.monotonic()
-        debounce_ms = int(self.update_interval_seconds * 1000)
+        update_interval_ms = int(self.update_interval_seconds * 1000)
+        awatcher = awatch(
+            *watch_paths,
+            stop_event=self.stop_io,
+            debounce=update_interval_ms,
+            recursive=True,
+            force_polling=True,
+            poll_delay_ms=update_interval_ms
+        )
+        async for changes in awatcher:
+            # self.logger.info(f"Received file change event: {changes=}")
+            await self.change_queue.put(changes)
 
-        async for changes in awatch(*watch_paths, stop_event=self.stop_io, debounce=debounce_ms, recursive=True, force_polling=True):
+    async def _processing_loop(self):
+        """Consumer: Processes file changes from the queue and handles client deadlines."""
+        last_daq_check = time.monotonic()
+        while not self.stop_io.is_set():
             now = time.monotonic()
+
+            wait_times = [(rs['config']['update_interval_seconds'] - (now - rs.get('last_update_t', 0)))
+                          for rs in self.reader_states if rs['is_allocated']]
+            timeout = min(wait_times) if wait_times else self.update_interval_seconds
+            timeout = max(0.01, timeout)
+
+            try:
+                changes = await asyncio.wait_for(self.change_queue.get(), timeout=timeout)
+                await self._process_changes(changes)
+            except asyncio.TimeoutError:
+                # This is expected. It means a client deadline has been reached.
+                pass
+
+            now = time.monotonic()
+            ready_readers, _, _ = self._get_ready_readers(now)
+            if ready_readers:
+                self._broadcast_data(ready_readers, now)
+
             if now - last_daq_check >= 10:
                 if not await is_daq_active(self.simulate_daq, self.sim_cfg):
                     self.logger.warning("DAQ data flow stopped.")
+                    self.stop_io.set()  # Signal shutdown
                     return
                 last_daq_check = now
 
-            ready_readers, nph, nmovie = self._get_ready_readers(now)
-            if not ready_readers:
-                continue
-
-            data_to_broadcast = await self._process_changes(changes)
-            if data_to_broadcast:
-                self._broadcast_data(data_to_broadcast, ready_readers, now)
-
-    async def _process_changes(self, changes: set) -> Dict[int, Dict[str, List[PanoImage]]]:
-        """Processes file changes and fetches new data."""
-        data_to_broadcast = defaultdict(lambda: {'ph': [], 'movie': []})
+    async def _process_changes(self, changes: set):
+        """Processes file changes and updates the internal latest_data_cache."""
         for _, filepath_str in changes:
             filepath = Path(filepath_str)
             if not filepath.name.endswith('.pff'):
                 continue
 
             for module in self.modules.values():
-                if filepath.parent == module.run_path:
+                if module.run_path and filepath.parent.absolute() == module.run_path.absolute():
+                    # self.logger.info(f"{module.dp_configs=}")
                     for dp_config in module.dp_configs.values():
-                        if filepath.name.startswith(
-                                dp_config.glob_pat.split('*')[0].split('/')[-1]) and dp_config.name in filepath.name:
-                            await self._check_and_fetch_frame(filepath, module, dp_config, data_to_broadcast)
-                            break  # Found matching dp, move to next file
-                    break  # Found matching module, move to next file
-        return data_to_broadcast
+                        # self.logger.info(f"{dp_config.name=}: {filepath.name=}")
+                        if dp_config.name in filepath.name:
+                            await self._check_and_update_cache(filepath, module, dp_config)
+                            break
+                    break
 
-    async def _check_and_fetch_frame(self, filepath: Path, module: ModuleState, dp_config: DataProductConfig,
-                                     data_to_broadcast):
-        """Checks file size and fetches the latest frame if new data is present."""
+    async def _check_and_update_cache(self, filepath: Path, module: ModuleState, dp_config: DataProductConfig):
+        """Checks file size and updates the cache if a new frame is present."""
         try:
             current_size = os.path.getsize(filepath)
         except FileNotFoundError:
             dp_config.last_known_filesize = 0
             return
 
-        if dp_config.frame_size > 0 and (current_size - dp_config.last_known_filesize) >= dp_config.frame_size:
-            self.logger.debug(
-                f"Detected new frame in {filepath}. Size change: {dp_config.last_known_filesize} -> {current_size}")
+        if 0 < dp_config.frame_size <= (current_size - dp_config.last_known_filesize):
             dp_config.last_known_filesize = current_size
-
             header, img, frame_idx = self._fetch_latest_frame(filepath, dp_config)
+            self.logger.info(f"found data: {header=}, {frame_idx=}")
             if header and img is not None:
+                # self.logger.info(f"{filepath=}: {header=}")
                 pano_image = PanoImage(
                     type=dp_config.pano_image_type,
                     header=ParseDict(header, Struct()),
@@ -277,16 +306,19 @@ class HpIoManager:
                     module_id=module.module_id,
                 )
                 if dp_config.is_ph:
-                    data_to_broadcast[module.module_id]['ph'].append(pano_image)
+                    self.latest_data_cache[module.module_id]['ph'] = pano_image
                 else:
-                    data_to_broadcast[module.module_id]['movie'].append(pano_image)
+                    self.latest_data_cache[module.module_id]['movie'] = pano_image
+        else:
+            self.logger.info(f"no new data: {filepath=}")
 
     def _fetch_latest_frame(self, filepath: Path, dp_config: DataProductConfig):
         """Reads the last complete frame from a PFF file."""
         try:
             with open(filepath, 'rb') as f:
-                f.seek(0, os.SEEK_END)
-                nframes = f.tell() // dp_config.frame_size
+                fsize = os.path.getsize(filepath)
+                # f.seek(0, os.SEEK_END)
+                nframes = fsize // dp_config.frame_size
                 if nframes > 0:
                     last_frame_idx = nframes - 1
                     f.seek(last_frame_idx * dp_config.frame_size)
@@ -300,27 +332,31 @@ class HpIoManager:
 
     def _get_ready_readers(self, now: float):
         """Identifies clients that are ready to receive data."""
-        ready_list, ph_clients, movie_clients = [], 0, 0
+        ready_list, _, _ = [], 0, 0
         for rs in filter(lambda r: r['is_allocated'], self.reader_states):
             if rs['enqueue_timeouts'] >= self.max_reader_enqueue_timeouts:
                 continue
             if (now - rs.get('last_update_t', 0)) >= rs['config']['update_interval_seconds']:
-                ph_clients += rs['config']['stream_pulse_height_data']
-                movie_clients += rs['config']['stream_movie_data']
                 ready_list.append(rs)
-        return ready_list, ph_clients, movie_clients
+        return ready_list, 0, 0
 
-    def _broadcast_data(self, data_to_broadcast, ready_readers, now):
-        """Puts new data onto the queues of ready clients."""
+    def _broadcast_data(self, ready_readers, now):
+        """Puts the latest cached data onto the queues of ready clients."""
         for rs in ready_readers:
             try:
-                for mid, data in data_to_broadcast.items():
+                for mid, data in self.latest_data_cache.items():
+                    # self.logger.info(f"{data=}")
                     if rs['config']['module_ids'] and mid not in rs['config']['module_ids']:
                         continue
-                    if rs['config']['stream_pulse_height_data'] and data['ph']:
-                        for item in data['ph']: rs['queue'].put_nowait(item)
-                    if rs['config']['stream_movie_data'] and data['movie']:
-                        for item in data['movie']: rs['queue'].put_nowait(item)
+
+                    ph_image = data.get('ph')
+                    if rs['config']['stream_pulse_height_data'] and ph_image:
+                        rs['queue'].put_nowait(ph_image)
+
+                    movie_image = data.get('movie')
+                    if rs['config']['stream_movie_data'] and movie_image:
+                        rs['queue'].put_nowait(movie_image)
+
                 rs['enqueue_timeouts'] = 0
             except asyncio.QueueFull:
                 self.logger.warning(f"Reader queue full for client {rs['client_ip']}.")

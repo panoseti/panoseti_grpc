@@ -384,7 +384,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 target=daq_sim_thread_fn,
                 args=(
                     simulate_daq_cfg.copy(),
-                    hp_io_update_interval,
+                    hp_io_update_interval / 2,
                     self._stop_io,
                     self._daq_sim_thread_valid,
                     self.logger
