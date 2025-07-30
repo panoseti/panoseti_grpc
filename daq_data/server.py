@@ -229,14 +229,14 @@ def daq_sim_thread_fn(
                         sim_cfg['early_exit']['nframes_before_exit'] -= 1
                         if sim_cfg['early_exit']['nframes_before_exit'] <= 0:
                             raise TimeoutError("test hp_io task unexpected termination")
-            if ph_fnum >= ph_nframes:
-                logger.warning(f"simulated ph data acquisition reached EOF: {ph_fnum=} >= {ph_nframes=}")
-                ph_src.seek(0, os.SEEK_SET)
-                ph_fnum = 0
-            if movie_fnum >= movie_nframes:
-                logger.warning(f"simulated movie data acquisition reached EOF: {movie_fnum=} >= {movie_nframes=}")
-                movie_src.seek(0, os.SEEK_SET)
-                movie_fnum = 0
+                if ph_fnum >= ph_nframes:
+                    logger.warning(f"simulated ph data acquisition reached EOF: {ph_fnum=} >= {ph_nframes=}")
+                    ph_src.seek(0, os.SEEK_SET)
+                    ph_fnum = 0
+                if movie_fnum >= movie_nframes:
+                    logger.warning(f"simulated movie data acquisition reached EOF: {movie_fnum=} >= {movie_nframes=}")
+                    movie_src.seek(0, os.SEEK_SET)
+                    movie_fnum = 0
     finally:
         sim_valid.clear()
         logger.debug(f"{simulated_data_files=}")
