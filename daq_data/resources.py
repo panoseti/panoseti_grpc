@@ -1,9 +1,12 @@
 """
 Common functions for the DaqData clients and servers
 """
+import asyncio
+import os
 from pathlib import Path
 import logging
 from typing import List, Callable, Tuple, Any, Dict, AsyncIterator
+from dataclasses import dataclass
 import numpy as np
 from pandas import to_datetime, Timestamp
 import datetime
@@ -16,13 +19,6 @@ from rich.pretty import pprint, Pretty
 from rich.console import Console
 
 ## gRPC imports
-import grpc
-
-# gRPC reflection service: allows clients to discover available RPCs
-from google.protobuf.descriptor_pool import DescriptorPool
-from grpc_reflection.v1alpha.proto_reflection_descriptor_database import (
-    ProtoReflectionDescriptorDatabase,
-)
 # Standard gRPC protobuf types
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import MessageToDict, ParseDict
@@ -32,8 +28,9 @@ from google.protobuf import timestamp_pb2
 # from .daq_data_pb2
 # import daq_data_pb2_grpc
 from daq_data import daq_data_pb2
+from .daq_data_pb2 import PanoImage
 from daq_data.daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
-from panoseti_util import pff
+from panoseti_util import pff, control_utils
 
 CFG_DIR = Path('daq_data/config')
 
@@ -163,3 +160,49 @@ def format_stream_images_response(stream_images_response: StreamImagesResponse) 
     message = stream_images_response.message
     server_timestamp = stream_images_response.timestamp.ToDatetime().isoformat()
     return f"{name=} {server_timestamp=} {file} (f#{frame_number}) {pano_type=} "
+
+
+""" hp_io test macros """
+def get_daq_active_file(sim_cfg, module_id):
+    sim_data_dir = sim_cfg['files']['data_dir']
+    sim_run_dir = sim_cfg['files']['sim_run_dir_template'].format(module_id=module_id)
+    os.makedirs(f"{sim_data_dir}/{sim_run_dir}", exist_ok=True)
+    daq_active_file = sim_cfg['files']['daq_active_file'].format(module_id=module_id)
+    return f"{sim_data_dir}/{sim_run_dir}/{daq_active_file}"
+
+def get_sim_pff_path(sim_cfg, module_id, seqno, is_ph, is_simulated):
+    """
+    Returns the path of the pff files in the simulated daq directory.
+    """
+    sim_data_dir = sim_cfg['files']['data_dir']
+    if is_simulated:
+        run_dir = sim_cfg['files']['sim_run_dir_template'].format(module_id=module_id)
+        os.makedirs(f"{sim_data_dir}/{run_dir}", exist_ok=True)
+    else:
+        run_dir = sim_cfg['files']['real_run_dir']
+
+    if is_ph:
+        ph_pff = sim_cfg['files']['ph_pff_template'].format(module_id=module_id, seqno=seqno)
+        return f"{sim_data_dir}/{run_dir}/{ph_pff}"
+    else:
+        movie_pff = sim_cfg['files']['movie_pff_template'].format(module_id=module_id, seqno=seqno)
+        return f"{sim_data_dir}/{run_dir}/{movie_pff}"
+
+def is_daq_active_sync(simulate_daq, sim_cfg=None):
+    """Returns True iff the data stream from hashpipe or simulated hashpipe is active."""
+    if simulate_daq:
+        if sim_cfg is None:
+            raise ValueError("sim_cfg must be provided when simulate_daq is True")
+        daq_active_files = [get_daq_active_file(sim_cfg, mid) for mid in sim_cfg['sim_module_ids']]
+        daq_active = any([os.path.exists(file) for file in daq_active_files])
+    else:
+        daq_active = control_utils.is_hashpipe_running()
+    return daq_active
+
+async def is_daq_active(simulate_daq, sim_cfg=None, retries=1, delay: float = 0.5):
+    """Returns True iff the data stream from hashpipe or simulated hashpipe is active."""
+    for i in range(retries):
+        if is_daq_active_sync(simulate_daq, sim_cfg):
+            return True
+        await asyncio.sleep(delay)
+    return False

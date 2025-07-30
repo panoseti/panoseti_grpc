@@ -8,6 +8,7 @@ Requires following to function correctly:
     2. All Python packages specified in requirements.txt.
     3. A connection to a panoseti module.
 """
+from collections import defaultdict
 from pathlib import Path
 import os
 import asyncio
@@ -16,13 +17,16 @@ from threading import Event, Thread
 from glob import glob
 from contextlib import asynccontextmanager
 from typing import List, Callable, Tuple, Any, Dict, AsyncIterator
+from dataclasses import dataclass, field
 import logging
 import json
 import sys
 import time
 import urllib.parse
 
-import google
+# async libraries
+from watchfiles import awatch, Change
+
 ## --- gRPC imports ---
 import grpc
 
@@ -40,48 +44,11 @@ from daq_data import daq_data_pb2, daq_data_pb2_grpc
 from .daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse
 
 ## --- daq_data utils ---
-from .resources import make_rich_logger, get_dp_cfg, CFG_DIR
+from .resources import make_rich_logger, get_dp_cfg, CFG_DIR, get_daq_active_file, get_sim_pff_path, is_daq_active_sync, is_daq_active
+from .hp_io_manager import HpIoManager
 from .testing import is_os_posix
 
-from panoseti_util import pff, config_file, control_utils
-
-
-""" hp_io test macros """
-def get_daq_active_file(sim_cfg, module_id):
-    sim_data_dir = sim_cfg['files']['data_dir']
-    sim_run_dir = sim_cfg['files']['sim_run_dir_template'].format(module_id=module_id)
-    os.makedirs(f"{sim_data_dir}/{sim_run_dir}", exist_ok=True)
-    daq_active_file = sim_cfg['files']['daq_active_file'].format(module_id=module_id)
-    return f"{sim_data_dir}/{sim_run_dir}/{daq_active_file}"
-
-def get_sim_pff_path(sim_cfg, module_id, seqno, is_ph, is_simulated):
-    """
-    Returns the path of the pff files in the simulated daq directory.
-    """
-    sim_data_dir = sim_cfg['files']['data_dir']
-    if is_simulated:
-        run_dir = sim_cfg['files']['sim_run_dir_template'].format(module_id=module_id)
-        os.makedirs(f"{sim_data_dir}/{run_dir}", exist_ok=True)
-    else:
-        run_dir = sim_cfg['files']['real_run_dir']
-
-    if is_ph:
-        ph_pff = sim_cfg['files']['ph_pff_template'].format(module_id=module_id, seqno=seqno)
-        return f"{sim_data_dir}/{run_dir}/{ph_pff}"
-    else:
-        movie_pff = sim_cfg['files']['movie_pff_template'].format(module_id=module_id, seqno=seqno)
-        return f"{sim_data_dir}/{run_dir}/{movie_pff}"
-
-def is_daq_active(simulate_daq, sim_cfg=None):
-    """Returns True iff the data stream from hashpipe or simulated hashpipe is active."""
-    if simulate_daq:
-        if sim_cfg is None:
-            raise ValueError("sim_cfg must be provided when simulate_daq is True")
-        daq_active_files = [get_daq_active_file(sim_cfg, mid) for mid in sim_cfg['sim_module_ids']]
-        daq_active = any([os.path.exists(file) for file in daq_active_files])
-    else:
-        daq_active = control_utils.is_hashpipe_running()
-    return daq_active
+from panoseti_util import pff
 
 
 def daq_sim_thread_fn(
@@ -143,7 +110,7 @@ def daq_sim_thread_fn(
     try:
         # prevent multiple server instances from running this thread
         daq_active_files = [get_daq_active_file(sim_cfg, module_id=mid) for mid in sim_cfg['sim_module_ids']]
-        daq_active = is_daq_active(simulate_daq=True, sim_cfg=sim_cfg)
+        daq_active = is_daq_active_sync(simulate_daq=True, sim_cfg=sim_cfg)
 
         if daq_active:
             emsg = "hp_sim thread is already running on another server instance!"
@@ -254,368 +221,6 @@ def daq_sim_thread_fn(
         logger.info("hp_sim thread exited")
 
 
-async def hp_io_task_fn(
-        data_dir: Path,
-        data_products: List[str],
-        update_interval_seconds: float,
-        module_id_whitelist: List[int],
-        simulate_daq: bool,
-        reader_states: List[Dict],
-        stop_io: Event,
-        valid: Event,
-        max_reader_enqueue_timeouts,
-        dp_queue: asyncio.Queue,
-        logger: logging.Logger,
-        sim_cfg: Dict[str, Any],
-        **kwargs
-) -> None:
-
-    """ Receive pulse-height and movie-mode data from hashpipe and broadcast it to all active reader queues.
-    Requires DAQ software to be active to properly initialize.
-    Creates snapshots of active run directories for each module directory. Assumes the following structure:
-        data_dir/
-            ├── module_1/
-            │   ├── obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd
-            │   │   ├── start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_0.pff
-            │   │   ├── start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_1.pff
-            │   │   ...
-            │   │
-            │   ├── obs_*/
-            │   │   ├──
-            │   │   ...
-            │   ...
-            │
-            ├── module_2/
-            │   └── obs_*/
-            │       ...
-            │
-            └── module_N/
-                └── obs_*/
-
-    """
-    logger.info(f"Created a new hp_io task with the following options: {kwargs=}")
-    valid.clear()  # indicate hashpipe io channel is currently invalid
-
-    async def init_dp_state(d: Dict[str, Any], dp: str, run_path, curr_t, timeout):
-        """initialize hp_io state for a specific combination of module and data product."""
-        # Get the current number of pff files with type [dp]
-        d['glob_pat'] = '%s/*%s*.pff' % (run_path, dp)
-
-        # wait until hashpipe starts writing files
-        nfiles = 0
-        files = []
-        while not stop_io.is_set() and nfiles == 0 and (time.monotonic() - curr_t < timeout):
-            files = glob(d['glob_pat'])
-            nfiles = len(files)
-            if nfiles > 0:
-                break
-            await asyncio.sleep(0.5)
-
-        # check if the environment is valid
-        if stop_io.is_set():
-            # raise EnvironmentError("stop_io event is set")
-            return False
-        elif time.monotonic() - curr_t >= timeout:
-            logger.debug(f'no file of type {dp} in {d["glob_pat"]}')
-            return False
-
-        # wait until the filesize is large enough to read one image of type [dp]
-        while not stop_io.is_set() and (time.monotonic() - curr_t < timeout):
-            # Get the most recently modified file
-            # if hashpipe is actively collecting data, the most recent file should contain data
-            files = glob(d['glob_pat'])
-            nfiles = len(files)
-            file = sorted(files, key=os.path.getmtime)[-1]
-            filepath = file
-            if os.path.getsize(filepath) >= d['bytes_per_image']:
-                break
-            await asyncio.sleep(0.5)
-
-        # check if the environment is valid
-        if stop_io.is_set():
-            return False
-        elif time.monotonic() - curr_t >= timeout:
-            logger.info(
-                f"no file of type {dp} in {d['glob_pat']} is large enough to read one image of type {dp}")
-            return False
-
-        # this data product is actively being produced
-        # read the first frame of the file to determine the frame_size (this size is constant for the entire run)
-        f = open(filepath, 'rb')
-        logger.debug(f"{dp=}: {filepath=}: {d['bytes_per_image']=}")
-        frame_size = pff.img_frame_size(f, d['bytes_per_image'])
-        d['frame_size'] = frame_size
-
-        f.seek(0, os.SEEK_SET)
-        d['f'] = f
-        d['nfiles'] = nfiles
-        d['filepath'] = filepath
-        d['last_frame'] = -1
-        return True
-
-    async def init_module_state(module_state, module_id, timeout=2.0):
-        """initialize hp_io state for a specific module.
-        Returns True iff successfully initialized."""
-        curr_t = time.monotonic()
-        dp_cfg = module_state['dp_cfg']
-
-        # check if a directory for [module_id] exists
-        run_pattern = f"{data_dir}/module_{module_id}/obs_*"
-        runs = glob(run_pattern)
-        nruns = len(runs)
-        if nruns == 0:
-            raise FileNotFoundError(f'no run of module {module_id} in {run_pattern}')
-        run_path = sorted(runs, key=os.path.getmtime)[-1]
-        module_state['run_path'] = run_path
-
-        logger.info(f"checking {run_path=}")
-        # automatically detect the subset of [data_products] that are actively being produced
-        init_dp_tasks = []
-        for dp in dp_cfg:
-            init_dp_tasks.append(init_dp_state(dp_cfg[dp], dp, run_path, curr_t, timeout))
-        results = await asyncio.gather(*init_dp_tasks)
-        # remove modules that fail to initialize
-        for result, dp in zip(results, data_products):
-            if not result:
-                logger.debug(f"module_{module_id}: no active files for {dp=}")
-                del dp_cfg[dp]
-        return len(dp_cfg) > 0
-
-    async def init_hp_io_state():
-        hp_io_state = dict()
-        # check if daq software is active
-        daq_valid = False
-        for i in range(2):
-            if is_daq_active(simulate_daq, sim_cfg=sim_cfg):
-                daq_valid = True
-                break
-            await asyncio.sleep(0.5)
-        if not daq_valid:
-            raise EnvironmentError("DAQ data flow not active.")
-        # Automatically detect all existing module directories
-        module_dir_pattern = f"{data_dir}/module_*"
-        module_dirs = glob(module_dir_pattern)
-        module_ids = []
-        for m in module_dirs:
-            if os.path.isdir(m):
-                mid = os.path.basename(m).split('_')[1]
-                try:
-                    mid = int(mid)
-                except ValueError:
-                    raise ValueError(f"module_id {mid} from {os.path.abspath(m)} is not a valid integer. Please check if the module_id is ")
-                mid = int(mid)
-                module_ids.append(mid)
-        # if client has specified any module_ids, only attempt to track those module directories.
-        if len(module_id_whitelist) > 0:
-            abs_data_dir = os.path.abspath(data_dir)
-            if set(module_id_whitelist).issubset(set(module_ids)):
-                logger.info(f"all whitelisted module_ids {module_id_whitelist} have directories in "
-                            f"data_dir='{abs_data_dir=}'")
-            else:
-                logger.warning(f"all module_ids {module_id_whitelist} do not have directories in {abs_data_dir=}. "
-                               f"the following whitelisted module_ids do not have directories: "
-                               f"{set(module_id_whitelist) - set(module_ids)}")
-            module_ids = set(module_ids).intersection(module_id_whitelist)
-        # initialize dictionaries to track data snapshots for each module directory
-        init_module_tasks = []
-        for mid in module_ids:
-            hp_io_state[mid] = dict()
-            hp_io_state[mid]['dp_cfg'] = get_dp_cfg(data_products)
-            init_module_tasks.append(init_module_state(hp_io_state[mid], mid))
-        results = await asyncio.gather(*init_module_tasks)
-        # remove modules that fail to initialize
-        active_dps = set()
-        for result, mid in zip(results, module_ids):
-            if not result:
-                logger.warning(f"module {mid} failed to initialize")
-                del hp_io_state[mid]
-            else:
-                # report which module_dirs are active
-                dps = list(hp_io_state[mid]['dp_cfg'].keys())
-                active_dps.update(dps)
-                logger.info(f"tracking dps={dps} in run_dir='{hp_io_state[mid]['run_path']}'")
-        # check environment
-        if len(hp_io_state) == 0:
-            raise EnvironmentError("No active modules found.")
-        elif stop_io.is_set():
-            raise EnvironmentError("stop_io event is set")
-        elif not is_daq_active(simulate_daq, sim_cfg=sim_cfg):
-            raise EnvironmentError("DAQ data flow stopped.")
-        # report to _start_hp_io_task which data products are being tracked
-        await dp_queue.put(active_dps)
-        return hp_io_state
-
-    def fetch_data_product_main(d: Dict[str, Any]) -> Tuple[Dict[str, Any], Tuple[int, ...]] or Tuple[None, None]:
-        """
-        Check if there is new pff data of type [dp].
-        If new data is present:
-            1. Update dp_cfg[dp] accordingly.
-            2. return a tuple of (pff header, pff image).
-        Otherwise, return (None, None)
-        Note: this function mutates dp_cfg.
-        """
-        f = d['f']
-        nfiles = d['nfiles']
-        filepath = d['filepath']
-        last_frame = d['last_frame']
-        try:
-            # check if a newer file for this data product has been created
-            files = glob(d['glob_pat'])
-            if len(files) > nfiles:
-                nfiles = len(files)
-                f.close()
-                file = sorted(files, key=os.path.getmtime)[-1]
-                filepath = file
-                f = open(filepath, 'rb')
-                last_frame = -1
-            fsize = f.seek(0, os.SEEK_END)
-            nframes = int(fsize / d['frame_size'])
-            # check if any new frames have been written to this file
-            if nframes > last_frame + 1:
-                # seek to the latest frame in the file
-                last_frame = nframes - 1
-                f.seek(last_frame * d['frame_size'], os.SEEK_SET)
-
-                # parse pff header and image
-                try:
-                    header_str = pff.read_json(f)
-                    img = pff.read_image(f, d['image_shape'][0], d['bytes_per_pixel'])
-                    # the check below is necessary to handle the rare case where a pff file has
-                    # reached the max size specified in data_config.json resulting in no data for the last frame.
-                    if header_str and img:
-                        header = json.loads(header_str)
-                        return header, img
-                except Exception as e:
-                    logger.error(f"Failed to read pff header and image from file {filepath} with error: {e}")
-                    return None, None
-            return None, None
-        finally:
-            # always update dp_cfg upon exit.
-            # important for ensuring we always close any newly opened file pointers
-            d['f'] = f
-            d['nfiles'] = nfiles
-            d['filepath'] = filepath
-            d['last_frame'] = last_frame
-
-    def get_ready_readers(curr_t: float) -> Tuple[List[Dict[str, Any]], int, int]:
-        """Returns reader state dicts of all active readers that are ready to receive data from the hp_io task.
-        curr_t must be a float returned by time.monotonic().
-        """
-        ready_list = []
-        ph_clients = movie_clients = 0
-        allocated_reader_states = [rs for rs in reader_states if rs['is_allocated']]
-        for rs in allocated_reader_states:
-            if rs['enqueue_timeouts'] >= max_reader_enqueue_timeouts:
-                logger.warning(f"client {rs['client_ip']} is too slow, cancelling this client")
-                continue
-            elif (curr_t - rs['last_update_t']) >= rs['config']['update_interval_seconds']:
-                ph_clients += rs['config']['stream_pulse_height_data']
-                movie_clients += rs['config']['stream_movie_data']
-                ready_list.append(rs)
-        return ready_list, ph_clients, movie_clients
-
-
-    def fetch_latest_module_data(
-            module_state: Dict[str, Any],
-            ready_ph_clients: int,
-            ready_movie_clients: int
-    ) -> Tuple[List[PanoImage], List[PanoImage]]:
-        latest_ph_data: List[PanoImage] = []
-        latest_movie_data: List[PanoImage] = []
-        # logger.info(f"{module_id=}: {dp_cfg=}")
-        dp_cfg = module_state['dp_cfg']
-        for dp in dp_cfg:
-            d = dp_cfg[dp]
-            # check if we have to compute the latest for this datatype right now
-            if d['is_ph'] and ready_ph_clients == 0:
-                continue
-            elif not d['is_ph'] and ready_movie_clients == 0:
-                continue
-            header, img = fetch_data_product_main(d)
-            if header and img:
-                # create PanoImage message from the latest image
-                pano_image = PanoImage(
-                    type=d['pano_image_type'],
-                    header=ParseDict(header, Struct()),
-                    image_array=img,
-                    shape=d['image_shape'],
-                    bytes_per_pixel=d['bytes_per_pixel'],
-                    file=os.path.basename(d['filepath']),
-                    frame_number=d['last_frame'],
-                    module_id=module_id,
-                )
-                if d['is_ph']:
-                    latest_ph_data.append(pano_image)
-                else:
-                    latest_movie_data.append(pano_image)
-        return latest_ph_data, latest_movie_data
-
-    hp_io_state: Dict[int, Dict[str, Any]] = None
-    try:
-        hp_io_state = await init_hp_io_state()
-        logger.debug(f"{hp_io_state=}")
-        # signal the hp_io task is ready to service client requests for data preview
-        valid.set()
-        last_daq_active_check_t = time.monotonic()
-        last_sleep_t = time.monotonic()
-        while not stop_io.is_set():
-            # check if any active readers are ready to receive data
-            curr_t = time.monotonic()
-            ready_readers, nph, nmovie = get_ready_readers(curr_t)
-            if len(ready_readers) > 0:
-                data_to_broadcast = {}
-                for module_id in hp_io_state:
-                    data_to_broadcast[module_id] = {'ph': None, 'movie': None}
-                    latest_module_ph_data, latest_module_movie_data = fetch_latest_module_data(hp_io_state[module_id], nph, nmovie)
-                    data_to_broadcast[module_id]['ph'] = latest_module_ph_data
-                    data_to_broadcast[module_id]['movie'] = latest_module_movie_data
-                # broadcast image data to all ready clients
-                for rs in ready_readers:
-                    rq: asyncio.Queue = rs['queue']
-                    try:
-                        for module_id in data_to_broadcast:
-                            # If no module_ids are specified by the client, send data from all modules
-                            # Otherwise, only broadcast data from modules specified by the user.
-                            if len(rs['config']['module_ids']) > 0 and module_id not in rs['config']['module_ids']:
-                                continue
-                            if rs['config']['stream_pulse_height_data']:
-                                for ph_data in data_to_broadcast[module_id]['ph']:
-                                    rq.put_nowait(ph_data)
-                            if rs['config']['stream_movie_data']:
-                                for movie_data in data_to_broadcast[module_id]['movie']:
-                                    rq.put_nowait(movie_data)
-                        rs['enqueue_timeouts'] = 0
-                    except asyncio.QueueFull:
-                        logger.warning(f"hp_io task is unable to broadcast image data to reader {rs['client_ip']}")
-                        rs['enqueue_timeouts'] += 1
-                    rs['last_update_t'] = curr_t
-            # Every 10 seconds, check if the DAQ software stopped
-            curr_t = time.monotonic()
-            if curr_t - last_daq_active_check_t >= 10:
-                last_daq_active_check_t = curr_t
-                if not is_daq_active(simulate_daq, sim_cfg=sim_cfg):
-                    logger.warning("DAQ data flow stopped.")
-                    return
-            curr_t = time.monotonic()
-            sleep_duration = max(update_interval_seconds - (curr_t - last_sleep_t), 0)
-            last_sleep_t = curr_t
-            # if sleep_duration < update_interval_seconds * 1e-2:
-            #     logger.warning(f"hp_io task is falling behind: {sleep_duration=} and {update_interval_seconds=}")
-            await asyncio.sleep(sleep_duration)
-    except Exception as err:
-        logger.error(f"hp_io task encountered a fatal exception! '{repr(err)}'")
-        raise
-    finally:
-        valid.clear()
-        logger.info("hp_io task exited")
-        # close any open file pointers
-        if hp_io_state is not None:
-            for module_id, module_state in hp_io_state.items():
-                if 'dp_cfg' in module_state:
-                    dp_cfg = module_state['dp_cfg']
-                    for dp in dp_cfg:
-                        if 'f' in dp_cfg[dp]:
-                            dp_cfg[dp]['f'].close()
 
 
 """gRPC server implementing DaqData RPCs"""
@@ -791,8 +396,8 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         # Create a new hp_io_task using the client's configuration
         active_data_products_queue = asyncio.Queue()
         self._hp_io_task = asyncio.create_task(
-            hp_io_task_fn(
-                data_dir,
+            HpIoManager(
+                Path(data_dir),
                 self._server_cfg['valid_data_products'],
                 hp_io_update_interval,
                 hp_io_cfg['module_ids'],
@@ -804,7 +409,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 active_data_products_queue,
                 self.logger,
                 simulate_daq_cfg
-            )
+            ).run()
         )
         try:
             init_tasks = [self._hp_io_valid.wait(), active_data_products_queue.get()]
