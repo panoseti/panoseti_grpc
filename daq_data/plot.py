@@ -213,6 +213,12 @@ class PanoImagePreviewer:
         frame_number = parsed_pano_image['frame_number']
         file = parsed_pano_image['file']
 
+        # Plot all updates data if the delay has passed
+        curr_time = time.monotonic()
+        if curr_time - self.last_plot_update_time > self.plot_update_interval:
+            self.plot()
+            self.last_plot_update_time = curr_time
+
         # check if this module is new
         if module_id not in self.seen_modules:
             self.seen_modules.add(module_id)
@@ -256,11 +262,6 @@ class PanoImagePreviewer:
             plt_title = f"Obs data from {start}, module_ids={self.seen_modules} [all]"
         self.fig.suptitle(plt_title)
 
-        # Plot all updates data if the delay has passed
-        curr_time = time.monotonic()
-        if curr_time - self.last_plot_update_time > self.plot_update_interval:
-            self.plot()
-            self.last_plot_update_time = curr_time
 
     def plot(self):
         if self.num_rescale < len(self.seen_modules) * 3:

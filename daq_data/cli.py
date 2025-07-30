@@ -162,7 +162,7 @@ def run_demo_api(args):
                         stream_movie_data=True,
                         stream_pulse_height_data=True,
                         update_interval_seconds=refresh_period,  # np.random.uniform(1.0, 1.0),
-                        plot_update_interval=refresh_period,
+                        plot_update_interval=refresh_period * 0.9,
                         module_ids=module_ids,
                         wait_for_ready=True,
                     )

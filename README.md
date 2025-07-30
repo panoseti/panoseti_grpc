@@ -2,16 +2,20 @@
 Contains gRPC code for the PANOSETI project. See [here](https://github.com/panoseti/panoseti) for the main software repo.
 
 # Environment Setup for gRPC Clients and Servers
-
-1. Install `miniconda` ([link](https://www.anaconda.com/docs/getting-started/miniconda/install))
-2. Clone this (`panoseti_grpc`) repo onto a DAQ node or any client computer.
-2. Run the following commands to create the `grpc-py39` environment. 
+Install `miniconda` ([link](https://www.anaconda.com/docs/getting-started/miniconda/install)), then follow these steps:
 ```bash
-git clone https://github.com/panoseti/panoseti_grpc.git
-cd panoseti_grpc
+# 1. create the grpc-py39 conda environment
 conda create -n grpc-py39 python=3.9
 conda activate grpc-py39
 conda install -c conda-forge grpcio-tools
+
+# 2. install dependencies
+# option 1: build from source (recommended for now)
+git clone https://github.com/panoseti/panoseti_grpc.git
+cd panoseti_grpc
+pip install -r requirements.txt
+
+# option 2: (in development)
 pip install panoseti-grpc
 ```
 
@@ -19,7 +23,9 @@ pip install panoseti-grpc
 
 
 # Using the DaqDataClient API
-The `DaqDataClient` is a Python gRPC client interface for the PANOSETI DaqData service. It provides a user-friendly API for scientists and developers to connect to DAQ nodes, initialize observing runs, and stream real-time image data for analysis and visualization.
+The `DaqDataClient` is a Python gRPC client interface for the PANOSETI DaqData service. It provides a user-friendly API for scientists and developers to connect to DAQ nodes and stream real-time image data for analysis and visualization.
+
+The client should be used as a [context manager](https://book.pythontips.com/en/latest/context_managers.html) to ensure network resources are handled correctly.
 
 See [client.py](daq_data/client.py) for the implementation and [daq_data_client_demo.ipynb](daq_data_client_demo.ipynb) for code examples showing how to use it.
 
@@ -33,9 +39,12 @@ See [client.py](daq_data/client.py) for the implementation and [daq_data_client_
 from daq_data.client import DaqDataClient
 from daq_data.plot import PanoImagePreviewer
 
-...
+# 0. Specify configuration file paths
+daq_config_path = 'path/to/your/daq_config.json'
+network_config_path = 'path/to/your/network_config.json'
+
 # 1. Connect to all DAQ nodes
-with DaqDataClient(daq_config) as ddc:
+with DaqDataClient(daq_config_path, network_config_path) as ddc:
     # 2. Instantiate visualization class
     previewer = PanoImagePreviewer(stream_movie_data=True, stream_pulse_height_data=True)
 
@@ -58,19 +67,16 @@ with DaqDataClient(daq_config) as ddc:
 
 
 ## Client Initialization
-The DaqDataClient requires a configuration dictionary specifying the IP addresses and data directories of the DAQ nodes. This is most conveniently loaded from [daq_config.json](https://github.com/panoseti/panoseti/wiki/Configuration-files#daq-config-daq_configjson).
-The client should be used as a [context manager](https://book.pythontips.com/en/latest/context_managers.html) to ensure network resources are handled correctly.
+The DaqDataClient requires configuration files specifying the IP addresses and data directories of the DAQ nodes and network configuration.
+This information is given by [daq_config.json](https://github.com/panoseti/panoseti/wiki/Configuration-files#daq-config-daq_configjson) and [network_config.json](https://github.com/panoseti/panoseti/wiki/Configuration-files#network-config-network_configjson)
+
+Note that the client should always be used as a [context manager](https://book.pythontips.com/en/latest/context_managers.html) to ensure network resources are handled correctly.
 
 ```python
-import json
 from daq_data.client import DaqDataClient
 
-# 1. Load the DAQ configuration
-with open('path/to/your/daq_config.json', 'r') as f:
-    daq_config = json.load(f)
-
-# 2. Instantiate the client using a 'with' statement
-with DaqDataClient(daq_config) as client:
+# Instantiate the client using a 'with' statement
+with DaqDataClient(daq_config_path, network_config_path) as client:
     # Your code to interact with the client goes here
     valid_hosts = client.get_valid_daq_hosts()
     print(f"Successfully connected to: {valid_hosts}")
@@ -90,7 +96,7 @@ These methods help you verify connectivity and discover the services available o
 - `reflect_services(hosts)`: Lists all available gRPC services and methods on the specified hosts. This is useful for exploring the server's capabilities.
 
 ```python
-with DaqDataClient(daq_config) as client:
+with DaqDataClient(daq_config_path, network_config_path) as client:
     # Get all responsive hosts
     hosts = client.get_valid_daq_hosts()
     print(f"Valid hosts: {hosts}")
@@ -112,11 +118,10 @@ Initializes the hp_io thread for a real observing run.
 - `hp_io_cfg`: A dictionary with configuration parameters, as explained in [The hp_io_config.json File](#the-hp_io_configjson-file).
 
 ```python
-# Load hp_io configuration from a file
-with open('path/to/hp_io_config.json', 'r') as f:
-    hp_io_config = json.load(f)
-
-with DaqDataClient(daq_config) as client:
+with DaqDataClient(daq_config_path, network_config_path) as client:
+    # Load hp_io configuration from a file
+    with open('path/to/hp_io_config.json', 'r') as f:
+        hp_io_config = json.load(f)
     # Initialize all valid hosts
     success = client.init_hp_io(hosts=None, hp_io_cfg=hp_io_config)
     if success:
@@ -126,7 +131,7 @@ with DaqDataClient(daq_config) as client:
 A convenience function to initialize the server in simulation mode, which streams archived data for testing and development.
 
 ```python
-with DaqDataClient(daq_config) as client:
+with DaqDataClient(daq_config_path, network_config_path) as client:
     # Initialize the first valid host in simulation mode
     host = list(client.get_valid_daq_hosts())[0]
     success = client.init_sim(host)
@@ -149,10 +154,8 @@ See [StreamImages](#streamimages) for implementation details.
 - `module_ids` (tuple): A tuple of module IDs to stream. An empty tuple streams all modules.
 
 ```python
-with DaqDataClient(daq_config) as client:
-    # Initialize first (replace with your logic)
-    # ...
-
+# Assume the server has already been initialized.
+with DaqDataClient(daq_config_path, network_config_path) as client:
     # Create a request to stream pulse-height data for all modules
     image_stream = client.stream_images(
         hosts=None,
@@ -176,51 +179,45 @@ with DaqDataClient(daq_config) as client:
 This example demonstrates a complete workflow: initialize the server for a simulated run and then stream data from it. This pattern is shown in [daq_data_client_demo.ipynb](daq_data_client_demo.ipynb).
 
 ```python
-import json
 from daq_data.client import DaqDataClient
 
-# 0. Load DAQ configuration
-with open('daq_data/config/daq_config_grpc_simulate.json', 'r') as f:
-    daq_config = json.load(f)
+# 0. Specify configuration file paths
+daq_config_path = 'daq_data/config/daq_config_grpc_simulate.json'
+network_config_path = 'daq_data/config/network_config_grpc_simulate.json'
 
-try:
-    with DaqDataClient(daq_config) as client:
-        # 1. Get valid hosts
-        valid_hosts = client.get_valid_daq_hosts()
-        if not valid_hosts:
-            raise RuntimeError("No valid DAQ hosts found.")
-        print(f"Connected to: {valid_hosts}")
+# 1. Connect to all DAQ nodes
+with DaqDataClient(daq_config_path, network_config_path) as client:
+    # 2. Get valid hosts
+    valid_hosts = client.get_valid_daq_hosts()
+    if not valid_hosts:
+        raise RuntimeError("No valid DAQ hosts found.")
+    print(f"Connected to: {valid_hosts}")
 
-        # 2. Initialize servers in simulation mode
-        all_init_success = client.init_sim(valid_hosts)
-        if not all_init_success:
-            raise RuntimeError("Failed to initialize one or more servers.")
-        print("All servers initialized for simulation.")
+    # 3. Initialize servers in simulation mode
+    all_init_success = client.init_sim(valid_hosts)
+    if not all_init_success:
+        raise RuntimeError("Failed to initialize one or more servers.")
+    print("All servers initialized for simulation.")
 
-        # 3. Stream pulse-height and movie data from all modules
-        image_stream = client.stream_images(
-            hosts=valid_hosts,
-            stream_movie_data=True,
-            stream_pulse_height_data=True,
-            update_interval_seconds=1.0,
-            module_ids=()
+    # 4. Stream pulse-height and movie data from all modules
+    image_stream = client.stream_images(
+        hosts=valid_hosts,
+        stream_movie_data=True,
+        stream_pulse_height_data=True,
+        update_interval_seconds=1.0,
+        module_ids=()
+    )
+
+    # 5. Listen to the stream and process data
+    print("Starting data stream. Press Ctrl+C to stop.")
+    for image_data in image_stream:
+        # In a real application, you would pass this data to a
+        # visualization or analysis function.
+        print(
+            f"Image: Module {image_data['module_id']}, "
+            f"Type: {image_data['type']}, "
+            f"Timestamp: {image_data['header']['pandas_unix_timestamp']}"
         )
-
-        # 4. Listen to the stream and process data
-        print("Starting data stream. Press Ctrl+C to stop.")
-        for image_data in image_stream:
-            # In a real application, you would pass this data to a
-            # visualization or analysis function.
-            print(
-                f"Image: Module {image_data['module_id']}, "
-                f"Type: {image_data['type']}, "
-                f"Timestamp: {image_data['header']['pandas_unix_timestamp']}"
-            )
-
-except KeyboardInterrupt:
-    print("\nStream stopped by user.")
-except Exception as e:
-    print(f"An error occurred: {e}")
 ```
 
 ## Using the DaqData Client CLI
@@ -228,12 +225,13 @@ except Exception as e:
 ```
 daq_data/cli.py  - demonstrates real-time pulse-height and movie-mode visualizations using the DaqData API.
 
-usage: cli.py [-h] [--host HOST] [--ping] [--list-hosts] [--reflect-services] [--init CFG_PATH] [--init-sim] [--plot-view] [--plot-phdist] [--module-ids [MODULE_IDS ...]]
-              [--log-level {debug,info,warning,error,critical}]
-              daq_config_path
+usage: cli.py [-h] [--host HOST] [--ping] [--list-hosts] [--reflect-services] [--init CFG_PATH] [--init-sim] [--plot-view] [--plot-phdist] [--refresh-period REFRESH_PERIOD]
+              [--module-ids [MODULE_IDS ...]] [--log-level {debug,info,warning,error,critical}]
+              daq_config_path net_config_path
 
 positional arguments:
   daq_config_path       path to daq_config.json file for the current observing run
+  net_config_path       path to network_config.json file for the current observing run
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -245,6 +243,8 @@ optional arguments:
   --init-sim            initialize the hp_io thread to track a simulated run directory
   --plot-view           whether to create a live data previewer
   --plot-phdist         whether to create a live pulse-height distribution for the specified module id
+  --refresh-period REFRESH_PERIOD
+                        period between plot refresh events (in seconds). Default: 1.0
   --module-ids [MODULE_IDS ...]
                         whitelist for the module ids to stream data from. If empty, data from all available modules are returned.
   --log-level {debug,info,warning,error,critical}
@@ -264,23 +264,49 @@ Below is an example workflow for using `daq_data/client_cli.py` to view real-tim
 3. Run `python -m daq_data.server`.
 
 #### On Any Computer
-1. Set up the `grpc-py39` environment as described above.
-2. Update `hp_io_config.json` or create a new one (see docs below).
-3. Set the working directory to `panoseti_grpc/`.
+1. Update `hp_io_config.json` or create a new one (see docs below).
+2. Set your working directory to `panoseti_grpc/`.
+3. Set up the `grpc-py39` environment as described above and activate it.
 4. `export DAQ_CFG=/path/to/daq_config.json`: (optional) create a convenient variable for `/path/to/daq_config.json`. If you don't want to do this, replace `$DAQ_CFG` in all following commands with `/path/to/daq_config.json`.
-5. `python -m daq_data.cli -h`: see the available options.
-6. `python -m daq_data.cli $DAQ_CFG --list-hosts`: find DAQ node hosts running valid DaqData gRPC servers. Hostname arguments `H` to `--host` should be in the list of valid hosts returned by this command.
-7. Initialize the `hp_io` thread on all DaqData servers:
-    - (Real data) `python -m daq_data.cli $DAQ_CFG --init /path/to/hp_io_config.json`: initialize `hp_io` from `hp_io_config.json`. See [The hp_io_config.json File](#the-hp_io_configjson-file) for details about this config file.
-    - (Simulated data) `python -m daq_data.cli $DAQ_CFG --init-sim`: initialize `hp_io` from `daq_data/config/hp_io_config_simulate.json`. This starts a stream of simulated data.
-8. Start visualization apps:
-    - `python -m daq_data.cli $DAQ_CFG --plot-phdist`: make a `StreamImages` request and launch a real-time pulse-height distribution app.
-    - `python -m daq_data.cli $DAQ_CFG --plot-view`: make a `StreamImages` request and launch a real-time frame viewer app.
+5. `export NET_CFG=/path/to/network_config.json`: (optional) create a convenient variable for `/path/to/network_config.json`. If you don't want to do this, replace `$NET_CFG` in all following commands with `/path/to/network_config.json`.
+6. `python -m daq_data.cli -h`: see the available options.
+7. `python -m daq_data.cli $DAQ_CFG $NET_CFG --list-hosts`: find DAQ node hosts running valid DaqData gRPC servers. Hostname arguments `H` to `--host` should be in the list of valid hosts returned by this command.
+8. Initialize the `hp_io` thread on all DaqData servers:
+    - (Real data) `python -m daq_data.cli $DAQ_CFG $NET_CFG --init /path/to/hp_io_config.json`: initialize `hp_io` from `hp_io_config.json`. See [The hp_io_config.json File](#the-hp_io_configjson-file) for details about this config file.
+    - (Simulated data) `python -m daq_data.cli $DAQ_CFG $NET_CFG --init-sim`: initialize `hp_io` from `daq_data/config/hp_io_config_simulate.json`. This starts a stream of simulated data.
+9. Start visualization apps:
+    - `python -m daq_data.cli $DAQ_CFG $NET_CFG --plot-phdist`: make a `StreamImages` request and launch a real-time pulse-height distribution app.
+    - `python -m daq_data.cli $DAQ_CFG $NET_CFG --plot-view`: make a `StreamImages` request and launch a real-time frame viewer app.
+
+Commands organized below for convenience:
+```bash
+# 3. activate the grpc-py39 environment
+conda activate grpc-py39
+
+# 4-5. create environment variables
+export DAQ_CFG=/path/to/daq_config.json
+export NET_CFG=/path/to/network_config.json
+
+# 6. see available options
+python -m daq_data.cli -h
+
+# 7. check gRPC server status
+python -m daq_data.cli $DAQ_CFG $NET_CFG --list-hosts
+
+# 8. Initialize the hp_io thread on all DaqData servers (choose one)
+python -m daq_data.cli $DAQ_CFG $NET_CFG --init /path/to/hp_io_config.json  # real run
+python -m daq_data.cli $DAQ_CFG $NET_CFG --init-sim                        # simulated run
+
+# 9. Start visualization apps (choose one)
+python -m daq_data.cli $DAQ_CFG $NET_CFG --plot-phdist  # pulse-height distribution
+python -m daq_data.cli $DAQ_CFG $NET_CFG --plot-view    # frame viewer
+```
+
 
 Notes:
 - On Linux, the `Ctrl+P` keyboard shortcut loads commands from your command history. Useful for running the `python -m daq_data.cli` module with different options.
 - `panoseti_grpc` has a package structure, so your working directory should be the repo root, `panoseti_grpc/`, when running modules in `panoseti_grpc/daq_data/`.
-- Each script (e.g. `server.py`) should be prefixed with **`python -m daq_data.`** and, because it is a module, be called without the `.py` extension. Following these guidelines gives the example command for step 4: **`python -m daq_data.server`**, instead of `daq_data/server.py` or  `python -m daq_data.server.py`.
+- Each script (e.g. `server.py`) should be prefixed with **`python -m daq_data.`** and, because it is a module, be called without the `.py` extension. Following these guidelines gives the example command: **`python -m daq_data.server`**, instead of `daq_data/server.py` or  `python -m daq_data.server.py`.
 
 # The DaqData Service
 See [daq_data.proto](protos/daq_data.proto) for the protobuf specification of this service.
