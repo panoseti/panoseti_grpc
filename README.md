@@ -180,7 +180,7 @@ with DaqDataClient(daq_config_path, network_config_path) as client:
 #### `PanoImage` Message Format
 When `parse_pano_image` is set to True (default), `DaqDataClient.stream_images(...)` 
 returns `StreamImagesResponse.PanoImage` as a Python dictionary with the following format:
-```json
+```python
 {
     'type': 'MOVIE',
     'header': {
@@ -198,8 +198,25 @@ returns `StreamImagesResponse.PanoImage` as a Python dictionary with the followi
             'pkt_num': 37993.0,
             'pkt_tai': 529.0
         },
-          ...
-       },
+        'quabo_3': {
+            'tv_usec': 779347.0,
+            'tv_sec': 1721882092.0,
+            'pkt_nsec': 779007484.0,
+            'pkt_num': 33692.0,
+            'pkt_tai': 529.0
+        },
+        'quabo_2': {
+            'tv_sec': 1721882092.0,
+            'pkt_tai': 529.0,
+            'pkt_nsec': 779007492.0,
+            'pkt_num': 35058.0,
+            'tv_usec': 779356.0
+        },
+        'wr_unix_timestamp': Decimal('1721882092.779007488'),
+        'pandas_unix_timestamp': Timestamp('2024-07-25 04:34:52.779007488')
+    },
+    'shape': [32, 32],
+    'bytes_per_pixel': 2,
     'image_array': array([[554, 184, 161, ..., 178, 317, 199],
        [479, 428, 181, ..., 177, 363, 260],
        [228, 312, 139, ..., 141, 280, 184],
@@ -207,8 +224,6 @@ returns `StreamImagesResponse.PanoImage` as a Python dictionary with the followi
        [220, 191, 118, ..., 216, 187, 245],
        [  8, 462, 168, ..., 201, 420, 395],
        [443, 591, 233, ..., 114,  11, 485]], dtype=uint16),
-    'shape': [32, 32],
-    'bytes_per_pixel': 2,
     'file': 'start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_224.seqno_0.debug_TRUNCATED.pff',
     'frame_number': 88,
     'module_id': 224
@@ -220,24 +235,25 @@ returns `StreamImagesResponse.PanoImage` as a Python dictionary with the followi
 Dictionary containing original metadata from the protobuf header field, plus timestamp fields added by the parser:
     - Metadata values: e.g., packet/camera fields (`pkt_tai`, `pkt_nsec`, `tv_sec`, possibly subfields like `quabo_0`).
     - `wr_unix_timestamp` (added): Floating-point, the derived Unix timestamp with nanosecond precision, parsed from PanoSETI timing fields.
-    - `pandas_unix_timestamp` (added): ISO-format string (or Pandas Timestamp) representing the exact image acquisition time.
+    - `pandas_unix_timestamp` (added): ISO-format string representing the exact image acquisition time.
+
+- `shape`:
+  List of two integers specifying the image shape: [rows, columns]. Currently, only `[16, 16]` and `[32, 32]` are possible.
+
+- `bytes_per_pixel`:
+  Integer indicating the number of bytes {1, 2} of each pixel in the `image_array`. Used to determine data type.
+
 
 - `image_array`:
 2D NumPy array data reshaped as specified by `shape`, and properly cast to either `np.uint8`, `np.uint16`, or `np.int16`.
 
-- `shape`:
-List of two integers: [rows, columns], e.g., [16, 16], [32, 32],
-- `bytes_per_pixel`:
-Integer indicating the number of bytes for each pixel value (1 or 2).
-
 - `file`:
 String with the associated filename for the image, if provided.
 
-- `frame_number`:
-Integer, the sequence index for this image within an acquisition session.
+- `frame_number`: 0-indexed frame number for this image within `file`.
 
 - `module_id`:
-Integer ID which identifies the PanoSETI module  that produced the image.
+Unsigned module ID of the telescope that produced this image.
 
 ### Full Example Workflow
 This example demonstrates a complete workflow: initialize the server for a simulated run and then stream data from it. This pattern is shown in [daq_data_client_demo.ipynb](daq_data_client_demo.ipynb).
