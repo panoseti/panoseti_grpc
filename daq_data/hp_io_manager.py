@@ -19,7 +19,7 @@ from watchfiles import awatch, Change
 
 from .daq_data_pb2 import PanoImage
 # from . import daq_data_pb2.PanoImage.Type as PanoImageType
-from .resources import get_dp_cfg, is_daq_active
+from .resources import get_dp_config, is_daq_active, DataProductConfig
 from panoseti_util import pff
 
 
@@ -27,22 +27,6 @@ def _parse_seqno(filename: str) -> int:
     """Extracts the sequence number from a PFF filename."""
     match = re.search(r'seqno_(\d+)', filename)
     return int(match.group(1)) if match else -1
-
-
-@dataclass
-class DataProductConfig:
-    """Configuration and state for a single data product."""
-    name: str
-    is_ph: bool
-    pano_image_type: PanoImage.Type
-    image_shape: Tuple[int, int]
-    bytes_per_pixel: int
-    bytes_per_image: int
-    frame_size: int = 0
-    glob_pat: str = ""
-    last_known_filesize: int = 0
-    # NEW: Explicitly track the current file being read.
-    current_filepath: Optional[Path] = None
 
 
 class ModuleState:
@@ -53,7 +37,7 @@ class ModuleState:
         self.data_dir = data_dir
         self.logger = logger
         self.run_path: Optional[Path] = None
-        self.dp_configs: Dict[str, DataProductConfig] = get_dp_config_new(data_products)
+        self.dp_configs: Dict[str, DataProductConfig] = get_dp_config(data_products)
 
     async def initialize(self, timeout: float = 2.0) -> bool:
         """Finds the active run directory and initializes data product configurations."""
@@ -356,35 +340,4 @@ class HpIoManager:
                 rs['enqueue_timeouts'] += 1
             rs['last_update_t'] = now
 
-def get_dp_config_new(dps: List[str]) -> Dict[str, DataProductConfig]:
-    """
-    Returns a dictionary of DataProductConfig objects for the given data products.
-    """
-    dp_cfg = {}
-    for dp in dps:
-        if dp == 'img16' or dp == 'ph1024':
-            image_shape = (32, 32)
-            bytes_per_pixel = 2
-        elif dp == 'img8':
-            image_shape = (32, 32)
-            bytes_per_pixel = 1
-        elif dp == 'ph256':
-            image_shape = (16, 16)
-            bytes_per_pixel = 2
-        else:
-            raise ValueError(f"Unknown data product: {dp}")
 
-        bytes_per_image = bytes_per_pixel * image_shape[0] * image_shape[1]
-        is_ph = 'ph' in dp
-        pano_image_type = PanoImage.Type.PULSE_HEIGHT if is_ph else PanoImage.Type.MOVIE
-
-        # Directly instantiate the dataclass instead of creating a dictionary
-        dp_cfg[dp] = DataProductConfig(
-            name=dp,
-            is_ph=is_ph,
-            pano_image_type=pano_image_type,
-            image_shape=image_shape,
-            bytes_per_pixel=bytes_per_pixel,
-            bytes_per_image=bytes_per_image,
-        )
-    return dp_cfg

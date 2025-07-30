@@ -5,7 +5,7 @@ import asyncio
 import os
 from pathlib import Path
 import logging
-from typing import List, Callable, Tuple, Any, Dict, AsyncIterator
+from typing import List, Callable, Tuple, Any, Dict, AsyncIterator, Optional
 from dataclasses import dataclass
 import numpy as np
 from pandas import to_datetime, Timestamp
@@ -34,37 +34,56 @@ from panoseti_util import pff, control_utils
 
 CFG_DIR = Path('daq_data/config')
 
-def get_dp_cfg(dps):
-    """Returns a dictionary of static properties for the given data products."""
+
+@dataclass
+class DataProductConfig:
+    """Configuration and state for a single data product."""
+    name: str
+    is_ph: bool
+    pano_image_type: PanoImage.Type
+    image_shape: Tuple[int, int]
+    bytes_per_pixel: int
+    bytes_per_image: int
+    frame_size: int = 0
+    glob_pat: str = ""
+    last_known_filesize: int = 0
+    current_filepath: Optional[Path] = None
+
+
+def get_dp_config(dps: List[str]) -> Dict[str, DataProductConfig]:
+    """
+    Returns a dictionary of DataProductConfig objects for the given data products.
+    """
     dp_cfg = {}
     for dp in dps:
         if dp == 'img16' or dp == 'ph1024':
-            image_shape = [32, 32]
+            image_shape = (32, 32)
             bytes_per_pixel = 2
         elif dp == 'img8':
-            image_shape = [32, 32]
+            image_shape = (32, 32)
             bytes_per_pixel = 1
         elif dp == 'ph256':
-            image_shape = [16, 16]
+            image_shape = (16, 16)
             bytes_per_pixel = 2
         else:
-            raise Exception("bad data product %s" % dp)
+            raise ValueError(f"Unknown data product: {dp}")
+
         bytes_per_image = bytes_per_pixel * image_shape[0] * image_shape[1]
         is_ph = 'ph' in dp
-        # Get type enum for PanoImage message
-        if is_ph:
-            pano_image_type = PanoImage.Type.PULSE_HEIGHT
-        else:
-            pano_image_type = PanoImage.Type.MOVIE
+        pano_image_type = PanoImage.Type.PULSE_HEIGHT if is_ph else PanoImage.Type.MOVIE
 
-        dp_cfg[dp] = {
-            "image_shape": image_shape,
-            "bytes_per_pixel": bytes_per_pixel,
-            "bytes_per_image": bytes_per_image,
-            "is_ph": is_ph,
-            "pano_image_type": pano_image_type,
-        }
+        # Directly instantiate the dataclass instead of creating a dictionary
+        dp_cfg[dp] = DataProductConfig(
+            name=dp,
+            is_ph=is_ph,
+            pano_image_type=pano_image_type,
+            image_shape=image_shape,
+            bytes_per_pixel=bytes_per_pixel,
+            bytes_per_image=bytes_per_image,
+        )
     return dp_cfg
+
+
 
 
 def make_rich_logger(name, level=logging.WARNING):
