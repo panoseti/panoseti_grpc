@@ -600,7 +600,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         #   - "enqueue_timeouts": number of consecutive timeouts from queue.put()
         #   - "timeouts": number of consecutive timeouts from queue.get()
         #   - "client_ip": info about an active client
-        for _ in range(server_cfg['max_reader_clients']):
+        for _ in range(server_cfg['max_concurrent_rpcs']):
             default_config = {
                 "stream_movie_data": True,
                 "stream_pulse_height_data": True,
@@ -883,10 +883,10 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         try:
             async with self._hp_io_lock:
                 # BEGIN check-in critical section
-                if (self._rw_lock_state['ar'] + self._rw_lock_state['wr']) >= self._server_cfg['max_reader_clients']:
+                if (self._rw_lock_state['ar'] + self._rw_lock_state['wr']) >= self._server_cfg['max_concurrent_rpcs']:
                     emsg = (f"Cannot start a new reader RPC because the maximum number of active reader RPCs "
-                            f"({self._server_cfg['max_reader_clients']}) has been reached. To change the max number of "
-                            f" reader RPCs, increase the server configuration parameter for 'max_reader_clients'.")
+                            f"({self._server_cfg['max_concurrent_rpcs']}) has been reached. To change the max number of "
+                            f" reader RPCs, increase the server configuration parameter for 'max_concurrent_rpcs'.")
                     await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
                 self.logger.debug(f"(reader) check-in (start):\t{self._rw_lock_state=}"
                                   f"\n{[rs['is_allocated'] for rs in self._reader_states]=}")
@@ -1156,11 +1156,14 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
     async def Ping(self, request, context):
         """Returns the Empty message to verify client-server connection."""
+        self.logger.info(f"Ping rpc from {urllib.parse.unquote(context.peer())}")
         return Empty()
 
 async def serve(server_cfg):
     """Create the gRPC server and start providing the UbloxControl service."""
-    server = grpc.aio.server()
+    server = grpc.aio.server(
+        maximum_concurrent_rpcs=server_cfg['max_concurrent_rpcs'],
+    )
     daq_data_servicer = DaqDataServicer(server_cfg)
     daq_data_pb2_grpc.add_DaqDataServicer_to_server(
         daq_data_servicer, server

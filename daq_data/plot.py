@@ -40,6 +40,7 @@ class PulseHeightDistribution:
             self.axes = [self.axes]
 
         self.last_plot_update_time = time.time()
+        self.num_rescale = 0
 
     def update(self, parsed_pano_image):
         # unpack pano image
@@ -49,33 +50,36 @@ class PulseHeightDistribution:
 
         if pano_type == 'PULSE_HEIGHT':
             # img += np.random.poisson(lam=50, size=img.shape)
+
+            if module_id not in self.hist_data:
+                # Dynamically add support for new modules if needed
+                self.module_ids.append(module_id)
+                self.start_times[module_id] = [time.time()] * self.n_durations
+                self.hist_data[module_id] = [deque() for _ in range(self.n_durations)]
+                self.vmins[module_id] = [float('inf')] * self.n_durations
+                self.vmaxs[module_id] = [float('-inf')] * self.n_durations
+                # Assign a color (expand palette if many modules)
+                palette = sns.color_palette('husl', n_colors=len(self.module_ids))
+                self.module_colors[module_id] = palette[len(self.module_ids)-1]
+                self.num_rescale = len(self.module_ids) * 3
+
+            max_pixel = int(np.max(image))
+            now = time.time()
+            for i, duration in enumerate(self.durations):
+                if now - self.start_times[module_id][i] > duration:
+                    self.hist_data[module_id][i].clear()
+                    self.start_times[module_id][i] = now
+                    self.vmins[module_id][i] = float('inf')
+                    self.vmaxs[module_id][i] = float('-inf')
+                self.hist_data[module_id][i].append(max_pixel)
+                self.vmins[module_id][i] = min(self.vmins[module_id][i], max_pixel)
+                self.vmaxs[module_id][i] = max(self.vmaxs[module_id][i], max_pixel)
+
+            # Plot data if the delay has passed
             curr_time = time.time()
             if curr_time - self.last_plot_update_time > self.plot_update_interval:
                 self.plot()
                 self.last_plot_update_time = curr_time
-
-        if module_id not in self.hist_data:
-            # Dynamically add support for new modules if needed
-            self.module_ids.append(module_id)
-            self.start_times[module_id] = [time.time()] * self.n_durations
-            self.hist_data[module_id] = [deque() for _ in range(self.n_durations)]
-            self.vmins[module_id] = [float('inf')] * self.n_durations
-            self.vmaxs[module_id] = [float('-inf')] * self.n_durations
-            # Assign a color (expand palette if many modules)
-            palette = sns.color_palette('husl', n_colors=len(self.module_ids))
-            self.module_colors[module_id] = palette[len(self.module_ids)-1]
-
-        max_pixel = int(np.max(image))
-        now = time.time()
-        for i, duration in enumerate(self.durations):
-            if now - self.start_times[module_id][i] > duration:
-                self.hist_data[module_id][i].clear()
-                self.start_times[module_id][i] = now
-                self.vmins[module_id][i] = float('inf')
-                self.vmaxs[module_id][i] = float('-inf')
-            self.hist_data[module_id][i].append(max_pixel)
-            self.vmins[module_id][i] = min(self.vmins[module_id][i], max_pixel)
-            self.vmaxs[module_id][i] = max(self.vmaxs[module_id][i], max_pixel)
 
     def plot(self):
         for i, duration in enumerate(self.durations):
@@ -93,25 +97,25 @@ class PulseHeightDistribution:
                 last_refresh = "Never"
 
             # Axis limits
-            mins = [self.vmins[mod][i] for mod in self.module_ids if self.hist_data[mod][i]]
-            maxs = [self.vmaxs[mod][i] for mod in self.module_ids if self.hist_data[mod][i]]
-            vmin = min(mins) if mins else 0
-            vmax = max(maxs) if maxs else 1
+            # mins = [self.vmins[mod][i] for mod in self.module_ids if self.hist_data[mod][i]]
+            # maxs = [self.vmaxs[mod][i] for mod in self.module_ids if self.hist_data[mod][i]]
+            # vmin = min(mins) if mins else 0
+            # vmax = max(maxs) if maxs else 1
 
             for mod in self.module_ids:
                 values = self.hist_data[mod][i]
                 if values:
                     sns.histplot(
-                        list(values),
-                        bins=100,
-                        kde=False,
+                        values,
+                        bins=50,
+                        kde=True,
                         stat='density',
                         element='step',
-                        label=f'Module {mod}',
+                        label=f'{mod}',
                         color=self.module_colors[mod],
                         ax=ax,
                     )
-            ax.set_xlim(vmin - 10, vmax + 10)
+            # ax.set_xlim(vmin - 10, vmax + 10)
             ax.set_title(
                 f"Refresh interval = {duration}s | Last refresh = {last_refresh}",
                 fontsize=12,
@@ -119,8 +123,10 @@ class PulseHeightDistribution:
             ax.set_xlabel("ADC Value")
             ax.set_ylabel("Density")
             ax.legend(title="Module", fontsize=9, title_fontsize=10)
+        if self.num_rescale > 0:
+            self.fig.tight_layout()
+            self.num_rescale -= 1
         self.fig.suptitle( f"Distribution of Max Pulse-Heights")
-        self.fig.tight_layout()
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
 
@@ -135,11 +141,14 @@ class PanoImagePreviewer:
             font_size=6,
             row_height=3,
             window_size=100,
+            plot_update_interval=1.0,
             jupyter_notebook=False
     ) -> None:
         self.stream_movie_data = stream_movie_data
         self.stream_pulse_height_data = stream_pulse_height_data
         self.module_id_whitelist = module_id_whitelist
+        self.plot_update_interval = plot_update_interval
+        self.last_plot_update_time = time.monotonic()
         self.jupyter_notebook = jupyter_notebook
 
         self.seen_modules = set()
@@ -197,10 +206,10 @@ class PanoImagePreviewer:
             plt.show()
 
     def update(self, parsed_pano_image):
-        module_id = parsed_pano_image['module_id']
         pano_type = parsed_pano_image['type']
-        header = parsed_pano_image['header']
         img = parsed_pano_image['image_array']
+        module_id = parsed_pano_image['module_id']
+        header = parsed_pano_image['header']
         frame_number = parsed_pano_image['frame_number']
         file = parsed_pano_image['file']
 
@@ -218,6 +227,7 @@ class PanoImagePreviewer:
         im.set_data(img)
         im.set_clim(vmin, vmax)
 
+        # Update plot information, but don't show these updates yet
         cbar = self.cbar_map.get((module_id, pano_type))
         cbar.ax.tick_params(labelsize=8)
         cbar.locator = MaxNLocator(nbins=6)
@@ -229,12 +239,13 @@ class PanoImagePreviewer:
             return
 
         # Prepare axis title with details
+        # parsed_name = pff.parse_name(file)
         ax_title = (f"{pano_type}"
                     + ("\n" if 'quabo_num' not in header else f": Q{int(header['quabo_num'])}\n")
                     + f"unix_t = {header['pandas_unix_timestamp'].time()}\n"
                     + f"frame_no = {frame_number}\n")
+        # ax_title += str(parsed_name)
         ax_title += textwrap.fill(f"file = {file}", width=self.text_width)
-
         ax.set_title(ax_title, fontsize=self.font_size)
         ax.tick_params(axis='both', which='major', labelsize=8, length=4, width=1)
 
@@ -243,11 +254,18 @@ class PanoImagePreviewer:
             plt_title = f"Obs data from {start}, module_ids={set(self.module_id_whitelist)} [filtered]"
         else:
             plt_title = f"Obs data from {start}, module_ids={self.seen_modules} [all]"
+        self.fig.suptitle(plt_title)
+
+        # Plot all updates data if the delay has passed
+        curr_time = time.monotonic()
+        if curr_time - self.last_plot_update_time > self.plot_update_interval:
+            self.plot()
+            self.last_plot_update_time = curr_time
+
+    def plot(self):
         if self.num_rescale < len(self.seen_modules) * 3:
             self.fig.tight_layout()
             self.num_rescale += 1
-        self.fig.suptitle(plt_title)
-        #
         if not self.jupyter_notebook:
             self.fig.canvas.draw()
             self.fig.canvas.flush_events()

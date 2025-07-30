@@ -23,7 +23,7 @@ seaborn>=0.13.2
 matplotlib>=3.8.4
 pandas>=2.3.0
 numpy>=1.26.4
-jupyter>=1.1.1
+#jupyter>=1.1.1
 
 # panoseti utils
 netifaces >= 0.11.0

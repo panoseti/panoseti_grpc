@@ -9,11 +9,11 @@ description = "gRPC for the PANOSETI project."
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [
-    { name="nraultwang", email="nraultwang@berkeley.edu" },
+    { name="Nicolas Rault-Wang", email="nraultwang@berkeley.edu" },
 ]
 license = { file="LICENSE" }
 keywords = [
-    "panoseti", "gRPC", "observatory", "DAQ", "astronomy", "live-visualization"
+    "panoseti", "gRPC", "observatory", "data-acquisition", "astronomy", "real-time"
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

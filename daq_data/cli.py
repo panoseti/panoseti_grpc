@@ -51,12 +51,13 @@ def run_pano_image_preview(
         stream_movie_data: bool,
         stream_pulse_height_data: bool,
         update_interval_seconds: float,
+        plot_update_interval: float,
         module_ids: tuple[int],
         wait_for_ready: bool = False,
 ):
     """Streams PanoImages from an active observing run."""
     # Create visualizer
-    previewer = PanoImagePreviewer(stream_movie_data, stream_pulse_height_data, module_ids)
+    previewer = PanoImagePreviewer( stream_movie_data, stream_pulse_height_data, module_ids, plot_update_interval=plot_update_interval)
     # Make the RPC call
     stream_images_responses = ddc.stream_images(
         host,
@@ -151,6 +152,7 @@ def run_demo_api(args):
                 success = ddc.init_hp_io(host, hp_io_cfg, timeout=15.0)
 
             if do_plot:
+                refresh_period = max(0.75, args.refresh_period)
                 print("-------------- StreamImages --------------")
                 # check host
                 if host is not None and host not in valid_daq_hosts:
@@ -161,7 +163,8 @@ def run_demo_api(args):
                         host,
                         stream_movie_data=True,
                         stream_pulse_height_data=True,
-                        update_interval_seconds=2.0,  # np.random.uniform(1.0, 1.0),
+                        update_interval_seconds=refresh_period,  # np.random.uniform(1.0, 1.0),
+                        plot_update_interval=refresh_period * 0.95,
                         module_ids=module_ids,
                         wait_for_ready=True,
                     )
@@ -170,7 +173,7 @@ def run_demo_api(args):
                     run_pulse_height_distribution(
                         ddc,
                         host,
-                        plot_update_interval=1.0,
+                        plot_update_interval=refresh_period,
                         durations_seconds=(10, 60, 600),
                         module_ids=module_ids,
                     )
@@ -240,6 +243,13 @@ if __name__ == "__main__":
         "--plot-phdist",
         help="whether to create a live pulse-height distribution for the specified module id",
         action="store_true",
+    )
+
+    parser.add_argument(
+        "--refresh-period",
+        help="period between plot refresh events (in seconds). Default: 1.0",
+        default=1.0,
+        type=float,
     )
 
     parser.add_argument(
