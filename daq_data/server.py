@@ -21,7 +21,6 @@ import json
 import sys
 import time
 import urllib.parse
-# import numpy as np
 
 import google
 ## --- gRPC imports ---
@@ -35,7 +34,6 @@ from google.protobuf.struct_pb2 import Struct
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf import timestamp_pb2
-from pandas.core.computation.ops import isnumeric
 
 # protoc-generated marshalling / demarshalling code
 from daq_data import daq_data_pb2, daq_data_pb2_grpc
@@ -97,22 +95,26 @@ def daq_sim_thread_fn(
     Simulated directory structure:
         simulated_data_dir/
             ├── real_run_dir/
-            │   ├── real_movie_pff [seqno 0]
-            │   └── real_pulse_height_pffs [seqno 0]
+            │   └── obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd
+            │       ├── real_movie_pff [seqno 0]
+            │       └── real_pulse_height_pffs [seqno 0]
             │
             ├── module_1/
-            │   ├── simulated_movie_pff [seqno 0]
-            │   │   ...
-            │   ├── simulated_movie_pff [seqno M1]
-            │   ├── simulated_pulse_height_pff [seqno 0]
-            │   │   ...
-            │   └── simulated_pulse_height_pffs [seqno P1]
+            │   └── obs_SIMULATE/
+            │       ├── simulated_movie_pff [seqno 0]
+            │       │   ...
+            │       ├── simulated_movie_pff [seqno M1]
+            │       ├── simulated_pulse_height_pff [seqno 0]
+            │       │   ...
+            │       └── simulated_pulse_height_pffs [seqno P1]
             │
             ├── module_2/
-            │   ...
+            │   └── obs_SIMULATE/
+            │       ...
             │
             └── module_N/
-                ...
+                └── obs_SIMULATE/
+                    ...
 
     To simulate the multi-file creation behavior of the daq software due to the max file size parameter,
     every [frames_per_pff] frames, create a new file of each type.
@@ -155,7 +157,8 @@ def daq_sim_thread_fn(
 
         # open real pff files for reading
         movie_src_path = get_sim_pff_path(sim_cfg, module_id=sim_cfg['real_module_id'], seqno=0, is_ph=False, is_simulated=False)
-        ph_src_path = get_sim_pff_path(sim_cfg, module_id=sim_cfg['real_module_id'], seqno=0, is_ph=True, is_simulated=False)
+        #ph_src_path = get_sim_pff_path(sim_cfg, module_id=sim_cfg['real_module_id'], seqno=0, is_ph=True, is_simulated=False)
+        ph_src_path = get_sim_pff_path(sim_cfg, module_id=3, seqno=0, is_ph=True, is_simulated=False)
         with (open(movie_src_path, "rb") as movie_src, open(ph_src_path, "rb") as ph_src):
             # get file info, e.g. frame size from the ph and img source files
             (movie_frame_size, movie_nframes, first_t, last_t) = pff.img_info(movie_src, dp_cfg[movie_type]['bytes_per_image'])
@@ -228,8 +231,12 @@ def daq_sim_thread_fn(
                             raise TimeoutError("test hp_io task unexpected termination")
             if ph_fnum >= ph_nframes:
                 logger.warning(f"simulated ph data acquisition reached EOF: {ph_fnum=} >= {ph_nframes=}")
+                ph_src.seek(0, os.SEEK_SET)
+                ph_fnum = 0
             if movie_fnum >= movie_nframes:
                 logger.warning(f"simulated movie data acquisition reached EOF: {movie_fnum=} >= {movie_nframes=}")
+                movie_src.seek(0, os.SEEK_SET)
+                movie_fnum = 0
     finally:
         sim_valid.clear()
         logger.debug(f"{simulated_data_files=}")
@@ -265,6 +272,26 @@ async def hp_io_task_fn(
 
     """ Receive pulse-height and movie-mode data from hashpipe and broadcast it to all active reader queues.
     Requires DAQ software to be active to properly initialize.
+    Creates snapshots of active run directories for each module directory. Assumes the following structure:
+        data_dir/
+            ├── module_1/
+            │   ├── obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd
+            │   │   ├── start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_0.pff
+            │   │   ├── start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_1.pff
+            │   │   ...
+            │   │
+            │   ├── obs_*/
+            │   │   ├──
+            │   │   ...
+            │   ...
+            │
+            ├── module_2/
+            │   └── obs_*/
+            │       ...
+            │
+            └── module_N/
+                └── obs_*/
+
     """
     logger.info(f"Created a new hp_io task with the following options: {kwargs=}")
     valid.clear()  # indicate hashpipe io channel is currently invalid

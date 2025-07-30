@@ -57,7 +57,7 @@ def run_pano_image_preview(
 ):
     """Streams PanoImages from an active observing run."""
     # Create visualizer
-    previewer = PanoImagePreviewer( stream_movie_data, stream_pulse_height_data, module_ids, plot_update_interval=plot_update_interval)
+    previewer = PanoImagePreviewer(stream_movie_data, stream_pulse_height_data, module_ids, plot_update_interval=plot_update_interval)
     # Make the RPC call
     stream_images_responses = ddc.stream_images(
         host,
@@ -150,7 +150,7 @@ def run_demo_api(args):
                 success = ddc.init_hp_io(host, hp_io_cfg, timeout=15.0)
 
             if do_plot:
-                refresh_period = max(0.75, args.refresh_period)
+                refresh_period = args.refresh_period
                 print("-------------- StreamImages --------------")
                 # check host
                 if host is not None and host not in valid_daq_hosts:
