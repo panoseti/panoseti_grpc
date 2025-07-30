@@ -77,7 +77,7 @@ class DaqDataClient:
             ValueError: If the 'daq_nodes' list is empty, missing, or improperly formatted.
         """
         # verify config files exist
-        self.logger = make_rich_logger(__name__, level=log_level)
+        self.logger = make_rich_logger("daq_data.client", level=log_level)
         if not os.path.exists(daq_config_path):
             abs_path = os.path.abspath(daq_config_path)
             emsg = f"daq_config_path={abs_path} does not exist"

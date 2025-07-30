@@ -212,3 +212,7 @@ __marimo__/
 
 # cProfile
 *.prof
+
+
+# logging
+daq_data/logs

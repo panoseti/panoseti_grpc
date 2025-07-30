@@ -1,4 +1,25 @@
-# In a new file, e.g., daq_data/hp_io_manager.py, or at the top of server.py
+"""
+Orchestrates filesystem monitoring and data broadcasting for PANOSETI DAQ.
+Creates snapshots of active run directories for each module directory. Assumes the following structure:
+    data_dir/
+        ├── module_1/
+        │   ├── obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd
+        │   │   ├── start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_0.pff
+        │   │   ├── start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_1.pff
+        │   │   ...
+        │   │
+        │   ├── obs_*/
+        │   │   ├──
+        │   │   ...
+        │   ...
+        │
+        ├── module_2/
+        │   └── obs_*/
+        │       ...
+        │
+        └── module_N/
+            └── obs_*/
+"""
 
 import asyncio
 import json
@@ -10,15 +31,12 @@ from glob import glob
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Optional
 from collections import defaultdict
-from dataclasses import dataclass, field
-from threading import Event
 
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import ParseDict
 from watchfiles import awatch, Change
 
 from .daq_data_pb2 import PanoImage
-# from . import daq_data_pb2.PanoImage.Type as PanoImageType
 from .resources import get_dp_config, is_daq_active, DataProductConfig
 from panoseti_util import pff
 

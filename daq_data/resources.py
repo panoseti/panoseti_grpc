@@ -9,7 +9,7 @@ from typing import List, Callable, Tuple, Any, Dict, AsyncIterator, Optional
 from dataclasses import dataclass
 import numpy as np
 from pandas import to_datetime, Timestamp
-import datetime
+from datetime import datetime
 import decimal
 
 # rich formatting
@@ -84,53 +84,62 @@ def get_dp_config(dps: List[str]) -> Dict[str, DataProductConfig]:
     return dp_cfg
 
 
+def make_rich_logger(name: str, level=logging.INFO) -> logging.Logger:
+    """
+    Sets up a logger with a RichHandler for console output and a FileHandler
+    for writing logs to a file. Also silences noisy third-party loggers.
 
+    Args:
+        name (str): The name for the logger (e.g., 'daq_data').
+        level (int): The logging level (e.g., logging.INFO).
 
-def make_rich_logger(name, level=logging.WARNING):
-    LOG_FORMAT = (
-        "[tid=%(thread)d] [%(funcName)s()] %(message)s "
-    )
+    Returns:
+        logging.Logger: A configured logger instance.
+    """
+    # 1. Silence noisy third-party loggers
+    # The 'watchfiles' logger can be verbose, so we set its level higher.
+    logging.getLogger("watchfiles").setLevel(logging.WARNING)
 
-    rich_handler = RichHandler(
-        level=logging.DEBUG,  # Set handler specific level
+    # 2. Define log directory and file path
+    log_dir = Path("daq_data/logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file_path = log_dir / f"{name}_{datetime.now().strftime('%Y-%m-%d')}.log"
+
+    # 3. Get the logger and set its level.
+    # We use getLogger(name) to get our specific application logger.
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+
+    # Prevent messages from being passed to the root logger
+    logger.propagate = False
+
+    # 4. Configure and add the RichHandler for console output
+    # This handler is for pretty-printing logs to the terminal.
+    console_handler = RichHandler(
+        level=level,
         show_time=True,
         show_level=True,
-        show_path=True,
-        enable_link_path=True,
-        rich_tracebacks=True,  # Enable rich tracebacks for exceptions
-        tracebacks_theme="monokai",  # Optional: Choose a traceback theme
+        show_path=False, # Set to False for cleaner output
+        rich_tracebacks=True,
+        tracebacks_theme="monokai",
     )
+    console_handler.setFormatter(logging.Formatter("[%(funcName)s()] %(message)s", datefmt="%H:%M:%S"))
 
-    logging.basicConfig(
-        level=level,
-        format=LOG_FORMAT,
-        datefmt="%H:%M:%S",
-        # datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=[rich_handler]
+    # 5. Configure and add the FileHandler for file output
+    # This handler writes logs to the file defined above.
+    file_handler = logging.FileHandler(log_file_path)
+    file_handler.setLevel(level)
+    file_formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - [%(funcName)s] - %(message)s"
     )
-    return logging.getLogger(name)
+    file_handler.setFormatter(file_formatter)
 
+    # 6. Add handlers to the logger, but only if they haven't been added already
+    if not logger.handlers:
+        logger.addHandler(console_handler)
+        logger.addHandler(file_handler)
 
-# def reflect_services(channel: grpc.Channel) -> str:
-#     """Prints all available RPCs for a DaqData service represented by [channel]."""
-#     def format_rpc_service(method):
-#         name = method.name
-#         input_type = method.input_type.name
-#         output_type = method.output_type.name
-#         stream_fmt = '[magenta]stream[/magenta] '
-#         client_stream = stream_fmt if method.client_streaming else ""
-#         server_stream = stream_fmt if method.server_streaming else ""
-#         return f"rpc {name}({client_stream}{input_type}) returns ({server_stream}{output_type})"
-#     reflection_db = ProtoReflectionDescriptorDatabase(channel)
-#     services = reflection_db.get_services()
-#     msg = f"found services: {services}"
-#
-#     desc_pool = DescriptorPool(reflection_db)
-#     service_desc = desc_pool.FindServiceByName("daqdata.DaqData")
-#     msg += f"found [yellow]DaqData[/yellow] service with name: [yellow]{service_desc.full_name}[/yellow]"
-#     for method in service_desc.methods:
-#         msg += f"\n\tfound: {format_rpc_service(method)}"
-#     return msg
+    return logger
 
 def parse_pano_timestamps(pano_image: PanoImage) -> Dict[str, Any]:
     """Parse PanoImage header to get nanosecond-precision timestamps."""

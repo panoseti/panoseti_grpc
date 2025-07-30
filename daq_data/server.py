@@ -8,24 +8,17 @@ Requires following to function correctly:
     2. All Python packages specified in requirements.txt.
     3. A connection to a panoseti module.
 """
-from collections import defaultdict
 from pathlib import Path
 import os
 import asyncio
 import uuid
 from threading import Event, Thread
-from glob import glob
 from contextlib import asynccontextmanager
 from typing import List, Callable, Tuple, Any, Dict, AsyncIterator
-from dataclasses import dataclass, field
 import logging
 import json
-import sys
 import time
 import urllib.parse
-
-# async libraries
-from watchfiles import awatch, Change
 
 ## --- gRPC imports ---
 import grpc
@@ -55,6 +48,9 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
     """Provides implementations for DaqData RPCs."""
 
     def __init__(self, server_cfg):
+        # Create the server's logger
+        self.logger = make_rich_logger("daq_data.server", level=logging.INFO)
+
         # verify the server is running on a POSIX-compliant system
         test_result, msg = is_os_posix()
         assert test_result, msg
@@ -76,8 +72,6 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._server_cfg = server_cfg
         self.active_data_products = set()
 
-        # Create the server's logger
-        self.logger = make_rich_logger(__name__, level=logging.INFO)
 
         # Load default hahspipe_io configuration
         with open(CFG_DIR/self._server_cfg["default_hp_io_config_file"], "r") as f:
@@ -140,11 +134,8 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._cancel_readers_event.set()
         # signal any blocking readers to wake up and exit
         self._read_ok_condvar.notify_all()
-        for rs in [rs for rs in self._reader_states if rs['is_allocated']]:
-            try:
-                rs['queue'].put_nowait("shutdown")
-            except asyncio.QueueFull:
-                pass
+        for rs in filter(lambda r: r['is_allocated'], self._reader_states):
+            await rs['queue'].put("shutdown")
 
     async def shutdown(self):
         self._shutdown_event.set()
@@ -160,7 +151,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             while self._rw_lock_state['ar'] + self._rw_lock_state['aw'] > 0:
                 await asyncio.sleep(0.1)
 
-        await asyncio.create_task(wait_for_all_exit())
+        await wait_for_all_exit()
 
         # check if state was updated properly
         lock_status_ok = True
@@ -174,9 +165,6 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self.logger.info("Successfully released all resources")
         else:
             self.logger.critical(f"Some server resources were not released: {shutdown_record=}")
-        # for handler in self.logger.handlers:
-        #     handler.flush()
-        #     self.logger.removeHandler(handler)
 
     async def _start_hp_io_task(self, hp_io_cfg):
         """Creates a new hp_io task with the given hp_io_cfg.
