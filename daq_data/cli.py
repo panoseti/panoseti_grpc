@@ -73,8 +73,6 @@ def run_pano_image_preview(
         previewer.update(parsed_pano_image)
 
 def run_demo_api(args):
-    with open(args.daq_config_path, "r") as f:
-        daq_config = json.load(f)
     # get hp_io_cfg
     hp_io_cfg = None
     do_init_hp_io = False
@@ -121,8 +119,7 @@ def run_demo_api(args):
         log_level = logging.CRITICAL
 
     try:
-        with DaqDataClient(daq_config, log_level=log_level) as ddc:
-
+        with DaqDataClient(args.daq_config_path, log_level=log_level) as ddc:
             if do_ping:
                 if host is None:
                     raise ValueError("--host must be specified for --ping")

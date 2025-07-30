@@ -995,19 +995,19 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 emsg = ("hp_io task is not streaming movie data. Set stream_movie_data=False to avoid this error or "
                         "restart the hp_io task to enable streaming movie data.")
                 self.logger.warning(f"'{emsg}'")
-                await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
+                # await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
             if request.stream_pulse_height_data and not {'ph256', 'ph1024'}.intersection(self.active_data_products):
                 emsg = ("hp_io task is not streaming pulse-height data. Set stream_pulse_height_data=False to avoid this error or "
                         "restart the hp_io task to enable streaming pulse-height data.")
                 self.logger.warning(f"'{emsg}'")
-                await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
+                # await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
             # Set stream filter options
             if request.update_interval_seconds > self._server_cfg['max_client_update_interval_seconds']:
                 emsg = (f"update_interval_seconds must be at most "
                         f"{self._server_cfg['max_client_update_interval_seconds']}"
                         f"seconds. Got {request.update_interval_seconds}")
-                self.logger.critical(emsg)
+                self.logger.warning(emsg)
                 await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
             elif request.update_interval_seconds < self._hp_io_cfg['update_interval_seconds']:
                 reader_state['config']['update_interval_seconds'] = self._hp_io_cfg['update_interval_seconds']

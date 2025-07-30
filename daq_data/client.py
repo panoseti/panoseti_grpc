@@ -47,6 +47,7 @@ from .daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest, 
 
 ## daq_data utils
 from .resources import make_rich_logger, parse_pano_image, format_stream_images_response
+from panoseti_util import control_utils
 
 
 hp_io_config_simulate_path = "daq_data/config/hp_io_config_simulate.json"
@@ -64,32 +65,60 @@ class DaqDataClient:
     """
     GRPC_PORT = 50051
 
-    def __init__(self, daq_config: Dict[str, Any], log_level=logging.INFO):
+    def __init__(self, daq_config_path, network_config_path=None, log_level=logging.INFO):
         """
         Initializes the DaqDataClient with the configuration for one or more DAQ nodes.
 
         Args:
-            daq_config (Dict[str, Any]): A configuration dictionary, typically loaded from a
-                `daq_config.json` file. It must contain a 'daq_nodes' key with a list of
-                dictionaries, where each dictionary represents a DAQ node and must contain
-                at least an 'ip_addr' field.
+            cfg_dir (str): The path to the directory containing the config files daq_config.json and network_config.json.
             log_level (int): The logging verbosity level (e.g., logging.INFO, logging.DEBUG).
 
         Raises:
             ValueError: If the 'daq_nodes' list is empty, missing, or improperly formatted.
         """
-        if 'daq_nodes' not in daq_config or daq_config['daq_nodes'] is None or len(daq_config['daq_nodes']) == 0:
-            raise ValueError(f"daq_nodes is empty: {daq_config=}")
+        # verify config files exist
+        self.logger = make_rich_logger(__name__, level=log_level)
+        if not os.path.exists(daq_config_path):
+            abs_path = os.path.abspath(daq_config_path)
+            emsg = f"daq_config_path={abs_path} does not exist"
+            self.logger.error(emsg)
+            raise FileNotFoundError(emsg)
+        elif (network_config_path is not None) and (not os.path.exists(network_config_path)):
+            abs_path = os.path.abspath(daq_config_path)
+            emsg = f"network_config_path={abs_path} does not exist"
+            self.logger.error(emsg)
+            raise FileNotFoundError(emsg)
+
+        # load config files
         self.daq_nodes = {}
-        for daq_node_cfg in daq_config['daq_nodes']:
-            if 'ip_addr' not in daq_node_cfg:
-                raise ValueError(f"daq_node={daq_node_cfg} does not have an 'ip_addr' key")
-            daq_host = daq_node_cfg['ip_addr']
-            self.daq_nodes[daq_host] = {'config': daq_node_cfg}
+        with open(daq_config_path, 'r') as f:
+            daq_config = json.load(f)
+            # validate daq_config
+            if 'daq_nodes' not in daq_config or daq_config['daq_nodes'] is None or len(daq_config['daq_nodes']) == 0:
+                raise ValueError(f"daq_nodes is empty: {daq_config=}")
+            for daq_node in daq_config['daq_nodes']:
+                if 'ip_addr' not in daq_node:
+                    raise ValueError(f"daq_node={daq_node} does not have an 'ip_addr' key")
+
+        # add port forwarding info to daq_config
+        if network_config_path is not None:
+            with open(network_config_path, 'r') as f:
+                network_config = json.load(f)
+            control_utils.attach_daq_config(daq_config, network_config)
+
+        for daq_node in daq_config['daq_nodes']:
+            daq_cfg_ip = daq_node['ip_addr']
+            if 'port_forwarding' in daq_node:
+                real_ip = daq_node['port_forwarding']['gw_ip']
+                port = self.GRPC_PORT
+                self.logger.info(f'Using port forwarding: "{daq_cfg_ip=}:{port}" --> "{real_ip=}:{port}"')
+                daq_host = real_ip
+            else:
+                daq_host = daq_cfg_ip
+            self.daq_nodes[daq_host] = {'config': daq_node}
             self.daq_nodes[daq_host]['channel']: grpc.Channel = None
             self.daq_nodes[daq_host]['stub']: daq_data_pb2_grpc.DaqDataStub = None
         self.daq_grpc_state = {}
-        self.logger = make_rich_logger(__name__, level=log_level)
         self.valid_daq_hosts = set()
 
     def __enter__(self):
