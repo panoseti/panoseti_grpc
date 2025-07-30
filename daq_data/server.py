@@ -206,7 +206,7 @@ def daq_sim_thread_fn(
                     for module_id in sim_cfg['sim_module_ids']:
                         ph_dst = active_pff_files[module_id]['ph']
                         ph_dst.write(ph_data)
-                        # ph_dst.flush()
+                        ph_dst.flush()
                     ph_fnum += 1
 
                 if do_movie:
@@ -215,7 +215,7 @@ def daq_sim_thread_fn(
                     for module_id in sim_cfg['sim_module_ids']:
                         movie_dst = active_pff_files[module_id]['movie']
                         movie_dst.write(movie_data)
-                        # movie_dst.flush()
+                        movie_dst.flush()
                     movie_fnum += 1
 
                 # logger.debug( f"Creating new simulated data files: {movie_dest_file=}, {ph_dest_file=}, {seqno=}, {fnum=}" )

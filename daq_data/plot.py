@@ -140,7 +140,7 @@ class PanoImagePreviewer:
             text_width=30,
             font_size=6,
             row_height=3,
-            window_size=100,
+            window_size=50,
             plot_update_interval=1.0,
             jupyter_notebook=False
     ) -> None:
