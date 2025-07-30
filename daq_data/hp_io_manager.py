@@ -37,7 +37,8 @@ from google.protobuf.json_format import ParseDict
 from watchfiles import awatch, Change
 
 from .daq_data_pb2 import PanoImage
-from .resources import get_dp_config, is_daq_active, DataProductConfig, ReaderState
+from .resources import get_dp_config, is_daq_active
+from .state import ReaderState, DataProductConfig
 from panoseti_util import pff
 
 

@@ -18,6 +18,7 @@ import grpc
 from .resources import ReaderState
 from .hp_io_manager import HpIoManager
 from .sim_thread import daq_sim_thread_fn
+from .state import ReaderState, DataProductConfig
 
 class HpIoTaskManager:
     """Manages the lifecycle of the HpIoManager background task."""
