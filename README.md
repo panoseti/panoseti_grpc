@@ -152,12 +152,15 @@ See [StreamImages](#streamimages) for implementation details.
 - `update_interval_seconds` (float): The desired update rate from the server.
 
 - `module_ids` (tuple): A tuple of module IDs to stream. An empty tuple streams all modules.
+- `parse_pano_images` (bool): If True, the raw `StreamImagesResponse.PanoImage` protobuf message is parsed
+                into a Python dictionary. If False, the raw protobuf
+                object is returned. Defaults to True.
 
 ```python
 # Assume the server has already been initialized.
 with DaqDataClient(daq_config_path, network_config_path) as client:
     # Create a request to stream pulse-height data for all modules
-    image_stream = client.stream_images(
+    pano_image_stream = client.stream_images(
         hosts=None,
         stream_movie_data=False,
         stream_pulse_height_data=True,
@@ -167,14 +170,75 @@ with DaqDataClient(daq_config_path, network_config_path) as client:
 
     # Process the first 10 images from the stream
     print("Starting image stream...")
-    for i, image_data in enumerate(image_stream):
+    for pano_image in pano_image_stream:
         print(
-            f"Received image from Module {image_data['module_id']} "
-            f"with shape {image_data['image_array'].shape}"
+            f"Received image from Module {pano_image['module_id']} "
+            f"with shape {pano_image['image_array'].shape}"
         )
-        if i >= 9:
-            break
 ```
+
+#### `PanoImage` Message Format
+When `parse_pano_image` is set to True (default), `DaqDataClient.stream_images(...)` 
+returns `StreamImagesResponse.PanoImage` as a Python dictionary with the following format:
+```json
+{
+    'type': 'MOVIE',
+    'header': {
+        'quabo_1': {
+            'pkt_tai': 529.0,
+            'tv_sec': 1721882092.0,
+            'pkt_nsec': 779007484.0,
+            'tv_usec': 779356.0,
+            'pkt_num': 36441.0
+        },
+        'quabo_0': {
+            'tv_usec': 779336.0,
+            'tv_sec': 1721882092.0,
+            'pkt_nsec': 779007488.0,
+            'pkt_num': 37993.0,
+            'pkt_tai': 529.0
+        },
+          ...
+       },
+    'image_array': array([[554, 184, 161, ..., 178, 317, 199],
+       [479, 428, 181, ..., 177, 363, 260],
+       [228, 312, 139, ..., 141, 280, 184],
+       ...,
+       [220, 191, 118, ..., 216, 187, 245],
+       [  8, 462, 168, ..., 201, 420, 395],
+       [443, 591, 233, ..., 114,  11, 485]], dtype=uint16),
+    'shape': [32, 32],
+    'bytes_per_pixel': 2,
+    'file': 'start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_224.seqno_0.debug_TRUNCATED.pff',
+    'frame_number': 88,
+    'module_id': 224
+}
+```
+- `type`: String specifying the image type (`MOVIE` or `PULSE_HEIGHT`). Corresponds to the PanoImage Type enum.
+
+- `header`:
+Dictionary containing original metadata from the protobuf header field, plus timestamp fields added by the parser:
+    - Metadata values: e.g., packet/camera fields (`pkt_tai`, `pkt_nsec`, `tv_sec`, possibly subfields like `quabo_0`).
+    - `wr_unix_timestamp` (added): Floating-point, the derived Unix timestamp with nanosecond precision, parsed from PanoSETI timing fields.
+    - `pandas_unix_timestamp` (added): ISO-format string (or Pandas Timestamp) representing the exact image acquisition time.
+
+- `image_array`:
+2D NumPy array data reshaped as specified by `shape`, and properly cast to either `np.uint8`, `np.uint16`, or `np.int16`.
+
+- `shape`:
+List of two integers: [rows, columns], e.g., [16, 16], [32, 32],
+- `bytes_per_pixel`:
+Integer indicating the number of bytes for each pixel value (1 or 2).
+
+- `file`:
+String with the associated filename for the image, if provided.
+
+- `frame_number`:
+Integer, the sequence index for this image within an acquisition session.
+
+- `module_id`:
+Integer ID which identifies the PanoSETI module  that produced the image.
+
 ### Full Example Workflow
 This example demonstrates a complete workflow: initialize the server for a simulated run and then stream data from it. This pattern is shown in [daq_data_client_demo.ipynb](daq_data_client_demo.ipynb).
 
@@ -200,7 +264,7 @@ with DaqDataClient(daq_config_path, network_config_path) as client:
     print("All servers initialized for simulation.")
 
     # 4. Stream pulse-height and movie data from all modules
-    image_stream = client.stream_images(
+    pano_image_stream = client.stream_images(
         hosts=valid_hosts,
         stream_movie_data=True,
         stream_pulse_height_data=True,
@@ -210,13 +274,13 @@ with DaqDataClient(daq_config_path, network_config_path) as client:
 
     # 5. Listen to the stream and process data
     print("Starting data stream. Press Ctrl+C to stop.")
-    for image_data in image_stream:
+    for pano_image in pano_image_stream:
         # In a real application, you would pass this data to a
         # visualization or analysis function.
         print(
-            f"Image: Module {image_data['module_id']}, "
-            f"Type: {image_data['type']}, "
-            f"Timestamp: {image_data['header']['pandas_unix_timestamp']}"
+            f"Image: Module {pano_image['module_id']}, "
+            f"Type: {pano_image['type']}, "
+            f"Timestamp: {pano_image['header']['pandas_unix_timestamp']}"
         )
 ```
 

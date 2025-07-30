@@ -13,6 +13,12 @@
             "user_name": "",
             "data_dir": "simulated_data_dir",
             "module_ids": "128-255"
+        },
+        {
+            "ip_addr": "192.168.3.84",
+            "user_name": "",
+            "data_dir": "simulated_data_dir",
+            "module_ids": "128-255"
         }
     ]
 }
