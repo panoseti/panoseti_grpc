@@ -118,8 +118,9 @@ def run_demo_api(args):
     elif log_level == 'critical':
         log_level = logging.CRITICAL
 
+    print(args.daq_config_path, args.net_config_path)
     try:
-        with DaqDataClient(args.daq_config_path, log_level=log_level) as ddc:
+        with DaqDataClient(args.daq_config_path, args.net_config_path, log_level=log_level) as ddc:
             if do_ping:
                 if host is None:
                     raise ValueError("--host must be specified for --ping")
@@ -161,7 +162,7 @@ def run_demo_api(args):
                         stream_movie_data=True,
                         stream_pulse_height_data=True,
                         update_interval_seconds=refresh_period,  # np.random.uniform(1.0, 1.0),
-                        plot_update_interval=refresh_period * 0.95,
+                        plot_update_interval=refresh_period,
                         module_ids=module_ids,
                         wait_for_ready=True,
                     )
@@ -192,6 +193,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "daq_config_path",
         help="path to daq_config.json file for the current observing run",
+    )
+
+    parser.add_argument(
+        "net_config_path",
+        help="path to network_config.json file for the current observing run",
     )
 
     parser.add_argument(

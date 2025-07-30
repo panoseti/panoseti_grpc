@@ -206,7 +206,7 @@ def daq_sim_thread_fn(
                     for module_id in sim_cfg['sim_module_ids']:
                         ph_dst = active_pff_files[module_id]['ph']
                         ph_dst.write(ph_data)
-                        ph_dst.flush()
+                        # ph_dst.flush()
                     ph_fnum += 1
 
                 if do_movie:
@@ -215,7 +215,7 @@ def daq_sim_thread_fn(
                     for module_id in sim_cfg['sim_module_ids']:
                         movie_dst = active_pff_files[module_id]['movie']
                         movie_dst.write(movie_data)
-                        movie_dst.flush()
+                        # movie_dst.flush()
                     movie_fnum += 1
 
                 # logger.debug( f"Creating new simulated data files: {movie_dest_file=}, {ph_dest_file=}, {seqno=}, {fnum=}" )
@@ -350,7 +350,7 @@ async def hp_io_task_fn(
         # remove modules that fail to initialize
         for result, dp in zip(results, data_products):
             if not result:
-                logger.warning(f"module_{module_id}: no active files for {dp=}")
+                logger.debug(f"module_{module_id}: no active files for {dp=}")
                 del dp_cfg[dp]
         return len(dp_cfg) > 0
 
@@ -692,8 +692,8 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._stop_io.set() # signal hp_io task to exit gracefully
         shutdown_record = dict()
         async with self._hp_io_lock:
-            await self._cancel_all_readers()
             self._server_cfg['hp_io_init'] = False
+            await self._cancel_all_readers()
             # wait for the hp_io task to exit
             shutdown_record['stop_hp_io'] = await self._stop_hp_io_task()
 
@@ -818,6 +818,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         @return: True iff the hp_io task is not alive.
         :param timeout: seconds to wait for hp_io task to exit gracefully"""
         self._stop_io.set()  # signal hp_io task to exit gracefully
+        self._server_cfg['hp_io_init'] = False
         if self._hp_io_task is not None and not self._hp_io_task.done():
             try:
                 await self._hp_io_task
@@ -825,7 +826,6 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     await asyncio.to_thread(self._daq_sim_thread.join)
             except RuntimeError as rerr:
                 self.logger.critical(f"encountered runtime error while stopping hp_io task: {rerr}")
-                self._server_cfg['hp_io_init'] = False
                 return False
             finally:
                 if self._hp_io_task.done():  # check if join succeeded or timeout happened while waiting
