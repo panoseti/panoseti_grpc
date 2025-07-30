@@ -37,7 +37,7 @@ from google.protobuf.json_format import ParseDict
 from watchfiles import awatch, Change
 
 from .daq_data_pb2 import PanoImage
-from .resources import get_dp_config, is_daq_active, DataProductConfig
+from .resources import get_dp_config, is_daq_active, DataProductConfig, ReaderState
 from panoseti_util import pff
 
 
@@ -133,7 +133,7 @@ class HpIoManager:
             update_interval_seconds: float,
             module_id_whitelist: List[int],
             simulate_daq: bool,
-            reader_states: List[Dict],
+            reader_states: List[ReaderState],
             stop_io: asyncio.Event,
             valid: asyncio.Event,
             max_reader_enqueue_timeouts: int,
@@ -232,8 +232,8 @@ class HpIoManager:
         while not self.stop_io.is_set():
             now = time.monotonic()
 
-            wait_times = [(rs['config']['update_interval_seconds'] - (now - rs.get('last_update_t', 0)))
-                          for rs in self.reader_states if rs['is_allocated']]
+            wait_times = [(rs.config['update_interval_seconds'] - (now - rs.last_update_t))
+                          for rs in self.reader_states if rs.is_allocated]
             timeout = min(wait_times) if wait_times else self.update_interval_seconds
             timeout = max(0.01, timeout)
 
@@ -331,9 +331,9 @@ class HpIoManager:
     def _get_ready_readers(self, now: float):
         """Identifies clients that are ready to receive data."""
         ready_list = []
-        for rs in filter(lambda r: r['is_allocated'], self.reader_states):
-            if rs['enqueue_timeouts'] >= self.max_reader_enqueue_timeouts: continue
-            if (now - rs.get('last_update_t', 0)) >= rs['config']['update_interval_seconds']:
+        for rs in filter(lambda r: r.is_allocated, self.reader_states):
+            if rs.enqueue_timeouts >= self.max_reader_enqueue_timeouts: continue
+            if (now - rs.last_update_t) >= rs.config['update_interval_seconds']:
                 ready_list.append(rs)
         return ready_list, 0, 0
 
@@ -342,20 +342,20 @@ class HpIoManager:
         for rs in ready_readers:
             try:
                 for mid, data in self.latest_data_cache.items():
-                    if rs['config']['module_ids'] and mid not in rs['config']['module_ids']: continue
+                    if rs.config['module_ids'] and mid not in rs.config['module_ids']: continue
 
                     ph_image = data.get('ph')
-                    if rs['config']['stream_pulse_height_data'] and ph_image:
-                        rs['queue'].put_nowait(ph_image)
+                    if rs.config['stream_pulse_height_data'] and ph_image:
+                        rs.queue.put_nowait(ph_image)
 
                     movie_image = data.get('movie')
-                    if rs['config']['stream_movie_data'] and movie_image:
-                        rs['queue'].put_nowait(movie_image)
+                    if rs.config['stream_movie_data'] and movie_image:
+                        rs.queue.put_nowait(movie_image)
 
-                rs['enqueue_timeouts'] = 0
+                rs.enqueue_timeouts = 0
             except asyncio.QueueFull:
-                self.logger.warning(f"Reader queue full for client {rs['client_ip']}.")
-                rs['enqueue_timeouts'] += 1
-            rs['last_update_t'] = now
+                self.logger.warning(f"Reader queue full for client {rs.client_ip}.")
+                rs.enqueue_timeouts += 1
+            rs.last_update_t = now
 
 
