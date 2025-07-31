@@ -214,11 +214,13 @@ class HpIoManager:
         watch_paths = list(set(m.run_path for m in self.modules.values() if m.run_path))
         if not watch_paths: return
 
-        update_interval_ms = int(self.update_interval_seconds * 1000)
+        MIN_UPDATE_MS = 10
+        update_interval_ms = max(int(self.update_interval_seconds * 1000), MIN_UPDATE_MS)
         async_watcher = awatch(
             *watch_paths,
             stop_event=self.stop_io,
-            debounce=50,
+            debounce=update_interval_ms,
+            step=MIN_UPDATE_MS,
             recursive=True,
             poll_delay_ms=update_interval_ms,
             force_polling=True
