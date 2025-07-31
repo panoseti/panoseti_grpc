@@ -150,17 +150,22 @@ class ClientManager:
         self.logger = logger
         self.max_clients = server_cfg['max_concurrent_rpcs']
 
+        self._cancel_readers_event = asyncio.Event()
+        self._shutdown_event = asyncio.Event()
+
         self._lock = asyncio.Lock()
         self._readers: List[ReaderState] = [
-            ReaderState(queue=asyncio.Queue(maxsize=server_cfg['max_read_queue_size']))
+            ReaderState(
+                queue=asyncio.Queue(maxsize=server_cfg['max_read_queue_size']),
+                cancel_reader_event=self._cancel_readers_event,
+                shutdown_event=self._shutdown_event,
+            )
             for _ in range(self.max_clients)
         ]
 
         self._active_readers = 0
         self._writer_active = False
 
-        self._cancel_readers_event = asyncio.Event()
-        self._shutdown_event = asyncio.Event()
 
     @property
     def reader_states(self) -> List[ReaderState]:

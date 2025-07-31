@@ -330,7 +330,10 @@ class DaqDataClient:
             """Yields responses from each StreamImagesResponse stream in a round-robin fashion."""
             while True:
                 for stream in streams:
-                    stream_images_response = next(stream)
+                    try:
+                        stream_images_response = next(stream)
+                    except StopIteration:
+                        return
                     formatted_stream_images_response = format_stream_images_response(stream_images_response)
                     self.logger.debug(formatted_stream_images_response)
                     if parse_pano_images:

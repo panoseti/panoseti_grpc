@@ -14,6 +14,8 @@ class ReaderState:
     is_allocated: bool = False
     queue: asyncio.Queue = field(default_factory=lambda: asyncio.Queue(maxsize=100))  # Example size
     client_ip: str or None = None
+    cancel_reader_event: asyncio.Event = None
+    shutdown_event: asyncio.Event = None
 
     # Configuration for the stream
     config: Dict = field(default_factory=lambda: {
