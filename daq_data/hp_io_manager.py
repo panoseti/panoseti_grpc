@@ -272,7 +272,6 @@ class HpIoManager:
 
     async def _handle_file_change(self, filepath: Path, module: ModuleState, dp_config: DataProductConfig):
         """Handles a file change event, including logic for file rotation."""
-        # This is the core logic fix for file rotation.
         current_seqno = _parse_seqno(dp_config.current_filepath.name) if dp_config.current_filepath else -1
         new_seqno = _parse_seqno(filepath.name)
 

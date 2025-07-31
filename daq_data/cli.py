@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import asyncio
 import signal
 import argparse
 import logging
@@ -17,22 +18,25 @@ from daq_data import (
     daq_data_pb2_grpc
 )
 from .daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
-from .client import DaqDataClient
+from .client import DaqDataClient, AioDaqDataClient
 from .plot import PulseHeightDistribution, PanoImagePreviewer
 
 CFG_DIR = Path('daq_data/config')
 
-def run_pulse_height_distribution(
-    ddc: DaqDataClient,
+async def run_pulse_height_distribution(
+    addc: AioDaqDataClient,
     host: str,
     plot_update_interval: float,
     module_ids: tuple[int],
     durations_seconds=(5, 10, 30),
 ):
     """Streams pulse-height images and updates max pixel distribution histograms."""
-    ph_dist = PulseHeightDistribution(durations_seconds, module_ids, plot_update_interval)
+    if len(module_ids) == 0:
+        print("no module_ids specified, using data from all modules to make ph distribution")
+    elif len(module_ids) > 1:
+        print("more than one module_id specified to make ph distribution")
     # pulse-height image streaming only
-    stream_images_responses = ddc.stream_images(
+    stream_images_responses = await addc.stream_images(
         host,
         stream_movie_data=False,
         stream_pulse_height_data=True,
@@ -40,13 +44,13 @@ def run_pulse_height_distribution(
         module_ids=module_ids,
         parse_pano_images=True
     )
-
-    for parsed_pano_image in stream_images_responses:
+    ph_dist = PulseHeightDistribution(durations_seconds, module_ids, plot_update_interval)
+    async for parsed_pano_image in stream_images_responses:
         ph_dist.update(parsed_pano_image)
 
 
-def run_pano_image_preview(
-        ddc: DaqDataClient,
+async def run_pano_image_preview(
+        addc: AioDaqDataClient,
         host: str,
         stream_movie_data: bool,
         stream_pulse_height_data: bool,
@@ -56,10 +60,8 @@ def run_pano_image_preview(
         wait_for_ready: bool = False,
 ):
     """Streams PanoImages from an active observing run."""
-    # Create visualizer
-    previewer = PanoImagePreviewer(stream_movie_data, stream_pulse_height_data, module_ids, plot_update_interval=plot_update_interval)
     # Make the RPC call
-    stream_images_responses = ddc.stream_images(
+    stream_images_responses = await addc.stream_images(
         host,
         stream_movie_data=stream_movie_data,
         stream_pulse_height_data=stream_pulse_height_data,
@@ -68,16 +70,59 @@ def run_pano_image_preview(
         parse_pano_images=True,
         wait_for_ready=wait_for_ready,
     )
-    # Process responses
-    for parsed_pano_image in stream_images_responses:
+    previewer = PanoImagePreviewer(stream_movie_data, stream_pulse_height_data, module_ids, plot_update_interval=plot_update_interval)
+    async for parsed_pano_image in stream_images_responses:
         previewer.update(parsed_pano_image)
 
-def run_demo_api(args):
-    # get hp_io_cfg
+
+async def do_ping_fn(addc, host):
+    if host is None:
+        raise ValueError("--host must be specified for --ping")
+    if await addc.ping(host):
+        print(f"PING {host=}: [green] success [/green]")
+    else:
+        print(f"PING {host=}: [red] failed [/red]")
+
+async def do_list_hosts_fn(addc):
+    print(f"DAQ host status (True = valid, False = invalid):")
+    host_status_dict = await addc.get_daq_host_status()
+    pprint(host_status_dict, expand_all=True)
+
+async def do_reflect_services_fn(addc: AioDaqDataClient, host):
+    print("-------------- ReflectServices --------------")
+    try:
+        services = await addc.reflect_services(host)
+        print(services)
+    except ValueError as e:
+        print(f"Error reflecting services: {e}")
+
+async def do_init_fn(addc, host, hp_io_cfg, timeout=15.0):
+    print("-------------- InitHpIo --------------")
+    if host is None:
+        print(f"Initializing hp_io thread on all hosts")
+    else:
+        print(f"Initializing hp_io thread on {host=}")
+    await addc.init_hp_io(host, hp_io_cfg, timeout=timeout)
+
+def parse_log_level(log_level):
+    if log_level == 'debug':
+        return logging.DEBUG
+    elif log_level == 'info':
+        return logging.INFO
+    elif log_level == 'warning':
+        return logging.WARNING
+    elif log_level == 'error':
+        return logging.ERROR
+    elif log_level == 'critical':
+        return logging.CRITICAL
+    else:
+        raise ValueError(f"Invalid log level: {log_level}")
+
+def load_hp_io_cfg(args):
     hp_io_cfg = None
-    do_init_hp_io = False
+    do_init = False
     if args.init_sim or args.cfg_path is not None:
-        do_init_hp_io = True
+        do_init = True
         if args.init_sim:
             hp_io_cfg_path = f'{CFG_DIR}/hp_io_config_simulate.json'
         elif args.cfg_path is not None:
@@ -91,101 +136,73 @@ def run_demo_api(args):
         else:
             with open(hp_io_cfg_path, "r") as f:
                 hp_io_cfg = json.load(f)
+    return hp_io_cfg, do_init
 
+async def run_demo_api(args):
+    do_ping = args.ping
     do_list_hosts = args.list_hosts
     do_reflect_services = args.reflect_services
-    host = args.host
-    do_ping = args.ping
-    module_ids = args.module_ids
-
-    # parse args for plotting
+    hp_io_cfg, do_init = load_hp_io_cfg(args)
     do_plot = args.plot_view or args.plot_phdist
-    if args.plot_phdist:
-        if len(module_ids) == 0:
-            print("no module_ids specified, using data from all modules to make ph distribution")
-        elif len(module_ids) > 1:
-            print("more than one module_id specified to make ph distribution")
-    # parse log level
-    log_level = args.log_level
-    if log_level == 'debug':
-        log_level = logging.DEBUG
-    elif log_level == 'info':
-        log_level = logging.INFO
-    elif log_level == 'warning':
-        log_level = logging.WARNING
-    elif log_level == 'error':
-        log_level = logging.ERROR
-    elif log_level == 'critical':
-        log_level = logging.CRITICAL
 
-    print(args.daq_config_path, args.net_config_path)
-    try:
-        with DaqDataClient(args.daq_config_path, args.net_config_path, log_level=log_level) as ddc:
-            if do_ping:
-                if host is None:
-                    raise ValueError("--host must be specified for --ping")
-                if ddc.ping(host):
-                    print(f"PING {host=}: [green] success [/green]")
-                else:
-                    print(f"PING {host=}: [red] failed [/red]")
+    refresh_period = args.refresh_period
+    host = args.host
+    module_ids = args.module_ids
+    log_level = parse_log_level(args.log_level)
+    async with AioDaqDataClient(args.daq_config_path, args.net_config_path, log_level=log_level) as addc:
+        if do_ping:
+            await do_ping_fn(addc, host)
 
-            valid_daq_hosts = ddc.get_valid_daq_hosts()
+        if do_list_hosts:
+            await do_list_hosts_fn(addc)
 
-            if do_list_hosts:
-                print(f"DAQ host status (True = valid, False = invalid):")
-                pprint(ddc.get_daq_host_status(), expand_all=True)
+        if do_reflect_services:
+            await do_reflect_services_fn(addc, host)
 
-            if do_reflect_services:
-                print("-------------- ReflectServices --------------")
-                if host is not None and host not in valid_daq_hosts:
-                    raise ValueError(f"Invalid host: {host}. Valid hosts: {valid_daq_hosts}")
-                services = ddc.reflect_services(host)
-                print(services)
+        if do_init:
+            # concurrently send init commands to all DAQ nodes
+            await do_init_fn(addc, host, hp_io_cfg)
 
-            if do_init_hp_io:
-                print("-------------- InitHpIo --------------")
-                # check host
-                if host is not None and host not in valid_daq_hosts:
-                    raise ValueError(f"Invalid host: {host}. Valid hosts: {valid_daq_hosts}")
-                success = ddc.init_hp_io(host, hp_io_cfg, timeout=15.0)
+        if do_plot:
+            valid_daq_hosts = addc.get_valid_daq_hosts()
+            if host is not None and host not in valid_daq_hosts:
+                raise ValueError(f"Invalid host: {host}. Valid hosts: {valid_daq_hosts}")
 
-            if do_plot:
-                refresh_period = args.refresh_period
-                print("-------------- StreamImages --------------")
-                # check host
-                if host is not None and host not in valid_daq_hosts:
-                    raise ValueError(f"Invalid host: {host}. Valid hosts: {valid_daq_hosts}")
-                if args.plot_view:
+            plot_tasks = []
+            if args.plot_view:
+                plot_view_task = asyncio.create_task(
                     run_pano_image_preview(
-                        ddc,
+                        addc,
                         host,
                         stream_movie_data=True,
                         stream_pulse_height_data=True,
                         update_interval_seconds=refresh_period,  # np.random.uniform(1.0, 1.0),
-                        plot_update_interval=refresh_period * 0.9,
+                        plot_update_interval=refresh_period,
                         module_ids=module_ids,
                         wait_for_ready=True,
                     )
+                )
+                plot_tasks.append(plot_view_task)
 
-                elif args.plot_phdist:
+            if args.plot_phdist:
+                plot_phdist_task = asyncio.create_task(
                     run_pulse_height_distribution(
-                        ddc,
+                        addc,
                         host,
                         plot_update_interval=refresh_period,
                         durations_seconds=(10, 60, 600),
                         module_ids=module_ids,
                     )
-                else:
-                    raise ValueError("Invalid plot")
-    except grpc.RpcError as rpc_error:
-        print(f"{type(rpc_error)}\n{repr(rpc_error)}")
-
-
-def signal_handler(signum, frame):
-    print(f"Signal {signum} received, exiting...")
-    sys.exit(0)
+                )
+                plot_tasks.append(plot_phdist_task)
+            # use gather to concurrently do different plots
+            await asyncio.gather(*plot_tasks)
 
 if __name__ == "__main__":
+    def signal_handler(signum, frame):
+        print(f"Signal {signum} received, exiting...")
+        sys.exit(0)
+
     for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:
         signal.signal(sig, signal_handler)
 
@@ -271,7 +288,11 @@ if __name__ == "__main__":
         default=default_log_level
     )
 
-    # run(host="10.0.0.60")
     args = parser.parse_args()
-    # run_demo_grpc(args)
-    run_demo_api(args)
+    try:
+        asyncio.run(run_demo_api(args))
+    except Exception as e:
+        print(f"Error: '{e}'")
+        print("Exiting...")
+        # raise e
+        sys.exit(1)
