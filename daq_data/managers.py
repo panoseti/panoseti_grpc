@@ -227,7 +227,8 @@ class ClientManager:
             if self._shutdown_event.is_set():
                 await context.abort(grpc.StatusCode.CANCELLED, "Server is shutting down.")
             if self._writer_active or self._cancel_readers_event.is_set():
-                await context.abort(grpc.StatusCode.UNAVAILABLE, "Server is being configured, please try again soon.")
+                await context.abort(grpc.StatusCode.UNAVAILABLE, "Server is being configured, please try again soon."
+                                                                 f"{self._writer_active=} {self._cancel_readers_event.is_set()=}_")
             if not hp_io_task_manager.is_valid():
                 await context.abort(grpc.StatusCode.FAILED_PRECONDITION,
                                     "hp_io task is not initialized or has become invalid.")

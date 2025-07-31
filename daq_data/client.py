@@ -179,6 +179,12 @@ class DaqDataClient:
             exit_ok = True
         elif isinstance(value, SystemExit) and value.code == 0:
             exit_ok = True
+        elif isinstance(value, grpc.FutureCancelledError):
+            print("\nStream cancelled.")
+            exit_ok = True
+        elif isinstance(value, grpc.RpcError):
+            print(f"\nStream failed with RPC error: {value}")
+            exit_ok = True
 
         if exit_ok:
             self.logger.debug(f"{etype=}, {value=}, {traceback=}")
@@ -580,14 +586,23 @@ class AioDaqDataClient:
 
     async def __aexit__(self, etype, value, traceback):
         """Closes all open gRPC channels."""
+        tasks = []
         for daq_host, daq_node in self.daq_nodes.items():
             if daq_node.get('channel'):
-                await daq_node['channel'].close()
+                task = asyncio.create_task(daq_node['channel'].close())
+                tasks.append(task)
                 self.logger.debug(f"DaqDataClient closed channel to {daq_node['connection_target']}")
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         exit_ok = False
         if value is None or isinstance(value, KeyboardInterrupt):
             exit_ok = True
         elif isinstance(value, SystemExit) and value.code == 0:
+            exit_ok = True
+        elif isinstance(value, asyncio.CancelledError):
+            print("\nStream cancelled.")
+            exit_ok = True
+        elif isinstance(value, grpc.aio.AioRpcError):
+            print(f"\nStream failed with RPC error: {value}")
             exit_ok = True
 
         if exit_ok:
@@ -758,26 +773,25 @@ class AioDaqDataClient:
                 finally:
                     await queue.put(None)  # Sentinel to indicate stream closure
 
-            # Start a task for each stream to forward its data to the queue
             tasks = [asyncio.create_task(_forward_stream(s)) for s in streams]
+            try:
+                # Start a task for each stream to forward its data to the queue
+                finished_streams = 0
+                while finished_streams < len(streams):
+                    response = await queue.get()
+                    if response is None:
+                        finished_streams += 1
+                        continue
 
-            finished_streams = 0
-            while finished_streams < len(streams):
-                response = await queue.get()
-                if response is None:
-                    finished_streams += 1
-                    continue
-
-                if parse_pano_images:
-                    yield parse_pano_image(response.pano_image)
-                else:
-                    yield response
-
-            # Clean up tasks
-            for task in tasks:
-                task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-
+                    if parse_pano_images:
+                        yield parse_pano_image(response.pano_image)
+                    else:
+                        yield response
+            finally:
+                # Clean up tasks
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
         return response_generator()
 
     async def init_sim(self, hosts: List[str] or str, hp_io_sim_cfg_path=hp_io_config_simulate_path,
