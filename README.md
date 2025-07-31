@@ -22,8 +22,9 @@ pip install panoseti-grpc
 [//]: # (pip install -r requirements.txt)
 
 
-# Using the DaqDataClient API
-The `DaqDataClient` is a Python gRPC client interface for the PANOSETI DaqData service. It provides a user-friendly API for scientists and developers to connect to DAQ nodes and stream real-time image data for analysis and visualization.
+# Using the `DaqDataClient` API
+`DaqDataClient` is a Python API for the gRPC DaqData service, providing
+a simple interface for collecting real-time pulse-height and movie-mode data from an in-progress observing run.
 
 The client should be used as a [context manager](https://book.pythontips.com/en/latest/context_managers.html) to ensure network resources are handled correctly.
 
@@ -31,9 +32,9 @@ See [client.py](daq_data/client.py) for the implementation and [daq_data_client_
 
 ## Developing Real-Time Visualizations
 
-1. Define a visualization class.
-2. Implement an `update` method to modify the visualization given a new panoseti image.
-3. Follow the code pattern provided in [daq_data_client_demo.ipynb](daq_data_client_demo.ipynb) to receive data with the `DaqDataClient` API:
+1. Define a function or class for visualizing pulse-height and/or movie-mode data. In the example below, we have use the `PanoImagePreviewer` class for visualization ([code](daq_data/plot.py)).
+2. Implement an `update` method to modify the visualization given a new panoseti image. See [PanoImage Message Format](#panoimage-message-format) for details about the structure of each element yielded by `stream_images`.
+3. Follow the code patterns provided in [daq_data_client_demo.ipynb](daq_data_client_demo.ipynb) to stream images from the DAQ nodes to your visualization program.
 
 ```python
 from daq_data.client import DaqDataClient
@@ -298,6 +299,70 @@ with DaqDataClient(daq_config_path, network_config_path) as client:
             f"Type: {pano_image['type']}, "
             f"Timestamp: {pano_image['header']['pandas_unix_timestamp']}"
         )
+```
+
+## Using `AioDaqDataClient` 
+The `AioDaqDataClient` provides an asynchronous interface to the DaqData service, ideal for I/O bound applications, such as simple visualizations or distribution plotting. 
+It is built on [grpc.aio](https://grpc.github.io/grpc/python/grpc_asyncio.html) and is designed for use within an [asyncio](https://docs.python.org/3/library/asyncio.html) event loop.
+
+The API methods mirror the synchronous client, but they are coroutines and must be called with `await`. The client should be used as an asynchronous context manager (`async with`).
+
+### Key Differences:
+
+- Asynchronous calls: All RPC methods (e.g., `ping`, `init_sim`, `stream_images`) are async and must be awaited.
+
+- Async context manager: The client must be entered using `async with`.
+
+- Async iteration: The `stream_images` method returns an `AsyncGenerator`, which must be iterated over with `async for`.
+
+## Example: Asynchronous Workflow
+This example demonstrates how to use the AioDaqDataClient to initialize a simulated run and stream data asynchronously. This pattern is ideal for applications that need to handle concurrent operations efficiently, such as a real-time dashboard or a multi-threaded analysis script.
+
+```python
+import asyncio
+from daq_data.client import AioDaqDataClient
+
+async def main():
+    # 0. Specify configuration file paths
+    daq_config_path = 'daq_data/config/daq_config_grpc_simulate.json'
+    network_config_path = 'daq_data/config/network_config_grpc_simulate.json'
+
+    # 1. Connect to all DAQ nodes asynchronously
+    async with AioDaqDataClient(daq_config_path, network_config_path) as client:
+        # 2. Get valid hosts
+        valid_hosts = await client.get_valid_daq_hosts()
+        if not valid_hosts:
+            raise RuntimeError("No valid DAQ hosts found.")
+        print(f"Connected to: {valid_hosts}")
+
+        # 3. Initialize servers in simulation mode
+        all_init_success = await client.init_sim(valid_hosts)
+        if not all_init_success:
+            raise RuntimeError("Failed to initialize one or more servers.")
+        print("All servers initialized for simulation.")
+
+        # 4. Asynchronously stream data
+        pano_image_stream = client.stream_images(
+            hosts=valid_hosts,
+            stream_movie_data=True,
+            stream_pulse_height_data=True,
+            update_interval_seconds=1.0,
+        )
+
+        # 5. Process the stream with an async for loop
+        print("Starting async data stream. Press Ctrl+C to stop.")
+        async for pano_image in pano_image_stream:
+            print(
+                f"Image: Module {pano_image['module_id']}, "
+                f"Type: {pano_image['type']}, "
+                f"Timestamp: {pano_image['header']['pandas_unix_timestamp']}"
+            )
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Stream stopped.")
 ```
 
 ## Using the DaqData Client CLI

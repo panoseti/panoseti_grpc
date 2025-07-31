@@ -218,7 +218,7 @@ class HpIoManager:
         async_watcher = awatch(
             *watch_paths,
             stop_event=self.stop_io,
-            # debounce=,
+            debounce=50,
             recursive=True,
             poll_delay_ms=update_interval_ms,
             force_polling=True
