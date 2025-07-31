@@ -213,8 +213,8 @@ class ClientManager:
             yield
         finally:
             async with self._lock:
-                self._writer_active = False
                 self._cancel_readers_event.clear()  # Allow new readers
+                self._writer_active = False
                 self.logger.debug("Writer lock released.")
 
     @asynccontextmanager

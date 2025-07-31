@@ -24,7 +24,7 @@
         {
             "ip_addr": "192.168.3.84",
             "port_forwarding": {
-                "status": false,
+                "status": true,
                 "gw_ip": "localhost",
                 "port": 22
             }

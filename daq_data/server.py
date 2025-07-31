@@ -102,7 +102,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 f"Stream configured for {peer} with interval {reader_state.config['update_interval_seconds']}s")
 
             # Main streaming loop
-            while not context.cancelled() and not reader_state.cancel_reader_event.is_set() and not reader_state.shutdown_event.is_set():
+            while not (context.cancelled() or reader_state.cancel_reader_event.is_set() or reader_state.shutdown_event.is_set()):
                 try:
                     # Wait for an image from the HpIoManager's broadcast
                     pano_image = await asyncio.wait_for(
