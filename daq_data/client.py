@@ -41,15 +41,17 @@ from panoseti_util import control_utils
 hp_io_config_simulate_path = "daq_data/config/hp_io_config_simulate.json"
 
 class DaqDataClient:
-    """
-    A gRPC client for interacting with the PANOSETI DaqData service.
+    """A synchronous gRPC client for the PANOSETI DaqData service.
 
-    This client facilitates communication with gRPC servers running on PANOSETI DAQ (Data Acquisition)
-    nodes. It provides methods to ping servers, initialize the data-directory monitoring thread (`hp_io`),
-    and stream real-time image data for Pulse-Height and Movie-Mode products.
+    This client provides methods to interact with one or more DAQ nodes,
+    including pinging for health checks, initializing the data flow from the
+    observatory's data directory (`hp_io`), and streaming real-time image data.
 
-    The client is designed to be used as a context manager to ensure that gRPC channels
-    are properly opened and closed.
+    It is designed to be used as a context manager, which automatically handles
+    the setup and teardown of gRPC connections:
+
+    with DaqDataClient(...) as client:
+        client.ping(host)
     """
     GRPC_PORT = 50051
 
@@ -59,15 +61,25 @@ class DaqDataClient:
         network_config: Union[str, Path, Dict[str, Any]],
         log_level: int =logging.INFO
     ):
-        """
-        Initializes the DaqDataClient with the configuration for one or more DAQ nodes.
+        """Initializes the DaqDataClient with DAQ and network configurations.
 
         Args:
-            cfg_dir (str): The path to the directory containing the config files daq_config.json and network_config.json.
-            log_level (int): The logging verbosity level (e.g., logging.INFO, logging.DEBUG).
+            daq_config: The DAQ system configuration. Can be a path to a
+                `daq_config.json` file or a pre-loaded dictionary. This
+                configuration must contain a 'daq_nodes' key with a list of DAQ
+                node objects.
+            network_config: The network configuration for port forwarding. Can be
+                a path to a `network_config.json` file or a pre-loaded
+                dictionary. If provided, it maps DAQ node IPs to real host IPs.
+                Can be None if no port forwarding is needed.
+            log_level: The logging verbosity level for the client's logger
+                (e.g., `logging.INFO`, `logging.DEBUG`).
 
         Raises:
-            ValueError: If the 'daq_nodes' list is empty, missing, or improperly formatted.
+            FileNotFoundError: If a path provided for `daq_config` or
+                `network_config` does not exist.
+            ValueError: If `daq_config` or `network_config` is invalid,
+                malformed, or missing required keys like 'daq_nodes'.
         """
         self.logger = make_rich_logger("daq_data.client", level=log_level)
 
@@ -445,15 +457,18 @@ class DaqDataClient:
 
 
 class AioDaqDataClient:
-    """
-    An asynchronous gRPC client for interacting with the PANOSETI DaqData service.
+    """An asynchronous gRPC client for the PANOSETI DaqData service.
 
-    This client facilitates non-blocking communication with gRPC servers running on PANOSETI
-    DAQ nodes. It provides async methods to ping servers, initialize the data-directory
-    monitoring thread (`hp_io`), and stream real-time image data.
+    Built on `grpc.aio`, this client provides non-blocking methods to interact
+    with DAQ nodes, including pinging for health checks, initializing the data
+    flow (`hp_io`), and streaming real-time image data.
 
-    The client is designed to be used as an asynchronous context manager to ensure
-    that gRPC channels are properly opened and closed.
+    It is designed for use within an `asyncio` event loop and as an
+    asynchronous context manager, which automatically handles the setup and
+    teardown of gRPC connections:
+
+    async with AioDaqDataClient(...) as client:
+        await client.ping(host)
     """
     GRPC_PORT = 50051
 
@@ -463,15 +478,25 @@ class AioDaqDataClient:
             network_config: Union[str, Path, Dict[str, Any]],
             log_level: int = logging.INFO
     ):
-        """
-        Initializes the AioDaqDataClient with the configuration for one or more DAQ nodes.
+        """Initializes the AioDaqDataClient with DAQ and network configurations.
 
         Args:
-            cfg_dir (str): The path to the directory containing the config files daq_config.json and network_config.json.
-            log_level (int): The logging verbosity level (e.g., logging.INFO, logging.DEBUG).
+            daq_config: The DAQ system configuration. Can be a path to a
+                `daq_config.json` file or a pre-loaded dictionary. This
+                configuration must contain a 'daq_nodes' key with a list of DAQ
+                node objects.
+            network_config: The network configuration for port forwarding. Can be
+                a path to a `network_config.json` file or a pre-loaded
+                dictionary. If provided, it maps DAQ node IPs to real host IPs.
+                Can be None if no port forwarding is needed.
+            log_level: The logging verbosity level for the client's logger
+                (e.g., `logging.INFO`, `logging.DEBUG`).
 
         Raises:
-            ValueError: If the 'daq_nodes' list is empty, missing, or improperly formatted.
+            FileNotFoundError: If a path provided for `daq_config` or
+                `network_config` does not exist.
+            ValueError: If `daq_config` or `network_config` is invalid,
+                malformed, or missing required keys like 'daq_nodes'.
         """
         self.logger = make_rich_logger("daq_data.client", level=log_level)
 
