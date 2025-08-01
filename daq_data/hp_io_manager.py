@@ -58,7 +58,7 @@ class ModuleState:
         self.run_path: Optional[Path] = None
         self.dp_configs: Dict[str, DataProductConfig] = get_dp_config(data_products)
 
-    async def initialize(self, timeout: float = 2.0) -> bool:
+    async def initialize(self, timeout: float = 1.0) -> bool:
         """Finds the active run directory and initializes data product configurations."""
         run_pattern = self.data_dir / f"module_{self.module_id}" / "obs_*"
         runs = glob(str(run_pattern))
@@ -84,7 +84,7 @@ class ModuleState:
         while time.monotonic() - start_time < timeout:
             files = glob(dp_config.glob_pat)
             if not files:
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.25)
                 continue
 
             latest_file = Path(sorted(files, key=os.path.getmtime)[-1])
@@ -99,7 +99,7 @@ class ModuleState:
                     return True
             except (FileNotFoundError, ValueError):
                 return False
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.25)
         return False
 
 
@@ -240,26 +240,21 @@ class HpIoManager:
         watch_paths = list(set(m.run_path for m in self.modules.values() if m.run_path))
         if not watch_paths: return
 
-        MIN_UPDATE_MS = 1
-        # Time of the last read operation
-        # last_read_time = 0
-
-        update_interval_ms = max(int(self.update_interval_seconds * 0.25 * 1000), MIN_UPDATE_MS)
+        MIN_UPDATE_MS = 5
+        update_interval_ms = max(int(self.update_interval_seconds * 1000), MIN_UPDATE_MS)
+        self.logger.info(f"DLSKFJHSFDLKJ{watch_paths=}")
         async_watcher = awatch(
             *watch_paths,
             stop_event=self.stop_io,
             debounce=update_interval_ms,
+            step=MIN_UPDATE_MS,
             recursive=True,
             poll_delay_ms=update_interval_ms,
             force_polling=True
         )
-        # watch()
+
         async for changes in async_watcher:
-            # current_time = time.monotonic()
-            # Check if T milliseconds have passed since the last read
-            # if (current_time - last_read_time) >= self.update_interval_seconds:
             await self.change_queue.put(changes)
-                # last_read_time = current_time
 
     async def _processing_loop(self):
         """Consumer: Processes file changes from the queue and handles client deadlines."""
@@ -281,7 +276,7 @@ class HpIoManager:
             now = time.monotonic()
             ready_readers, _, _ = self._get_ready_readers(now)
             if ready_readers:
-                self._broadcast_data(ready_readers)
+                self._broadcast_data(ready_readers, now)
 
             if now - last_daq_check >= 10:
                 if not await is_daq_active(self.simulate_daq, self.sim_cfg):
@@ -403,7 +398,7 @@ class HpIoManager:
                 ready_list.append(rs)
         return ready_list, 0, 0
 
-    def _broadcast_data(self, ready_readers):
+    def _broadcast_data(self, ready_readers, now):
         """Puts the latest cached data onto the queues of ready clients."""
         for rs in ready_readers:
             try:
@@ -422,6 +417,6 @@ class HpIoManager:
             except asyncio.QueueFull:
                 self.logger.warning(f"Reader queue full for client {rs.client_ip}.")
                 rs.enqueue_timeouts += 1
-            rs.last_update_t = time.monotonic()
+            rs.last_update_t = now
 
 
