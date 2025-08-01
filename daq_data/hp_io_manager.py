@@ -160,11 +160,6 @@ class HpIoManager:
         self.latest_data_cache: Dict[int, Dict[str, PanoImage]] = defaultdict(lambda: {'ph': None, 'movie': None})
         self.change_queue = asyncio.Queue()
 
-        self.test_mode_files = [("movie", Path("ramdisk/movie.pff")), ("ph", Path("ramdisk/ph.pff"))]
-        self._last_mtime = {}
-        for key, p in self.test_mode_files:
-            self._last_mtime[(key, str(p))] = 0
-
     async def run(self):
         """Main entry point to start the monitoring and broadcasting task."""
         self.logger.info("HpIoManager task starting.")
@@ -241,44 +236,25 @@ class HpIoManager:
         return True
 
     async def _file_watcher(self):
-        """
-        test mode watcher: Polls the ramdisk/ directory for changes to movie.pff and ph.pff.
-        """
-        poll_interval = 0.25
-        while not self.stop_io.is_set():
-            # self.test_mode_files = [("movie", Path("ramdisk/movie.pff")), ("ph", Path("ramdisk/ph.pff"))]
-            for dp_name, p in self.test_mode_files:
-                try:
-                    mtime = os.path.getmtime(p)
-                except FileNotFoundError:
-                    continue
-                last_mtime = self._last_mtime.get((dp_name, str(p)), 0)
-                if mtime > last_mtime:
-                    # Notify processing loop of file change
-                    await self.change_queue.put({('modified', str(p))})
-                    self._last_mtime[(dp_name, str(p))] = mtime
-            await asyncio.sleep(poll_interval)
+        """Producer: Watches for file changes and puts them on the queue."""
+        watch_paths = list(set(m.run_path for m in self.modules.values() if m.run_path))
+        if not watch_paths: return
 
-    # async def _file_watcher(self):
-    #     """Producer: Watches for file changes and puts them on the queue."""
-    #     watch_paths = list(set(m.run_path for m in self.modules.values() if m.run_path))
-    #     if not watch_paths: return
-    #
-    #     MIN_UPDATE_MS = 5
-    #     update_interval_ms = max(int(self.update_interval_seconds * 1000), MIN_UPDATE_MS)
-    #     self.logger.info(f"DLSKFJHSFDLKJ{watch_paths=}")
-    #     async_watcher = awatch(
-    #         *watch_paths,
-    #         stop_event=self.stop_io,
-    #         debounce=update_interval_ms,
-    #         step=MIN_UPDATE_MS,
-    #         recursive=True,
-    #         poll_delay_ms=update_interval_ms,
-    #         force_polling=True
-    #     )
-    #
-    #     async for changes in async_watcher:
-    #         await self.change_queue.put(changes)
+        MIN_UPDATE_MS = 1
+        update_interval_ms = max(int(self.update_interval_seconds * 1000), MIN_UPDATE_MS)
+        self.logger.info(f"DLSKFJHSFDLKJ{watch_paths=}")
+        async_watcher = awatch(
+            *watch_paths,
+            stop_event=self.stop_io,
+            debounce=update_interval_ms,
+            step=MIN_UPDATE_MS,
+            recursive=True,
+            poll_delay_ms=update_interval_ms,
+            force_polling=True
+        )
+
+        async for changes in async_watcher:
+            await self.change_queue.put(changes)
 
     async def _processing_loop(self):
         """Consumer: Processes file changes from the queue and handles client deadlines."""
