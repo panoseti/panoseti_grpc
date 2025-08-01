@@ -34,7 +34,7 @@ from collections import defaultdict
 
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import ParseDict
-from watchfiles import awatch, Change
+from watchfiles import awatch, Change, watch
 
 from .daq_data_pb2 import PanoImage
 from .resources import get_dp_config, is_daq_active
@@ -164,23 +164,49 @@ class HpIoManager:
         """Main entry point to start the monitoring and broadcasting task."""
         self.logger.info("HpIoManager task starting.")
         self.valid.clear()
+
+        watcher_task = None
+        processing_task = None
+
         try:
             if not await self._initialize_all_modules():
                 self.logger.error("HpIoManager failed to initialize any modules. Exiting.")
                 return
-            self.valid.set()
 
+            self.valid.set()
             watcher_task = asyncio.create_task(self._file_watcher())
             processing_task = asyncio.create_task(self._processing_loop())
+
             await asyncio.gather(watcher_task, processing_task)
 
         except Exception as err:
             self.logger.error(f"HpIoManager task encountered a fatal exception: {err}", exc_info=True)
-            if 'watcher_task' in locals() and not watcher_task.done(): watcher_task.cancel()
-            if 'processing_task' in locals() and not processing_task.done(): processing_task.cancel()
+            if watcher_task and not watcher_task.done(): watcher_task.cancel()
+            if processing_task and not processing_task.done(): processing_task.cancel()
             raise
+
         finally:
             self.valid.clear()
+
+            self.logger.info("Closing all open file handles...")
+            if self.modules:
+                for module in self.modules.values():
+                    if not module.dp_configs:
+                        continue
+                    for dp_config in module.dp_configs.values():
+                        if dp_config.f:
+                            try:
+                                # Use a synchronous call here
+                                dp_config.f.close()
+                                self.logger.debug(
+                                    f"Closed file for {dp_config.name} in module {module.module_id}"
+                                )
+                            except Exception as e:
+                                # Log error but continue cleanup to not hide the original exception
+                                self.logger.error(
+                                    f"Error closing file for {dp_config.name} in module {module.module_id}: {e}"
+                                )
+
             self.logger.info("HpIoManager task exited.")
 
     async def _initialize_all_modules(self) -> bool:
@@ -214,20 +240,26 @@ class HpIoManager:
         watch_paths = list(set(m.run_path for m in self.modules.values() if m.run_path))
         if not watch_paths: return
 
-        MIN_UPDATE_MS = 10
-        update_interval_ms = max(int(self.update_interval_seconds * 1000), MIN_UPDATE_MS)
+        MIN_UPDATE_MS = 1
+        # Time of the last read operation
+        # last_read_time = 0
+
+        update_interval_ms = max(int(self.update_interval_seconds * 0.25 * 1000), MIN_UPDATE_MS)
         async_watcher = awatch(
             *watch_paths,
             stop_event=self.stop_io,
             debounce=update_interval_ms,
-            step=MIN_UPDATE_MS,
             recursive=True,
             poll_delay_ms=update_interval_ms,
             force_polling=True
         )
-
+        # watch()
         async for changes in async_watcher:
+            # current_time = time.monotonic()
+            # Check if T milliseconds have passed since the last read
+            # if (current_time - last_read_time) >= self.update_interval_seconds:
             await self.change_queue.put(changes)
+                # last_read_time = current_time
 
     async def _processing_loop(self):
         """Consumer: Processes file changes from the queue and handles client deadlines."""
@@ -249,7 +281,7 @@ class HpIoManager:
             now = time.monotonic()
             ready_readers, _, _ = self._get_ready_readers(now)
             if ready_readers:
-                self._broadcast_data(ready_readers, now)
+                self._broadcast_data(ready_readers)
 
             if now - last_daq_check >= 10:
                 if not await is_daq_active(self.simulate_daq, self.sim_cfg):
@@ -273,61 +305,93 @@ class HpIoManager:
                     break
 
     async def _handle_file_change(self, filepath: Path, module: ModuleState, dp_config: DataProductConfig):
-        """Handles a file change event, including logic for file rotation."""
-        current_seqno = _parse_seqno(dp_config.current_filepath.name) if dp_config.current_filepath else -1
-        new_seqno = _parse_seqno(filepath.name)
+        """
+        Handles a file change event by fetching the latest frame using an optimized,
+        stateful approach.
+        """
+        header, img, frame_idx = await self._fetch_latest_frame(filepath, dp_config)
 
-        # If the new file has a higher sequence number, it's a rollover.
-        if new_seqno > current_seqno:
-            self.logger.debug(f"Module {module.module_id}, DP {dp_config.name}: Rollover detected. "
-                             f"Switching from seqno {current_seqno} to {new_seqno}.")
-            dp_config.current_filepath = filepath
-            dp_config.last_known_filesize = 0  # Reset size for the new file.
+        if header and img is not None:
+            pano_image = PanoImage(
+                type=dp_config.pano_image_type,
+                header=ParseDict(header, Struct()),
+                image_array=img,
+                shape=dp_config.image_shape,
+                bytes_per_pixel=dp_config.bytes_per_pixel,
+                file=filepath.name,
+                frame_number=frame_idx,
+                module_id=module.module_id,
+            )
 
-        # Only process if the change is on the currently active file.
-        if filepath != dp_config.current_filepath:
-            return
+            if dp_config.is_ph:
+                self.latest_data_cache[module.module_id]['ph'] = pano_image
+            else:
+                self.latest_data_cache[module.module_id]['movie'] = pano_image
 
+    async def _fetch_latest_frame(self, filepath: Path, dp_config: DataProductConfig) -> Tuple[
+        Optional[dict], Optional[tuple], int]:
+        """
+        Read the last complete frame from a PFF file.
+        It keeps the file handle open between calls and only reads new data.
+        All blocking I/O is run in a separate thread to not block the asyncio event loop.
+        """
         try:
-            current_size = os.path.getsize(filepath)
-        except FileNotFoundError:
-            dp_config.last_known_filesize = 0
-            return
+            # --- File Handle Management ---
+            # If the file path has changed (e.g., seqno rollover), close the old file and open the new one.
+            if filepath != dp_config.current_filepath:
+                if dp_config.f:
+                    await asyncio.to_thread(dp_config.f.close)
+                dp_config.f = await asyncio.to_thread(open, filepath, 'rb')
+                dp_config.current_filepath = filepath
+                dp_config.last_known_filesize = 0
+                dp_config.last_frame_idx = -1
 
-        if 0 < dp_config.frame_size <= (current_size - dp_config.last_known_filesize):
-            dp_config.last_known_filesize = current_size
-            header, img, frame_idx = self._fetch_latest_frame(filepath, dp_config)
-            if header and img is not None:
-                pano_image = PanoImage(
-                    type=dp_config.pano_image_type,
-                    header=ParseDict(header, Struct()),
-                    image_array=img,
-                    shape=dp_config.image_shape,
-                    bytes_per_pixel=dp_config.bytes_per_pixel,
-                    file=filepath.name,
-                    frame_number=frame_idx,
-                    module_id=module.module_id,
-                )
-                if dp_config.is_ph:
-                    self.latest_data_cache[module.module_id]['ph'] = pano_image
-                else:
-                    self.latest_data_cache[module.module_id]['movie'] = pano_image
+            # If the file handle is not open for any reason, open it.
+            if dp_config.f is None:
+                dp_config.f = await asyncio.to_thread(open, filepath, 'rb')
+                dp_config.current_filepath = filepath
 
-    def _fetch_latest_frame(self, filepath: Path, dp_config: DataProductConfig):
-        """Reads the last complete frame from a PFF file."""
-        try:
-            with open(filepath, 'rb') as f:
-                fsize = os.path.getsize(filepath)
-                nframes = fsize // dp_config.frame_size
-                if nframes > 0:
-                    last_frame_idx = nframes - 1
-                    f.seek(last_frame_idx * dp_config.frame_size)
-                    header_str = pff.read_json(f)
-                    img = pff.read_image(f, dp_config.image_shape[0], dp_config.bytes_per_pixel)
-                    if header_str and img is not None:
-                        return json.loads(header_str), img, last_frame_idx
+            # --- Read New Data ---
+            # Get current file size from the open file descriptor
+            current_size = await asyncio.to_thread(os.fstat, dp_config.f.fileno())
+            current_size = current_size.st_size
+
+            # Only proceed if the file has grown and a frame size is known
+            if current_size <= dp_config.last_known_filesize or dp_config.frame_size == 0:
+                return None, None, -1
+
+            nframes = current_size // dp_config.frame_size
+            if nframes <= 0 or nframes <= dp_config.last_frame_idx:
+                return None, None, -1
+
+            # --- Read and Parse the Latest Frame ---
+            new_frame_idx = nframes - 1
+
+            def _blocking_read():
+                dp_config.f.seek(new_frame_idx * dp_config.frame_size)
+                header_str = pff.read_json(dp_config.f)
+                img = pff.read_image(dp_config.f, dp_config.image_shape[0], dp_config.bytes_per_pixel)
+                if header_str and img is not None:
+                    return json.loads(header_str), img
+                return None, None
+
+            # Run the blocking read operation in a separate thread
+            result = await asyncio.to_thread(_blocking_read)
+            if result:
+                header, img = result
+                if header and img is not None:
+                    # Update state only on successful read
+                    dp_config.last_known_filesize = current_size
+                    dp_config.last_frame_idx = new_frame_idx
+                    return header, img, new_frame_idx
+
         except (FileNotFoundError, ValueError) as e:
             self.logger.warning(f"Could not read latest frame from {filepath}: {e}")
+            # Reset file handle state on error
+            if dp_config.f:
+                await asyncio.to_thread(dp_config.f.close)
+                dp_config.f = None
+
         return None, None, -1
 
     def _get_ready_readers(self, now: float):
@@ -339,7 +403,7 @@ class HpIoManager:
                 ready_list.append(rs)
         return ready_list, 0, 0
 
-    def _broadcast_data(self, ready_readers, now):
+    def _broadcast_data(self, ready_readers):
         """Puts the latest cached data onto the queues of ready clients."""
         for rs in ready_readers:
             try:
@@ -358,6 +422,6 @@ class HpIoManager:
             except asyncio.QueueFull:
                 self.logger.warning(f"Reader queue full for client {rs.client_ip}.")
                 rs.enqueue_timeouts += 1
-            rs.last_update_t = now
+            rs.last_update_t = time.monotonic()
 
 

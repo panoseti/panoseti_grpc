@@ -2,7 +2,7 @@
 """Dataclasses for managing DaqData server state."""
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, IO
 import asyncio
 import time
 from pathlib import Path
@@ -62,4 +62,6 @@ class DataProductConfig:
     glob_pat: str = ""
     last_known_filesize: int = 0
     current_filepath: Optional[Path] = None
+    f: Optional[IO[bytes]] = None  # Cached file handle
+    last_frame_idx: int = -1  # Index of the last successfully read frame
 
