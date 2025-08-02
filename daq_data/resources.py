@@ -127,17 +127,26 @@ def make_rich_logger(name: str, level=logging.INFO) -> logging.Logger:
 
     return logger
 
-def parse_pano_timestamps(pano_image: PanoImage) -> Dict[str, Any]:
+def pkt_to_unix_decimal(tv_sec, tv_usec):
+    usec_factor = decimal.Decimal(str(1e6))
+    return tv_sec + (tv_usec / usec_factor)
+
+def parse_pano_timestamps(pano_image: PanoImage, do_wr=False) -> Dict[str, Any]:
     """Parse PanoImage header to get nanosecond-precision timestamps."""
     h = MessageToDict(pano_image.header)
     td = {}
     # Add nanosecond-precision Pandas Timestamp from panoseti packet timing
     if pano_image.shape == [16, 16]:
         td['wr_unix_timestamp'] = pff.wr_to_unix_decimal(h['pkt_tai'], h['pkt_nsec'], h['tv_sec'])
+        td['pkt_unix_timestamp'] = pkt_to_unix_decimal(h['tv_sec'], h['tv_usec'])
     elif pano_image.shape == [32, 32]:
         h_q0 = h['quabo_0']
         td['wr_unix_timestamp'] = pff.wr_to_unix_decimal(h_q0['pkt_tai'], h_q0['pkt_nsec'], h_q0['tv_sec'])
-    nanoseconds_since_epoch = int(td['wr_unix_timestamp'] * decimal.Decimal('1e9'))
+        td['pkt_unix_timestamp'] = pkt_to_unix_decimal(h_q0['tv_sec'], h_q0['tv_usec'])
+    if do_wr:
+        nanoseconds_since_epoch = int(td['wr_unix_timestamp'] * decimal.Decimal('1e9'))
+    else:
+        nanoseconds_since_epoch = int(td['pkt_unix_timestamp'] * decimal.Decimal('1e9'))
     td['pandas_unix_timestamp'] = to_datetime(nanoseconds_since_epoch, unit='ns')
     return td
 
