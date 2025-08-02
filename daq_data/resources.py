@@ -128,6 +128,8 @@ def make_rich_logger(name: str, level=logging.INFO) -> logging.Logger:
     return logger
 
 def pkt_to_unix_decimal(tv_sec, tv_usec):
+    tv_sec = decimal.Decimal(str(tv_sec))
+    tv_usec = decimal.Decimal(str(tv_usec))
     usec_factor = decimal.Decimal(str(1e6))
     return tv_sec + (tv_usec / usec_factor)
 
