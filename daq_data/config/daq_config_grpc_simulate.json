@@ -19,6 +19,12 @@
             "user_name": "",
             "data_dir": "simulated_data_dir",
             "module_ids": "128-255"
+        },
+        {
+            "ip_addr": "unix:///tmp/daq_data.sock",
+            "user_name": "local client",
+            "data_dir": "",
+            "module_ids": ""
         }
     ]
 }

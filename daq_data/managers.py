@@ -3,47 +3,38 @@
 import os
 import asyncio
 from contextlib import asynccontextmanager
-
 from dataclasses import dataclass, field
 from typing import List, Dict
 import time
 import logging
 import urllib.parse
-
 from pathlib import Path
-from threading import Thread, Event
-
 import grpc
 
 from .resources import ReaderState
 from .hp_io_manager import HpIoManager
 from .sim_thread import daq_sim_thread_fn
 from .state import ReaderState, DataProductConfig
+from .simulate import SimulationManager
 
 class HpIoTaskManager:
     """Manages the lifecycle of the HpIoManager background task."""
-
     def __init__(self, logger: logging.Logger, server_cfg: dict, reader_states: List[ReaderState]):
         self.logger = logger
         self.server_cfg = server_cfg
-        self.reader_states = reader_states  # HpIoManager needs direct access to this
-
+        self.reader_states = reader_states
         self.hp_io_task: asyncio.Task or None = None
-        self.daq_sim_thread: Thread or None = None
-
-        self.stop_event = Event()
         self.hp_io_valid_event = asyncio.Event()
-        self.daq_sim_thread_valid_event = Event()
-
         self.active_data_products = set()
         self.hp_io_cfg = {}
         self.upload_queue = asyncio.Queue(maxsize=1000)
+        self.stop_event = asyncio.Event()
+        self.simulation_manager = SimulationManager(server_cfg, logger)
 
     def is_valid(self, verbose: bool = True) -> bool:
         """Checks if the hp_io task is running and considered valid."""
         if self.hp_io_task and not self.hp_io_task.done() and self.hp_io_valid_event.is_set():
             return True
-
         if verbose:
             if self.hp_io_task is None:
                 self.logger.warning("hp_io task is uninitialized")
@@ -55,8 +46,7 @@ class HpIoTaskManager:
 
     async def start(self, hp_io_cfg: dict) -> bool:
         """Creates a new hp_io task. Stops any existing task first."""
-        await self.stop()  # Ensure any previous task is stopped
-        self.stop_event.clear()
+        await self.stop() # Ensure any previous task is stopped
 
         while not self.upload_queue.empty():
             try:
@@ -72,30 +62,28 @@ class HpIoTaskManager:
         simulate_daq_cfg = self.server_cfg['simulate_daq_cfg']
         data_dir = hp_io_cfg['data_dir']
 
+        # Start simulation if configured
         if hp_io_cfg['simulate_daq']:
             data_dir = simulate_daq_cfg['files']['data_dir']
-            abs_data_dir = os.path.abspath(data_dir)
-            self.logger.info(f"Starting simulated DAQ flow to {abs_data_dir=}")
-            self.daq_sim_thread = Thread(
-                target=daq_sim_thread_fn,
-                args=(simulate_daq_cfg.copy(), hp_io_update_interval / 2, self.stop_event,
-                      self.daq_sim_thread_valid_event, self.logger)
-            )
-            self.daq_sim_thread.start()
-            await asyncio.to_thread(self.daq_sim_thread_valid_event.wait)
+            if not await self.simulation_manager.start(simulate_daq_cfg):
+                self.logger.error("Failed to start simulation manager.")
+                return False
+            for i in range(5):
+                if self.simulation_manager.data_flow_valid():
+                    self.logger.info("DAQ simulation started successfully.")
+                    break
+                self.logger.debug(f"Waiting for DAQ simulation thread to start. Try {i+1}/5...")
+                await asyncio.sleep(0.5)
         else:
             if not await asyncio.to_thread(os.path.exists, data_dir):
                 self.logger.error(f"Cannot start HpIo task: data_dir '{data_dir}' does not exist.")
                 return False
-            self.daq_sim_thread = None
 
         active_data_products_queue = asyncio.Queue()
         self.hp_io_task = asyncio.create_task(
             HpIoManager(
                 Path(data_dir),
-                self.server_cfg['valid_data_products'],
                 hp_io_update_interval,
-                hp_io_cfg['module_ids'],
                 hp_io_cfg['simulate_daq'],
                 self.reader_states,
                 self.stop_event,
@@ -110,9 +98,20 @@ class HpIoTaskManager:
 
         try:
             init_tasks = [self.hp_io_valid_event.wait(), active_data_products_queue.get()]
-            _, self.active_data_products = await asyncio.wait_for(asyncio.gather(*init_tasks), timeout=10)
+            _, self.active_data_products = await asyncio.wait_for(asyncio.gather(*init_tasks), timeout=3)
+
+            is_filesystem_mode = not hp_io_cfg['simulate_daq'] or \
+                (hp_io_cfg['simulate_daq'] and self.server_cfg['simulate_daq_cfg'].get('simulation_mode') == 'filesystem')
+
+            if is_filesystem_mode and len(self.active_data_products) == 0:
+                self.logger.error("hp_io task failed to initialize with active data products in filesystem mode.")
+                await self.stop()
+                return False
+
+            self.logger.info(f"hp_io task initialized with active_data_products={self.active_data_products}")
+
         except asyncio.TimeoutError:
-            self.logger.error(f"Timeout waiting for hp_io task to become valid.")
+            self.logger.error(f"Timeout waiting for hp_io task to become valid. ")
             await self.stop()
             return False
 
@@ -127,12 +126,16 @@ class HpIoTaskManager:
 
     async def stop(self):
         """Stops the hp_io task and any associated simulation thread gracefully."""
-        if not self.hp_io_task and not self.daq_sim_thread:
-            self.logger.debug("No hp_io task or DAQ sim thread to stop.")
+        if self.simulation_manager.data_flow_valid():
+            self.logger.info("Stopping DAQ simulation thread...")
+            await self.simulation_manager.stop()
+            self.logger.info("Successfully terminated DAQ simulation thread.")
+
+        if not self.hp_io_task:
             return
 
         self.stop_event.set()
-        if self.hp_io_task and not self.hp_io_task.done():
+        if not self.hp_io_task.done():
             self.logger.info("Stopping hp_io task...")
             try:
                 await self.hp_io_task
@@ -140,27 +143,19 @@ class HpIoTaskManager:
             except Exception as e:
                 self.logger.critical(f"Exception while stopping hp_io task: {e}", exc_info=True)
 
-        if self.daq_sim_thread and self.daq_sim_thread.is_alive():
-            self.logger.info("Stopping DAQ simulation thread...")
-            await asyncio.to_thread(self.daq_sim_thread.join)
-            self.logger.info("Successfully terminated DAQ simulation thread.")
-
         self.hp_io_task = None
-        self.daq_sim_thread = None
         self.active_data_products = set()
         self.hp_io_valid_event.clear()
+        self.stop_event.clear()
 
 
 class ClientManager:
     """Manages client connections, state, and access control for server resources."""
-
     def __init__(self, logger: logging.Logger, server_cfg: dict):
         self.logger = logger
         self.max_clients = server_cfg['max_concurrent_rpcs']
-
         self._cancel_readers_event = asyncio.Event()
         self._shutdown_event = asyncio.Event()
-
         self._lock = asyncio.Lock()
         self._readers: List[ReaderState] = [
             ReaderState(
@@ -170,10 +165,8 @@ class ClientManager:
             )
             for _ in range(self.max_clients)
         ]
-
         self._active_readers = 0
         self._writer_active = False
-
 
     @property
     def reader_states(self) -> List[ReaderState]:
@@ -188,10 +181,9 @@ class ClientManager:
             for rs in self._readers:
                 if rs.is_allocated:
                     try:
-                        # Put a special message to unblock any waiting queue.get()
                         rs.queue.put_nowait("shutdown")
                     except asyncio.QueueFull:
-                        pass  # The reader will time out or see the event anyway
+                        pass # The reader will time out or see the event anyway
 
     def signal_shutdown(self):
         """Signals that the server is shutting down."""
@@ -200,8 +192,12 @@ class ClientManager:
     @asynccontextmanager
     async def get_writer_access(self, context, hp_io_task_manager: HpIoTaskManager, force: bool = False):
         """A context manager to safely acquire exclusive 'writer' access."""
+        peer = urllib.parse.unquote(context.peer())
         async with self._lock:
-            self.logger.debug(f"Writer trying to acquire lock. Active readers: {self._active_readers}")
+            self.logger.debug(f"Writer from {peer} trying to acquire lock. Active readers: {self._active_readers}")
+            if self._writer_active:
+                 await context.abort(grpc.StatusCode.ABORTED, f"Another writer is already active.")
+
             if self._active_readers > 0:
                 if not force:
                     active_client_ips = [rs.client_ip for rs in self._readers if rs.is_allocated]
@@ -212,7 +208,6 @@ class ClientManager:
                 else:
                     self.logger.warning("Forcing write access by cancelling all active readers.")
                     await self.cancel_all_readers()
-                    # The readers will release their slots shortly, but we hold the lock.
 
             self._writer_active = True
             self.logger.debug("Writer lock acquired.")
@@ -221,22 +216,22 @@ class ClientManager:
             yield
         finally:
             async with self._lock:
-                self._cancel_readers_event.clear()  # Allow new readers
                 self._writer_active = False
+                self._cancel_readers_event.clear() # Allow new readers
                 self.logger.debug("Writer lock released.")
 
     @asynccontextmanager
     async def get_reader_access(self, context, hp_io_task_manager: HpIoTaskManager):
         """A context manager to safely acquire a 'reader' slot."""
         allocated_reader_state: ReaderState or None = None
+        peer = urllib.parse.unquote(context.peer())
         async with self._lock:
-            self.logger.debug("Reader trying to acquire lock.")
+            self.logger.debug(f"Reader from {peer} trying to acquire lock.")
             # --- Perform all pre-condition checks inside the lock ---
             if self._shutdown_event.is_set():
                 await context.abort(grpc.StatusCode.CANCELLED, "Server is shutting down.")
             if self._writer_active or self._cancel_readers_event.is_set():
-                await context.abort(grpc.StatusCode.UNAVAILABLE, "Server is being configured, please try again soon."
-                                                                 f"{self._writer_active=} {self._cancel_readers_event.is_set()=}_")
+                await context.abort(grpc.StatusCode.UNAVAILABLE, "Server is being configured, please try again soon.")
             if not hp_io_task_manager.is_valid():
                 await context.abort(grpc.StatusCode.FAILED_PRECONDITION,
                                     "hp_io task is not initialized or has become invalid.")
@@ -251,14 +246,13 @@ class ClientManager:
                     break
 
             if allocated_reader_state is None:
-                # Should not happen if _active_readers count is correct, but is a good safeguard.
                 self.logger.critical("Mismatch between active_readers count and allocated slots!")
                 await context.abort(grpc.StatusCode.INTERNAL, "Internal server error: no reader slots available.")
 
             # --- Allocation successful ---
             self._active_readers += 1
             allocated_reader_state.is_allocated = True
-            allocated_reader_state.client_ip = urllib.parse.unquote(context.peer())
+            allocated_reader_state.client_ip = peer
             self.logger.info(
                 f"Reader slot allocated for {allocated_reader_state.client_ip}. Active readers: {self._active_readers}")
 

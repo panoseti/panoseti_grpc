@@ -69,6 +69,29 @@ def get_dp_config(dps: List[str]) -> Dict[str, DataProductConfig]:
         )
     return dp_cfg
 
+def get_dp_name_from_props(pano_type: PanoImage.Type or str, shape: list, bytes_per_pixel: int) -> str:
+    """Derives the data product name from PanoImage properties."""
+    if isinstance(pano_type, type(PanoImage.Type)):
+        pano_type = PanoImage.Type.Name(pano_type)
+    is_ph = (pano_type == PanoImage.Type.PULSE_HEIGHT)
+    shape_tuple = tuple(shape)
+
+    if shape_tuple == (32, 32):
+        if bytes_per_pixel == 2:
+            return 'ph1024' if is_ph else 'img16'
+        elif bytes_per_pixel == 1:
+            if not is_ph:
+                return 'img8'
+    elif shape_tuple == (16, 16):
+        if bytes_per_pixel == 2:
+            if is_ph:
+                return 'ph256'
+
+    raise ValueError(
+        f"Unknown data product for properties: type={PanoImage.Type.Name(pano_type)}, "
+        f"shape={shape_tuple}, bpp={bytes_per_pixel}"
+    )
+
 
 def make_rich_logger(name: str, level=logging.INFO) -> logging.Logger:
     """
@@ -218,8 +241,14 @@ def is_daq_active_sync(simulate_daq, sim_cfg=None):
     if simulate_daq:
         if sim_cfg is None:
             raise ValueError("sim_cfg must be provided when simulate_daq is True")
-        daq_active_files = [get_daq_active_file(sim_cfg, mid) for mid in sim_cfg['sim_module_ids']]
-        daq_active = any([os.path.exists(file) for file in daq_active_files])
+        mode = sim_cfg.get('simulation_mode', 'filesystem')
+        if mode == 'filesystem':
+            daq_active_files = [get_daq_active_file(sim_cfg, mid) for mid in sim_cfg['sim_module_ids']]
+            daq_active = any([os.path.exists(file) for file in daq_active_files])
+        elif mode == 'rpc':
+            daq_active = True
+        else:
+            raise ValueError(f"Unknown simulation mode: {mode}")
     else:
         daq_active = control_utils.is_hashpipe_running()
     return daq_active

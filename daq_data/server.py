@@ -38,8 +38,8 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
     Provides implementations for DaqData RPCs by orchestrating manager classes.
     """
 
-    def __init__(self, server_cfg):
-        self.logger = make_rich_logger("daq_data.server", level=logging.INFO)
+    def __init__(self, server_cfg, logging_level=logging.INFO):
+        self.logger = make_rich_logger("daq_data.server", level=logging_level)
         test_result, msg = is_os_posix()
         assert test_result, msg
 
@@ -190,9 +190,11 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self.logger.info(f"New UploadImages rpc from {peer}")
 
         # Check if the core IO task is running and able to process images.
-        if not self.task_manager.is_valid():
-            await context.abort(grpc.StatusCode.FAILED_PRECONDITION,
-                                "IO task is not running. Please initialize the server first.")
+        do_daq_simulation = True #self.task_manager.hp_io_cfg.get('simulate_daq', False)
+        if not do_daq_simulation and not self.task_manager.is_valid():
+            emsg = f"UploadImages: hp_io task is not running. Please initialize the server first."
+            self.logger.warning(emsg)
+            await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
         try:
             image_count = 0
@@ -203,6 +205,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
                 # Use non-blocking put to avoid holding up the RPC if the system is overloaded.
                 try:
+                    # self.logger.debug(f"Received image from {peer}.")
                     self.task_manager.upload_queue.put_nowait(request.pano_image)
                     image_count += 1
                 except asyncio.QueueFull:
@@ -221,7 +224,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 async def serve(server_cfg):
     """Create and run the gRPC server."""
     server = grpc.aio.server()
-    daq_data_servicer = DaqDataServicer(server_cfg)
+    daq_data_servicer = DaqDataServicer(server_cfg, logging_level=logging.DEBUG)
     daq_data_pb2_grpc.add_DaqDataServicer_to_server(daq_data_servicer, server)
 
     SERVICE_NAMES = (
@@ -230,14 +233,25 @@ async def serve(server_cfg):
     )
     reflection.enable_server_reflection(SERVICE_NAMES, server)
 
-    listen_addr = "[::]:50051"
-    server.add_insecure_port(listen_addr)
-    # Add a Unix Domain Socket listener for local, high-performance communication
-    uds_listen_addr = "unix:/tmp/daq_data.sock"
-    server.add_insecure_port(uds_listen_addr)
 
     logger = logging.getLogger("daq_data.server")
-    logger.info(f"Server starting, listening on {listen_addr}")
+
+    # Add regular socket
+    # listen_addr = "[::]:50051"
+    # server.add_insecure_port(listen_addr)
+    # logger.info(f"Server starting, listening on {listen_addr}")
+
+    # Add a Unix Domain Socket listener for local, high-performance communication
+    uds_listen_addr = server_cfg.get("unix_domain_socket", None)
+    if uds_listen_addr:
+        # Ensure the socket does not already exist
+        if os.path.exists(uds_listen_addr):
+            os.remove(uds_listen_addr)
+            raise FileExistsError(f"Unix Domain Socket '{uds_listen_addr}' already exists. Removing it...")
+        server.add_insecure_port(uds_listen_addr)
+
+    if uds_listen_addr:
+        logger.info(f"Server also listening on {uds_listen_addr}")
 
     try:
         await server.start()

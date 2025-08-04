@@ -1,6 +1,7 @@
 {
     "init_from_default": false,
     "default_hp_io_config_file": "hp_io_config_simulate.json",
+    "unix_domain_socket": "unix:///tmp/daq_data.sock",
     "max_concurrent_rpcs": 100,
     "max_read_queue_size": 50,
     "min_hp_io_update_interval_seconds": 0.01,
@@ -13,11 +14,12 @@
     "valid_data_products": ["img8", "img16", "ph256", "ph1024"],
 
     "simulate_daq_cfg": {
+        "simulation_mode": "filesystem",
         "movie_type": "img16",
         "ph_type": "ph256",
         "do_ph": true,
         "do_movie": true,
-        "frames_per_pff": 100,
+        "frames_per_pff": 1000,
         "sim_module_ids": [224],
         "real_module_id": 1,
         "files": {

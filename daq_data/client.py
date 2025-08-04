@@ -7,7 +7,7 @@ Requires the following to work:
 Run this on the headnode to configure the u-blox GNSS receivers in remote domes.
 """
 import asyncio
-from typing import Set, List, Callable, Tuple, Any, Dict, Generator, AsyncIterator, Union
+from typing import Set, List, Callable, Tuple, Any, Dict, Generator, AsyncIterator, Union, AsyncGenerator
 import logging
 import os
 import json
@@ -31,7 +31,9 @@ from daq_data import (
     daq_data_pb2,
     daq_data_pb2_grpc,
 )
-from .daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse
+from .daq_data_pb2 import (
+    PanoImage, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse, UploadImageRequest
+)
 
 ## daq_data utils
 from .resources import make_rich_logger, parse_pano_image, format_stream_images_response
@@ -153,7 +155,10 @@ class DaqDataClient:
             DaqDataClient: The instance of the client.
         """
         for daq_host, daq_node in self.daq_nodes.items():
-            grpc_connection_target = f"{daq_host}:{self.GRPC_PORT}"
+            if daq_host.endswith('.sock'):
+                grpc_connection_target = f"{daq_host}"
+            else:
+                grpc_connection_target = f"{daq_host}:{self.GRPC_PORT}"
             daq_node['connection_target'] = grpc_connection_target
             try:
                 channel = grpc.insecure_channel(grpc_connection_target)
@@ -180,10 +185,10 @@ class DaqDataClient:
         elif isinstance(value, SystemExit) and value.code == 0:
             exit_ok = True
         elif isinstance(value, grpc.FutureCancelledError):
-            print("\nStream cancelled.")
+            self.logger.info("\nStream cancelled.")
             exit_ok = True
         elif isinstance(value, grpc.RpcError):
-            print(f"\nStream failed with RPC error: {value}")
+            self.logger.error(f"\nStream failed with RPC error: {value}")
             exit_ok = True
 
         if exit_ok:
@@ -455,10 +460,33 @@ class DaqDataClient:
             return False
         stub = self.daq_nodes[host]['stub']
         try:
-            ping_response = stub.Ping(Empty(), timeout=timeout)
+            ping_response = stub.Ping(Empty(), timeout=timeout, wait_for_ready=True)
             return True
         except grpc.RpcError as e:
             return False
+
+    def upload_images(self, hosts: List[str] or str, image_iterator: Generator[PanoImage, None, None]):
+        """
+        Uploads a stream of PanoImage objects to the server.
+
+        Args:
+            hosts (Union[List[str], str]): The DAQ host(s) to upload to.
+            image_iterator (Generator): A generator that yields PanoImage protobuf objects.
+        """
+        hosts = self.validate_daq_hosts(hosts)
+
+        def request_generator(iterator):
+            for image in iterator:
+                yield UploadImageRequest(pano_image=image, wait_for_ready=True)
+
+        for host in hosts:
+            stub = self.daq_nodes[host]['stub']
+            try:
+                stub.UploadImages(request_generator(image_iterator))
+                self.logger.info(f"Finished uploading images to {host}.")
+            except grpc.RpcError as e:
+                self.logger.error(f"Failed to upload images to {host}: {e}")
+                raise
 
 
 
@@ -571,7 +599,10 @@ class AioDaqDataClient:
     async def __aenter__(self):
         """Establishes async gRPC channels to all configured DAQ nodes."""
         for daq_host, daq_node in self.daq_nodes.items():
-            grpc_connection_target = f"{daq_host}:{self.GRPC_PORT}"
+            if daq_host.endswith('.sock'):
+                grpc_connection_target = f"{daq_host}"
+            else:
+                grpc_connection_target = f"{daq_host}:{self.GRPC_PORT}"
             daq_node['connection_target'] = grpc_connection_target
             try:
                 channel = grpc.aio.insecure_channel(grpc_connection_target) # Use async channel
@@ -599,10 +630,10 @@ class AioDaqDataClient:
         elif isinstance(value, SystemExit) and value.code == 0:
             exit_ok = True
         elif isinstance(value, asyncio.CancelledError):
-            print("\nStream cancelled.")
+            self.logger.info("\nStream cancelled.")
             exit_ok = True
         elif isinstance(value, grpc.aio.AioRpcError):
-            print(f"\nStream failed with RPC error: {value}")
+            self.logger.error(f"\nStream failed with RPC error: {value}")
             exit_ok = True
 
         if exit_ok:
@@ -870,7 +901,31 @@ class AioDaqDataClient:
             return False
         stub = self.daq_nodes[host]['stub']
         try:
-            await stub.Ping(Empty(), timeout=timeout)
+            await stub.Ping(Empty(), timeout=timeout, wait_for_ready=True)
             return True
         except grpc.aio.AioRpcError:
             return False
+
+    async def upload_images(self, hosts: List[str] or str, image_iterator: AsyncGenerator[PanoImage, None]):
+        """
+        Asynchronously uploads a stream of PanoImage objects to the server.
+
+        Args:
+            hosts (Union[List[str], str]): The DAQ host(s) to upload to.
+            image_iterator (AsyncGenerator): An async generator that yields PanoImage objects.
+        """
+        hosts = await self.validate_daq_hosts(hosts)
+
+        async def request_generator(iterator):
+            async for image in iterator:
+                yield UploadImageRequest(pano_image=image)
+
+        upload_tasks = []
+        for host in hosts:
+            stub = self.daq_nodes[host]['stub']
+            #task = asyncio.create_task(stub.UploadImages(request_generator(image_iterator)))
+            task = stub.UploadImages(request_generator(image_iterator), wait_for_ready=True)
+            upload_tasks.append(task)
+
+        await asyncio.gather(*upload_tasks)
+        self.logger.info(f"Finished uploading images to all specified hosts: {hosts}")

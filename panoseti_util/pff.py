@@ -130,8 +130,12 @@ def img_header_time(h):
         t = pkt_header_time(h)
     return t
 
-def img_frame_size(f, bytes_per_image):
-    h = json.loads(read_json(f))
+def img_frame_size(f, bytes_per_image) -> int:
+    try:
+        h = json.loads(read_json(f))
+    except Exception as e:
+        print('Exception reading JSON header: %s'%e)
+        return -1
     header_size = f.tell()
     frame_size = header_size + bytes_per_image + 1
     return frame_size
