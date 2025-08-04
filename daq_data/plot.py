@@ -124,9 +124,9 @@ class PanoImagePreviewer:
         stream_pulse_height_data: bool,
         module_id_whitelist: tuple[int]=(),
         text_width=30,
-        font_size=6,
+        font_size=8,
         row_height=3,
-        window_size=200,
+        window_size=10,
         plot_update_interval=1.0,
         jupyter_notebook=False
     ):
@@ -149,6 +149,8 @@ class PanoImagePreviewer:
         self.cmap = 'plasma'
         self.row_height = row_height
         self.num_rescale = 0
+        self.last_max = float('-inf')
+        self.last_min = float('inf')
 
     def setup_layout(self, modules):
         """Sets up subplot layout: one row per module, two columns (PH left, Movie right)."""
@@ -203,14 +205,26 @@ class PanoImagePreviewer:
             self.seen_modules.add(module_id)
             self.setup_layout(self.seen_modules)
 
-        # Track rolling vmin/vmax
-        self.max_pix_map[pano_type].append(np.max(img))
-        self.min_pix_map[pano_type].append(np.min(img))
+        # Compute min and max pixels for the current image
+        curr_max = np.max(img)
+        curr_min = np.min(img)
+
+        # Check if a new dynamic range will be observed
+        update_clim = curr_max > self.last_max
+        update_clim |= curr_min < self.last_min
+        # max or min pixel leaving the context window
+        update_clim |= (len(self.max_pix_map[pano_type]) == self.window_size) and self.max_pix_map[pano_type][0] == self.last_max
+        update_clim |= (len(self.min_pix_map[pano_type]) == self.window_size) and self.min_pix_map[pano_type][0] == self.last_min
+
+        # Enqueue min and max pixels from teh current image
+        self.max_pix_map[pano_type].append(curr_max)
+        self.min_pix_map[pano_type].append(curr_min)
         im = self.im_map[(module_id, pano_type)]
         im.set_data(img)
 
-        # Adjust clim periodically, or if new dynamic range is observed
-        if (len(self.max_pix_map[pano_type]) == self.window_size or frame_number % 8 == 0):
+        if update_clim:
+            self.last_min = np.min(self.min_pix_map[pano_type])
+            self.last_max = np.max(self.max_pix_map[pano_type])
             vmax = np.quantile(self.max_pix_map[pano_type], 0.95)
             vmin = np.quantile(self.min_pix_map[pano_type], 0.05)
             # Avoid degenerate scale

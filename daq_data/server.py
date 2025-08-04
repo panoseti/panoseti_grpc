@@ -184,6 +184,39 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self.logger.info(f"Ping rpc from {urllib.parse.unquote(context.peer())}")
         return Empty()
 
+    async def UploadImages(self, request_iterator, context) -> Empty:
+        """Accepts a stream of PanoImages and forwards them to the HpIoManager. [writer-like]"""
+        peer = urllib.parse.unquote(context.peer())
+        self.logger.info(f"New UploadImages rpc from {peer}")
+
+        # Check if the core IO task is running and able to process images.
+        if not self.task_manager.is_valid():
+            await context.abort(grpc.StatusCode.FAILED_PRECONDITION,
+                                "IO task is not running. Please initialize the server first.")
+
+        try:
+            image_count = 0
+            async for request in request_iterator:
+                if not request.HasField("pano_image"):
+                    self.logger.warning(f"Received empty UploadImageRequest from {peer}")
+                    continue
+
+                # Use non-blocking put to avoid holding up the RPC if the system is overloaded.
+                try:
+                    self.task_manager.upload_queue.put_nowait(request.pano_image)
+                    image_count += 1
+                except asyncio.QueueFull:
+                    self.logger.error(f"Upload queue is full. Aborting stream for client {peer}.")
+                    await context.abort(grpc.StatusCode.RESOURCE_EXHAUSTED, "Server upload queue is full.")
+
+            self.logger.info(f"Successfully processed {image_count} uploaded images from {peer}.")
+            return Empty()
+
+        except grpc.aio.AioRpcError as e:
+            self.logger.error(f"Error during UploadImages stream for {peer}: {e.details()}")
+            # This will be raised back to the gRPC framework.
+            raise
+
 
 async def serve(server_cfg):
     """Create and run the gRPC server."""
@@ -199,6 +232,9 @@ async def serve(server_cfg):
 
     listen_addr = "[::]:50051"
     server.add_insecure_port(listen_addr)
+    # Add a Unix Domain Socket listener for local, high-performance communication
+    uds_listen_addr = "unix:/tmp/daq_data.sock"
+    server.add_insecure_port(uds_listen_addr)
 
     logger = logging.getLogger("daq_data.server")
     logger.info(f"Server starting, listening on {listen_addr}")

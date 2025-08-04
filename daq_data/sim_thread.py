@@ -100,6 +100,7 @@ def daq_sim_thread_fn(
             ph_fnum = movie_fnum = 0
             ph_seqno = movie_seqno = -1
             sim_valid.set()
+            last_sleep_t = 0
             while not stop_io.is_set() and ph_fnum < ph_nframes and movie_fnum < movie_nframes:
                 # check if new simulated files should be created
                 if int(ph_fnum / frames_per_pff) > ph_seqno:
@@ -149,7 +150,10 @@ def daq_sim_thread_fn(
 
                 # logger.debug( f"Creating new simulated data files: {movie_dest_file=}, {ph_dest_file=}, {seqno=}, {fnum=}" )
                 # simulation rate limiting
-                time.sleep(update_interval)
+                curr_t = time.monotonic()
+                sleep_t = max(update_interval - (curr_t - last_sleep_t), 0)
+                time.sleep(sleep_t)
+                last_sleep_t = curr_t
                 if 'early_exit' in sim_cfg:
                     if sim_cfg['early_exit']['do_exit']:
                         sim_cfg['early_exit']['nframes_before_exit'] -= 1

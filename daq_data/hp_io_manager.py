@@ -138,7 +138,8 @@ class HpIoManager:
             stop_io: asyncio.Event,
             valid: asyncio.Event,
             max_reader_enqueue_timeouts: int,
-            dp_queue: asyncio.Queue,
+            active_data_products_queue: asyncio.Queue,
+            upload_queue: asyncio.Queue,
             logger: logging.Logger,
             sim_cfg: Dict[str, Any],
     ):
@@ -152,7 +153,8 @@ class HpIoManager:
         self.stop_io = stop_io
         self.valid = valid
         self.max_reader_enqueue_timeouts = max_reader_enqueue_timeouts
-        self.dp_queue = dp_queue
+        self.active_data_products_queue = active_data_products_queue
+        self.upload_queue = upload_queue
         self.logger = logger
         self.sim_cfg = sim_cfg
 
@@ -232,7 +234,7 @@ class HpIoManager:
                 active_dps_union.update(module.dp_configs.keys())
 
         if not self.modules: return False
-        await self.dp_queue.put(active_dps_union)
+        await self.active_data_products_queue.put(active_dps_union)
         return True
 
     async def _file_watcher(self):
@@ -257,33 +259,57 @@ class HpIoManager:
             await self.change_queue.put(changes)
 
     async def _processing_loop(self):
-        """Consumer: Processes file changes from the queue and handles client deadlines."""
+        """Consumer: Processes events and handles client deadlines."""
         last_daq_check = time.monotonic()
+
+        # Create tasks to wait on each queue
+        change_task = asyncio.create_task(self.change_queue.get())
+        upload_task = asyncio.create_task(self.upload_queue.get())
+
         while not self.stop_io.is_set():
             now = time.monotonic()
-
             wait_times = [(rs.config['update_interval_seconds'] - (now - rs.last_update_t))
                           for rs in self.reader_states if rs.is_allocated]
             timeout = min(wait_times) if wait_times else self.update_interval_seconds
             timeout = max(0.01, timeout)
 
-            try:
-                changes = await asyncio.wait_for(self.change_queue.get(), timeout=timeout)
-                await self._process_changes(changes)
-            except asyncio.TimeoutError:
-                pass  # Expected when a client deadline is reached.
+            # Wait on filesystem changes OR direct uploads, with a timeout for client broadcasts
+            done, pending = await asyncio.wait(
+                {change_task, upload_task},
+                timeout=timeout,
+                return_when=asyncio.FIRST_COMPLETED
+            )
 
+            if not done:
+                # Timeout occurred, this is expected for handling broadcast intervals
+                pass
+            else:
+                if change_task in done:
+                    changes = change_task.result()
+                    await self._process_changes(changes)
+                    change_task = asyncio.create_task(self.change_queue.get())  # Re-arm the task
+                if upload_task in done:
+                    image = upload_task.result()
+                    await self._handle_uploaded_image(image)
+                    upload_task = asyncio.create_task(self.upload_queue.get()) # Re-arm the task
+
+            # Broadcast data to clients whose deadlines have passed
             now = time.monotonic()
             ready_readers, _, _ = self._get_ready_readers(now)
             if ready_readers:
                 self._broadcast_data(ready_readers, now)
 
+            # Periodically check if the underlying DAQ is still active
             if now - last_daq_check >= 10:
                 if not await is_daq_active(self.simulate_daq, self.sim_cfg):
                     self.logger.warning("DAQ data flow stopped.")
                     self.stop_io.set()
+                    # Cancel pending waiters to unblock the loop for exit
+                    change_task.cancel()
+                    upload_task.cancel()
                     return
                 last_daq_check = now
+
 
     async def _process_changes(self, changes: set):
         """Processes file changes and updates the internal latest_data_cache."""
@@ -298,6 +324,22 @@ class HpIoManager:
                             await self._handle_file_change(filepath, module, dp_config)
                             break
                     break
+
+    async def _handle_uploaded_image(self, pano_image: PanoImage):
+        """Processes a directly uploaded PanoImage and updates the cache."""
+        module_id = pano_image.module_id
+        is_ph = (pano_image.type == PanoImage.Type.PULSE_HEIGHT)
+
+        self.logger.debug(
+            f"Processing uploaded image for module {module_id}, type {'PH' if is_ph else 'Movie'}"
+        )
+
+        # Update the appropriate cache entry
+        if is_ph:
+            self.latest_data_cache[module_id]['ph'] = pano_image
+        else:
+            self.latest_data_cache[module_id]['movie'] = pano_image
+
 
     async def _handle_file_change(self, filepath: Path, module: ModuleState, dp_config: DataProductConfig):
         """

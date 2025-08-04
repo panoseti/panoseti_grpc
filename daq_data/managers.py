@@ -37,6 +37,7 @@ class HpIoTaskManager:
 
         self.active_data_products = set()
         self.hp_io_cfg = {}
+        self.upload_queue = asyncio.Queue(maxsize=1000)
 
     def is_valid(self, verbose: bool = True) -> bool:
         """Checks if the hp_io task is running and considered valid."""
@@ -56,6 +57,12 @@ class HpIoTaskManager:
         """Creates a new hp_io task. Stops any existing task first."""
         await self.stop()  # Ensure any previous task is stopped
         self.stop_event.clear()
+
+        while not self.upload_queue.empty():
+            try:
+                self.upload_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
 
         hp_io_update_interval = max(
             hp_io_cfg['update_interval_seconds'],
@@ -95,6 +102,7 @@ class HpIoTaskManager:
                 self.hp_io_valid_event,
                 self.server_cfg['max_reader_enqueue_timeouts'],
                 active_data_products_queue,
+                self.upload_queue,
                 self.logger,
                 simulate_daq_cfg
             ).run()
