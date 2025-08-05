@@ -65,4 +65,5 @@ class DataProductConfig:
     current_filepath: Optional[Path] = None
     f: Optional[IO[bytes]] = None  # Cached file handle
     last_frame_idx: int = -1  # Index of the last successfully read frame
+    last_seqno: int = -1
 

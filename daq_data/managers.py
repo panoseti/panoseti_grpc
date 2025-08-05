@@ -29,6 +29,7 @@ class HpIoTaskManager:
         self.hp_io_cfg = {}
         self.upload_queue = asyncio.Queue(maxsize=1000)
         self.stop_event = asyncio.Event()
+        self.read_status_pipe_name = server_cfg['read_status_pipe_name']
         self.simulation_manager = SimulationManager(server_cfg, logger)
 
     def is_valid(self, verbose: bool = True) -> bool:
@@ -89,6 +90,7 @@ class HpIoTaskManager:
                 active_data_products_queue,
                 self.upload_queue,
                 self.logger,
+                self.read_status_pipe_name,
                 simulate_daq_cfg
             ).run()
         )

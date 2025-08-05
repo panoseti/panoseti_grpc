@@ -257,7 +257,7 @@ async def serve(server_cfg):
     # Add regular socket
     listen_addr = "[::]:50051"
     server.add_insecure_port(listen_addr)
-    logger.info(f"Server starting, listening on {listen_addr}")
+    logger.info(f"Server starting, listening on '{listen_addr}'")
 
     # Add a Unix Domain Socket listener for local, high-performance communication
     uds_listen_addr = server_cfg.get("unix_domain_socket")
@@ -265,7 +265,7 @@ async def serve(server_cfg):
         if os.path.exists(uds_listen_addr.split("://")[-1]):
             os.remove(uds_listen_addr.split("://")[-1])
         server.add_insecure_port(uds_listen_addr)
-        logger.info(f"Server also listening on {uds_listen_addr}")
+        logger.info(f"Server also listening on '{uds_listen_addr}'")
 
     # Start the server and initial tasks
     await server.start()

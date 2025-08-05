@@ -54,6 +54,12 @@ def _parse_dp_name(filename: str) -> Optional[str]:
     match = re.search(r'\.dp_([a-zA-Z0-9]+)\.', filename)
     return match.group(1) if match else None
 
+def _parse_seqno(filename: str) -> Optional[int]:
+    """Extracts the seqno from a PFF filename."""
+    match = re.search(r'\.seqno_(\d)+\.', filename)
+    seqno = int(match.group(1)) if match else None
+    return seqno
+
 
 class ModuleState:
     """Manages the state and logic for a single PANOSETI module's data acquisition."""
@@ -130,6 +136,7 @@ class ModuleState:
                             return False
                     dp_config.current_filepath = latest_file
                     dp_config.last_known_filesize = await asyncio.to_thread(os.path.getsize, latest_file)
+                    dp_config.last_seqno = _parse_seqno(latest_file.name)
                     return True
             except (FileNotFoundError, ValueError) as e:
                 self.logger.warning(f"Failed to initialize {dp_config.name} for module {self.module_id}: {e}")
@@ -154,6 +161,7 @@ class HpIoManager:
             active_data_products_queue: asyncio.Queue,
             upload_queue: asyncio.Queue,
             logger: logging.Logger,
+            read_status_pipe_name: str,
             sim_cfg: Dict[str, Any],
     ):
         self.data_dir = data_dir
@@ -166,6 +174,7 @@ class HpIoManager:
         self.active_data_products_queue = active_data_products_queue
         self.upload_queue = upload_queue
         self.logger = logger
+        self.read_status_pipe_name = read_status_pipe_name
         self.sim_cfg = sim_cfg
 
         self.modules: Dict[int, ModuleState] = {}
@@ -190,7 +199,7 @@ class HpIoManager:
             if self.modules:
                 for module in self.modules.values():
                     if module.run_path:
-                        pipe_path = module.run_path / "read_status"
+                        pipe_path = module.run_path / self.read_status_pipe_name
                         if pipe_path.exists() and stat.S_ISFIFO(os.stat(pipe_path).st_mode):
                             self.logger.info(f"Found named pipe at {pipe_path}. Activating pipe-based watcher.")
                             use_pipe_watcher = True
@@ -277,7 +286,8 @@ class HpIoManager:
 
     async def watch_status_pipe(self):
         """
-        Watches for signals on a named pipe ('read_status') using asyncio's event loop.
+        Watches for signals on a named pipe ('read_status_pipe') and finds the newest
+        .pff file for each data product to queue for processing.
         """
         self.logger.info("Starting pipe-based watcher.")
         loop = asyncio.get_running_loop()
@@ -285,7 +295,7 @@ class HpIoManager:
 
         for mid, module in self.modules.items():
             if module.run_path:
-                pipe_path = module.run_path / "read_status"
+                pipe_path = module.run_path / self.read_status_pipe_name
                 if pipe_path.exists() and stat.S_ISFIFO(os.stat(pipe_path).st_mode):
                     try:
                         fd = os.open(pipe_path, os.O_RDONLY | os.O_NONBLOCK)
@@ -320,17 +330,42 @@ class HpIoManager:
                         continue  # Pipe is empty, continue to next fd
 
                 all_changes = set()
+                # For each module, find the latest .pff file for each data product.
                 for module in self.modules.values():
-                    if module.run_path:
-                        files = await asyncio.to_thread(glob, str(module.run_path / '*.pff'))
-                        for f in files:
-                            all_changes.add((2, f))  # (2, f) is a "modified" event
+                    if not module.run_path:
+                        continue
+
+                    # Get all pff files for the module
+                    all_pff_file_paths = await asyncio.to_thread(glob, str(module.run_path / '*.pff'))
+                    if not all_pff_file_paths:
+                        continue
+
+                    # Group files by data product, as sequence numbers are per-DP.
+                    pff_files_by_dp = defaultdict(list)
+                    for f_path in all_pff_file_paths:
+                        filename = Path(f_path).name
+                        dp_name = _parse_dp_name(filename)
+                        if dp_name:
+                            pff_files_by_dp[dp_name].append(filename)
+
+                    for dp_name, files in pff_files_by_dp.items():
+                        if not files:
+                            continue
+
+                        # Use max() with _parse_seqno as the key to efficiently find the
+                        # filename with the highest sequence number. The `or -1` handles
+                        # malformed filenames gracefully.
+                        newest_pff_file = max(files, key=lambda f: _parse_seqno(f) or -1)
+
+                        # Add the full path of the newest file to the change set.
+                        full_path = str(module.run_path / newest_pff_file)
+                        all_changes.add((2, full_path))  # (2, f) is a "modified" event
 
                 if all_changes:
-                    # self.logger.debug(f"Pipe watcher detected changes {all_changes}, putting on queue.")
                     await self.change_queue.put(all_changes)
 
                 data_ready.clear()  # Reset for the next signal
+
         except asyncio.TimeoutError:
             pass  # It's okay to timeout, the loop will continue
         except asyncio.CancelledError:
@@ -394,8 +429,14 @@ class HpIoManager:
                 else:
                     continue
 
-            if module.run_path and filepath.parent.absolute() == module.run_path.absolute():
-                await self._handle_file_change(filepath, module, module.dp_configs[dp_name])
+            try:
+                if module.run_path and module.run_path.samefile(filepath.parent):
+                    await self._handle_file_change(filepath, module, module.dp_configs[dp_name])
+            except FileNotFoundError:
+                # This can happen in a race condition where the directory is removed
+                # after being detected but before samefile() is called.
+                self.logger.warning(f"Path {filepath.parent} or {module.run_path} not found during check.")
+                continue
 
     async def _handle_uploaded_image(self, pano_image: PanoImage):
         """Processes a directly uploaded PanoImage, discovering modules/DPs as needed."""
@@ -425,22 +466,25 @@ class HpIoManager:
         This method is now responsible for opening/closing file handles to optimize _fetch_latest_frame.
         """
         # Check if the file has changed from the one we are currently tracking
-        if filepath != dp_config.current_filepath or dp_config.f is None:
-            self.logger.info(f"New data file detected for {dp_config.name} in module {module.module_id}: {filepath}")
+        curr_seqno = _parse_seqno(filepath.name)
+        if curr_seqno > dp_config.last_seqno or dp_config.f is None:
+            self.logger.debug(f"New {curr_seqno=} data file detected for {dp_config.name} in module {module.module_id}: {filepath}")
             # Close the old file handle if it exists
             if dp_config.f:
-                await asyncio.to_thread(dp_config.f.close)
+                dp_config.f.close()
 
             # Open the new file and cache the handle and path
             try:
-                dp_config.f = await asyncio.to_thread(open, filepath, 'rb')
+                dp_config.f = open(filepath, 'rb')
                 dp_config.current_filepath = filepath
                 dp_config.last_known_filesize = 0  # Reset for the new file
                 dp_config.last_frame_idx = -1
+                dp_config.last_seqno = curr_seqno
             except FileNotFoundError:
                 self.logger.warning(f"File {filepath} disappeared before it could be opened.")
                 dp_config.f = None
                 dp_config.current_filepath = None
+                dp_config.last_seqno = -1
                 return
 
         # If we have a valid file handle, fetch the latest frame
@@ -466,12 +510,11 @@ class HpIoManager:
     async def _fetch_latest_frame(self, dp_config: DataProductConfig) -> Tuple[Optional[dict], Optional[bytes], int]:
         """
         Reads the last complete frame from a PFF file using a cached file handle.
-        This function is now significantly more efficient as it avoids repeated file open/close operations.
         """
         try:
             # Get the current file size using the cached file descriptor
             f = dp_config.f
-            current_size = (await asyncio.to_thread(os.fstat, f.fileno())).st_size
+            current_size = os.fstat(f.fileno()).st_size
 
             # If the file hasn't grown or has no data, ignore.
             if current_size <= dp_config.last_known_filesize or dp_config.frame_size == 0:
@@ -519,7 +562,6 @@ class HpIoManager:
 
     def _broadcast_data(self, ready_readers, now):
         """Broadcasts cached data to ready clients and clears the cache for that data."""
-        # Iterate over a copy of module IDs, as the cache dict might be modified.
         for mid in list(self.latest_data_cache.keys()):
             data = self.latest_data_cache[mid]
             # self.logger.debug(f"Broadcasting data for module {mid}: {data}")
