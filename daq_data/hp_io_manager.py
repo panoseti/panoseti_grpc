@@ -378,25 +378,47 @@ class HpIoManager:
         return ready_list, 0, 0
 
     def _broadcast_data(self, ready_readers, now):
-        """Puts the latest cached data onto the queues of ready clients."""
+        """Broadcasts cached data to ready clients and clears the cache for that data."""
+        # Iterate over a copy of module IDs, as the cache dict might be modified.
+        for mid in list(self.latest_data_cache.keys()):
+            data = self.latest_data_cache[mid]
+
+            ph_image = data.get('ph')
+            movie_image = data.get('movie')
+
+            # Broadcast pulse-height image if it exists
+            if ph_image:
+                for rs in ready_readers:
+                    # Check if client wants this data type and module
+                    if rs.config['stream_pulse_height_data'] and \
+                            (not rs.config['module_ids'] or mid in rs.config['module_ids']):
+                        try:
+                            rs.queue.put_nowait(ph_image)
+                            rs.enqueue_timeouts = 0  # Reset on successful send
+                        except asyncio.QueueFull:
+                            rs.enqueue_timeouts += 1
+                            self.logger.warning(
+                                f"Reader queue full for client {rs.client_ip} (PH). Timeout count: {rs.enqueue_timeouts}")
+                # Clear the cache for this image after broadcasting
+                self.latest_data_cache[mid]['ph'] = None
+
+            # Broadcast movie image if it exists
+            if movie_image:
+                for rs in ready_readers:
+                    # Check if client wants this data type and module
+                    if rs.config['stream_movie_data'] and \
+                            (not rs.config['module_ids'] or mid in rs.config['module_ids']):
+                        try:
+                            rs.queue.put_nowait(movie_image)
+                            rs.enqueue_timeouts = 0  # Reset on successful send
+                        except asyncio.QueueFull:
+                            rs.enqueue_timeouts += 1
+                            self.logger.warning(
+                                f"Reader queue full for client {rs.client_ip} (Movie). Timeout count: {rs.enqueue_timeouts}")
+                # Clear the cache for this image after broadcasting
+                self.latest_data_cache[mid]['movie'] = None
+
+        # Update all ready readers' timestamps after the broadcast attempt
         for rs in ready_readers:
-            try:
-                data_sent = False
-                for mid, data in self.latest_data_cache.items():
-                    if rs.config['module_ids'] and mid not in rs.config['module_ids']: continue
-                    ph_image = data.get('ph')
-                    if rs.config['stream_pulse_height_data'] and ph_image:
-                        rs.queue.put_nowait(ph_image)
-                        data_sent = True
-                    movie_image = data.get('movie')
-                    if rs.config['stream_movie_data'] and movie_image:
-                        rs.queue.put_nowait(movie_image)
-                        data_sent = True
-                if data_sent:
-                    rs.enqueue_timeouts = 0
-            except asyncio.QueueFull:
-                rs.enqueue_timeouts += 1
-                self.logger.warning(
-                    f"Reader queue full for client {rs.client_ip}. Timeout count: {rs.enqueue_timeouts}")
-            finally:
-                rs.last_update_t = now
+            rs.last_update_t = now
+

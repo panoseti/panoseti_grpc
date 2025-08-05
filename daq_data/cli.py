@@ -98,7 +98,7 @@ async def run_speed_test(
             curr_t = time.monotonic()
             npackets += 1
             delta_t = curr_t - ref_t
-            if delta_t > 5:
+            if delta_t > 1:
                 logger.info(f"{npackets} pkts / {delta_t}s = {npackets / delta_t} (pkts / s)")
                 npackets = 0
                 ref_t = curr_t

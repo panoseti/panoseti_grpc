@@ -173,7 +173,6 @@ class SimulationManager:
         self.logger.info("RPC simulation thread started.")
 
         daq_active_files = []
-        dp_cfg = get_dp_config([sim_cfg['movie_type'], sim_cfg['ph_type']])
         try:
             # We need a client to talk to our own server.
             # Using a minimal dummy daq config because the client will connect to localhost via UDS.
@@ -200,40 +199,51 @@ class SimulationManager:
 
                 ping_success = await client.ping(uds_listen_addr)
                 assert ping_success, "UploadImage RPC simulation ping failed."
-                async def image_generator() -> AsyncGenerator[PanoImage, None]:
+                async def simulate_upload_image_generator() -> AsyncGenerator[PanoImage, None]:
                     """Generator that reads from files and yields PanoImage objects."""
                     movie_pff_path = get_sim_pff_path(sim_cfg, sim_cfg['real_module_id'], 0, False, False)
                     ph_pff_path = get_sim_pff_path(sim_cfg, 3, 0, True, False)
 
                     with open(movie_pff_path, "rb") as movie_src, open(ph_pff_path, "rb") as ph_src:
+                        dp_cfg = get_dp_config([sim_cfg['movie_type'], sim_cfg['ph_type']])
+
                         dp_cfg[sim_cfg['ph_type']].f = ph_src
                         dp_cfg[sim_cfg['ph_type']].frame_size = await asyncio.to_thread(pff.img_frame_size, ph_src,
                                                                 dp_cfg[sim_cfg['ph_type']].bytes_per_image)
+                        num_ph = os.path.getsize(ph_pff_path) // dp_cfg[sim_cfg['ph_type']].frame_size
                         dp_cfg[sim_cfg['movie_type']].f = movie_src
                         dp_cfg[sim_cfg['movie_type']].frame_size = await asyncio.to_thread(pff.img_frame_size, movie_src,
                                                                 dp_cfg[sim_cfg['movie_type']].bytes_per_image)
+                        num_movie = os.path.getsize(movie_pff_path) // dp_cfg[sim_cfg['movie_type']].frame_size
                         fnum = 0
                         while not self._sim_stop_event.is_set():
+                            if fnum >= num_ph or fnum >= num_movie:
+                                for dp in dp_cfg.values():
+                                    self.logger.debug(f"Simulation source file for {dp.name=} reached EOF, looping.")
+                                    await asyncio.to_thread(dp.f.seek, 0)
+                                fnum = 0
                             # Read frames
                             for dp in dp_cfg.values():
                                 header, img_data = await asyncio.to_thread(_blocking_read, dp, fnum)
 
                                 if not img_data:
-                                    self.logger.warning("Simulation source file reached EOF, looping.")
+                                    self.logger.debug("Simulation source file reached EOF, looping.")
                                     await asyncio.to_thread(dp.f.seek, 0)
                                     continue
 
+                                pano_image = PanoImage(
+                                    type=dp.pano_image_type,
+                                    header=ParseDict(header, Struct()),
+                                    image_array=img_data,
+                                    shape=dp.image_shape,
+                                    bytes_per_pixel=dp.bytes_per_pixel,
+                                    file=dp.f.name,
+                                    frame_number=fnum,
+                                )
+
                                 for mid in sim_cfg['sim_module_ids']:
-                                    yield PanoImage(
-                                        type=dp.pano_image_type,
-                                        header=ParseDict(header, Struct()),
-                                        image_array=img_data,
-                                        shape=dp.image_shape,
-                                        bytes_per_pixel=dp.bytes_per_pixel,
-                                        file=dp.f.name,
-                                        frame_number=fnum,
-                                        module_id=mid,
-                                    )
+                                    pano_image.module_id = mid
+                                    yield pano_image
                             fnum += 1
                             await asyncio.sleep(self.server_cfg['min_hp_io_update_interval_seconds'])
 
@@ -246,18 +256,13 @@ class SimulationManager:
                         await f.write("1")
 
                 # The target address uses a Unix Domain Socket for efficient local IPC
-                await client.upload_images(hosts=[], image_iterator=image_generator())
+                await client.upload_images(hosts=[], image_iterator=simulate_upload_image_generator())
 
         except Exception as e:
             if not self._sim_stop_event.is_set():
                 self.logger.error(f"RPC simulation failed: {e}", exc_info=True)
             raise e
         finally:
-            # Delete all created files
-            for dp in dp_cfg.values():
-                if dp.f:
-                    dp.f.close()
-                    dp.f = None
             for fpath in daq_active_files:
                 try:
                     if await asyncio.to_thread(os.path.exists, fpath):

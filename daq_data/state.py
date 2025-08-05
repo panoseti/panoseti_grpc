@@ -1,6 +1,6 @@
 
 """Dataclasses for managing DaqData server state."""
-
+import uuid
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple, IO
 import asyncio
@@ -16,6 +16,7 @@ class ReaderState:
     client_ip: str or None = None
     cancel_reader_event: asyncio.Event = None
     shutdown_event: asyncio.Event = None
+    uid: uuid.UUID = None
 
     # Configuration for the stream
     config: Dict = field(default_factory=lambda: {
