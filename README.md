@@ -579,8 +579,13 @@ See [daq_data.proto](protos/daq_data.proto) for the protobuf specification of th
 - $N \leq 1$ `InitHpIo` clients may be active at any given time. If an `InitHpIo` client is active, no other client may be.
 
 ### `Ping`
-- Succeeds only if a client can contact the DaqData server. 
+- Returns `True` only if a client can contact the DaqData server. 
 
+### `UploadImages`
+- Provides a mechanism for injecting data directly into the server's broadcast queue, bypassing the filesystem.
+- Ideal for designing high-throughput simulations and testing situations where the filesystem is a primary bottleneck.
+  - The server's `"rpc"` simulation mode uses an `AioDaqDataClient` instance to upload thousands of archived PANOSETI images per second using the `UploadImages` RPC.
+- Mechanism: The client sends a stream of PanoImage objects. On the server, these images are placed into a high-priority `upload_queue`. The `HpIoManager` consumes from this queue and immediately broadcasts the images to all connected StreamImages clients, just as it would for data detected on the filesystem.
 
 
 ## The `hp_io_config.json` File
