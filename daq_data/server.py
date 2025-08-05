@@ -16,6 +16,7 @@ import urllib.parse
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
+import signal
 
 # --- gRPC imports ---
 import grpc
@@ -229,6 +230,19 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
 async def serve(server_cfg):
     """Create and run the gRPC server."""
+    logger = logging.getLogger("daq_data.server")
+    shutdown_event = asyncio.Event()
+
+    # Define a signal handler to set the shutdown event
+    def _signal_handler(*_):
+        logger.info("Shutdown signal received, initiating graceful shutdown.")
+        shutdown_event.set()
+
+    # Attach the signal handler to the running event loop
+    loop = asyncio.get_running_loop()
+    loop.add_signal_handler(signal.SIGINT, _signal_handler)
+    loop.add_signal_handler(signal.SIGTERM, _signal_handler)
+
     server = grpc.aio.server()
     daq_data_servicer = DaqDataServicer(server_cfg, logging_level=logging.DEBUG)
     daq_data_pb2_grpc.add_DaqDataServicer_to_server(daq_data_servicer, server)
@@ -240,45 +254,45 @@ async def serve(server_cfg):
     reflection.enable_server_reflection(SERVICE_NAMES, server)
 
 
-    logger = logging.getLogger("daq_data.server")
-
     # Add regular socket
     listen_addr = "[::]:50051"
     server.add_insecure_port(listen_addr)
     logger.info(f"Server starting, listening on {listen_addr}")
 
     # Add a Unix Domain Socket listener for local, high-performance communication
-    uds_listen_addr = server_cfg.get("unix_domain_socket", None)
+    uds_listen_addr = server_cfg.get("unix_domain_socket")
     if uds_listen_addr:
-        # Ensure the socket does not already exist
-        if os.path.exists(uds_listen_addr):
-            os.remove(uds_listen_addr)
-            raise FileExistsError(f"Unix Domain Socket '{uds_listen_addr}' already exists. Removing it...")
+        if os.path.exists(uds_listen_addr.split("://")[-1]):
+            os.remove(uds_listen_addr.split("://")[-1])
         server.add_insecure_port(uds_listen_addr)
-
-    if uds_listen_addr:
         logger.info(f"Server also listening on {uds_listen_addr}")
 
-    try:
-        await server.start()
-        # Start the initial background task after the server has started
-        await daq_data_servicer.start_initial_task()
-        await server.wait_for_termination()
-    except KeyboardInterrupt:
-        logger.info("'Ctrl+C' received, initiating shutdown.")
-    finally:
-        grace = server_cfg.get("shutdown_grace_period", 5)
-        await daq_data_servicer.shutdown()
-        await server.stop(grace)
-        logger.info("Server shut down gracefully.")
+    # Start the server and initial tasks
+    await server.start()
+    initial_task = asyncio.create_task(daq_data_servicer.start_initial_task())
 
+    logger.info("Server started. Awaiting shutdown signal...")
+    await shutdown_event.wait()
+    logger.info("Shutdown event received. Stopping server and tasks.")
+
+    # --- Graceful Shutdown Sequence ---
+    # 1. Stop the application-level managers first.
+    await daq_data_servicer.shutdown()
+    # 2. Stop the gRPC server to prevent new connections.
+    grace = server_cfg.get("shutdown_grace_period", 5)
+    await server.stop(grace)
+    # 3. Ensure the initial task is complete.
+    await initial_task
+    logger.info("Server shut down gracefully.")
 
 if __name__ == "__main__":
     try:
         with open(CFG_DIR / "daq_data_server_config.json", "r") as f:
             server_config = json.load(f)
+        # asyncio.run will wait for the serve() coroutine to complete
         asyncio.run(serve(server_config))
     except (KeyboardInterrupt, asyncio.CancelledError):
-        pass
+        # This will now only be triggered if Ctrl+C is hit during initial setup
+        print("\nServer startup interrupted.")
     finally:
         print("Exiting server process.")

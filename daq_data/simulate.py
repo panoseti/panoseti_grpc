@@ -8,8 +8,9 @@ import json
 import asyncio
 import os
 import time
+import stat
 import logging
-from typing import Dict, Any, AsyncGenerator
+from typing import Dict, Any, AsyncGenerator, List
 from google.protobuf.json_format import ParseDict
 from google.protobuf.struct_pb2 import Struct
 
@@ -28,143 +29,186 @@ class SimulationManager:
         self.logger = logger
         self.sim_task: asyncio.Task or None = None
         self._sim_stop_event = asyncio.Event()
+        self.sim_created_files = []
 
     async def start(self, sim_cfg: dict) -> bool:
-        """Starts the appropriate simulation task based on the configuration."""
-        await self.stop()  # Ensure any previous task is stopped
+        await self.stop()
         self._sim_stop_event.clear()
+        self.sim_created_files = []
 
         mode = sim_cfg.get("simulation_mode", "filesystem")
         self.logger.info(f"Starting simulation in '{mode}' mode.")
 
         if mode == "filesystem":
+            if not await self._setup_initial_filesystem_sim(sim_cfg):
+                self.logger.error("Failed to complete initial filesystem setup.")
+                return False
             self.sim_task = asyncio.create_task(self._run_filesystem_sim(sim_cfg))
         elif mode == "rpc":
+            # RPC simulation is not the focus of this fix, but left for completeness
             self.sim_task = asyncio.create_task(self._run_rpc_sim(sim_cfg))
         else:
             self.logger.error(f"Unknown simulation mode: {mode}")
             return False
 
-        # A short delay to allow the simulation to initialize before proceeding
         await asyncio.sleep(0.1)
         return True
 
     async def stop(self):
-        """Stops the active simulation task."""
-        if not self.sim_task or self.sim_task.done():
-            return
+        if self.sim_task and not self.sim_task.done():
+            self.logger.info("Stopping simulation task...")
+            self._sim_stop_event.set()
+            try:
+                await asyncio.wait_for(self.sim_task, timeout=5.0)
+            except asyncio.TimeoutError:
+                self.logger.warning("Simulation task did not stop gracefully. Cancelling.")
+                self.sim_task.cancel()
+            except Exception as e:
+                self.logger.error(f"Exception while stopping simulation task: {e}", exc_info=True)
 
-        self.logger.info("Stopping simulation task...")
-        self._sim_stop_event.set()
-        try:
-            await asyncio.wait_for(self.sim_task, timeout=5.0)
-        except asyncio.TimeoutError:
-            self.logger.warning("Simulation task did not stop gracefully within timeout. Cancelling.")
-            self.sim_task.cancel()
-        except Exception as e:
-            self.logger.error(f"Exception while stopping simulation task: {e}", exc_info=True)
+        for fpath in self.sim_created_files:
+            try:
+                if os.path.exists(fpath):
+                    if stat.S_ISFIFO(os.stat(fpath).st_mode):
+                        os.unlink(fpath)
+                    elif not os.path.isdir(fpath):
+                        os.unlink(fpath)
+            except Exception as e:
+                self.logger.warning(f"Failed to clean up sim resource {fpath}: {e}")
+
         self.sim_task = None
-        self.logger.info("Simulation task stopped.")
 
     def data_flow_valid(self) -> bool:
-        """Checks if the simulation task is running and considered valid."""
-        if self.sim_task and not self.sim_task.done() and not self._sim_stop_event.is_set():
-            return True
-        return False
+        return self.sim_task and not self.sim_task.done()
 
-    async def _run_filesystem_sim(self, sim_cfg: dict):
-        """
-        Simulates the DAQ by writing PFF files to disk asynchronously.
-        This is an asyncio-native version of the original simulation thread.
-        """
-        self.logger.info("Filesystem simulation thread started.")
-        simulated_files = []
-        daq_active_files = []
-        active_pff_handles = {}
-
+    async def _setup_initial_filesystem_sim(self, sim_cfg: dict) -> bool:
+        self.logger.info("Setting up initial files for filesystem simulation.")
         try:
-            # Setup: Create daq-active files
-            for mid in sim_cfg['sim_module_ids']:
-                active_file = get_daq_active_file(sim_cfg, mid)
-                daq_active_files.append(active_file)
-                async with aiofiles.open(active_file, "w") as f:
-                    await f.write("1")
+            dp_configs = get_dp_config([sim_cfg['movie_type'], sim_cfg['ph_type']])
 
-            # Get data product configurations
-            dp_cfg = get_dp_config([sim_cfg['movie_type'], sim_cfg['ph_type']])
-            movie_pff_path = get_sim_pff_path(sim_cfg, sim_cfg['real_module_id'], 0, False, False)
-            ph_pff_path = get_sim_pff_path(sim_cfg, 3, 0, True, False)  # Using module 3 for PH as before
+            movie_pff_path = get_sim_pff_path(sim_cfg, sim_cfg['real_module_id'], 0, is_ph=False, is_simulated=False)
+            ph_pff_path = get_sim_pff_path(sim_cfg, 3, 0, is_ph=True, is_simulated=False)
 
             with open(movie_pff_path, "rb") as movie_src, open(ph_pff_path, "rb") as ph_src:
-                movie_fs, movie_nframes, _, _ = await asyncio.to_thread(pff.img_info, movie_src,
-                                                                        dp_cfg[sim_cfg['movie_type']].bytes_per_image)
-                ph_fs, ph_nframes, _, _ = await asyncio.to_thread(pff.img_info, ph_src,
-                                                                  dp_cfg[sim_cfg['ph_type']].bytes_per_image)
-                await asyncio.to_thread(movie_src.seek, 0)
-                await asyncio.to_thread(ph_src.seek, 0)
+                movie_fs, _, _, _ = pff.img_info(movie_src, dp_configs[sim_cfg['movie_type']].bytes_per_image)
+                movie_src.seek(0, os.SEEK_SET)
+                first_movie_frame = movie_src.read(movie_fs)
 
-                fnum = 0
-                while not self._sim_stop_event.is_set():
-                    # Read frames (blocking I/O in a separate thread)
-                    movie_frame_data = movie_src.read(movie_fs)
-                    ph_frame_data = ph_src.read(ph_fs)
+                ph_fs, _, _, _ = pff.img_info(ph_src, dp_configs[sim_cfg['ph_type']].bytes_per_image)
+                ph_src.seek(0, os.SEEK_SET)
+                first_ph_frame = ph_src.read(ph_fs)
 
-                    if not movie_frame_data or not ph_frame_data:
-                        self.logger.warning("Simulation source file reached EOF, looping.")
-                        await asyncio.to_thread(movie_src.seek, 0)
-                        await asyncio.to_thread(ph_src.seek, 0)
-                        continue
+            for mid in sim_cfg['sim_module_ids']:
+                sim_run_dir = Path(sim_cfg['files']['data_dir']) / sim_cfg['files']['sim_run_dir_template'].format(
+                    module_id=mid)
+                os.makedirs(sim_run_dir, exist_ok=True)
 
-                    # Logic to create new files every 'frames_per_pff'
-                    seqno = fnum // sim_cfg['frames_per_pff']
-                    if fnum % sim_cfg['frames_per_pff'] == 0:
-                        # Close old handles
-                        for mid in active_pff_handles:
-                            if 'movie' in active_pff_handles[mid]: await asyncio.to_thread(
-                                active_pff_handles[mid]['movie'].close)
-                            if 'ph' in active_pff_handles[mid]: await asyncio.to_thread(
-                                active_pff_handles[mid]['ph'].close)
-                        active_pff_handles.clear()
+                active_file = get_daq_active_file(sim_cfg, mid)
+                async with aiofiles.open(active_file, "w") as f:
+                    await f.write("1")
+                self.sim_created_files.append(active_file)
 
-                        # Open new files
-                        for mid in sim_cfg['sim_module_ids']:
-                            movie_dest_path = get_sim_pff_path(sim_cfg, mid, seqno, False, True)
-                            ph_dest_path = get_sim_pff_path(sim_cfg, mid, seqno, True, True)
-                            simulated_files.extend([movie_dest_path, ph_dest_path])
-                            active_pff_handles[mid] = {
-                                'movie': await asyncio.to_thread(open, movie_dest_path, 'ab'),
-                                'ph': await asyncio.to_thread(open, ph_dest_path, 'ab')
-                            }
+                pipe_path = sim_run_dir / "read_status"
+                if not os.path.exists(pipe_path):
+                    os.mkfifo(pipe_path)
+                self.sim_created_files.append(str(pipe_path))
 
-                    # Write to simulated files
-                    for mid in sim_cfg['sim_module_ids']:
-                        # self.logger.debug(f"Writing movie frame {movie_frame_data}")
-                        # self.logger.debug(f"Writing ph frame {ph_frame_data}")
-                        active_pff_handles[mid]['movie'].write(movie_frame_data)
-                        active_pff_handles[mid]['ph'].write(ph_frame_data)
-                        active_pff_handles[mid]['movie'].flush()
-                        active_pff_handles[mid]['ph'].flush()
+                movie_dest_path = get_sim_pff_path(sim_cfg, mid, 0, False, True)
+                async with aiofiles.open(movie_dest_path, 'wb') as f:
+                    await f.write(first_movie_frame)
+                self.sim_created_files.append(movie_dest_path)
 
-                    fnum += 1
-                    await asyncio.sleep(self.server_cfg['min_hp_io_update_interval_seconds'])
+                ph_dest_path = get_sim_pff_path(sim_cfg, mid, 0, True, True)
+                async with aiofiles.open(ph_dest_path, 'wb') as f:
+                    await f.write(first_ph_frame)
+                self.sim_created_files.append(ph_dest_path)
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to set up initial simulation environment: {e}", exc_info=True)
+            return False
+
+    async def _run_filesystem_sim(self, sim_cfg: dict):
+        self.logger.info("Filesystem simulation task started.")
+        pipe_fds = {}
+        simulated_pff_handles = {}
+
+        try:
+            # Load all frames into memory first
+            dp_configs = get_dp_config([sim_cfg['movie_type'], sim_cfg['ph_type']])
+            movie_pff_path = get_sim_pff_path(sim_cfg, sim_cfg['real_module_id'], 0, is_ph=False, is_simulated=False)
+            ph_pff_path = get_sim_pff_path(sim_cfg, 3, 0, is_ph=True, is_simulated=False)
+
+            movie_frames: List[bytes] = []
+            ph_frames: List[bytes] = []
+
+            with open(movie_pff_path, "rb") as movie_src:
+                movie_fs, nframes, _, _ = pff.img_info(movie_src, dp_configs[sim_cfg['movie_type']].bytes_per_image)
+                movie_src.seek(0, os.SEEK_SET)
+                for i in range(nframes):
+                    movie_data = movie_src.read(movie_fs)
+                    assert len(movie_data) == movie_fs, f"Movie frame data length mismatch: {len(movie_data)} != {movie_fs} at frame {i}"
+                    movie_frames.append(movie_data)
+
+            with open(ph_pff_path, "rb") as ph_src:
+                ph_fs, nframes, _, _ = pff.img_info(ph_src, dp_configs[sim_cfg['ph_type']].bytes_per_image)
+                ph_src.seek(0, os.SEEK_SET)
+                for i in range(nframes):
+                    ph_data = ph_src.read(ph_fs)
+                    assert len(ph_data) == ph_fs, f"PH frame data length mismatch: {len(ph_data)} != {ph_fs} at frame {i}"
+                    ph_frames.append(ph_data)
+
+            self.logger.info(
+                f"Loaded {len(movie_frames)} movie and {len(ph_frames)} PH frames into memory for simulation.")
+
+            fnum = 1  # Start from the second frame since the first is already written
+            while not self._sim_stop_event.is_set():
+                if fnum >= len(movie_frames) or fnum >= len(ph_frames):
+                    self.logger.info("Simulation source file reached EOF, looping.")
+                    fnum = 0
+                    continue
+
+                movie_frame_data = movie_frames[fnum]
+                ph_frame_data = ph_frames[fnum]
+
+                for mid in sim_cfg['sim_module_ids']:
+                    if mid not in pipe_fds:
+                        try:
+                            sim_run_dir = Path(sim_cfg['files']['data_dir']) / sim_cfg['files'][
+                                'sim_run_dir_template'].format(module_id=mid)
+                            pipe_path = sim_run_dir / "read_status"
+                            pipe_fds[mid] = os.open(pipe_path, os.O_WRONLY | os.O_NONBLOCK)
+                        except OSError:
+                            await asyncio.sleep(0.1)
+                            continue
+
+                    if mid not in simulated_pff_handles:
+                        movie_path = get_sim_pff_path(sim_cfg, mid, 0, False, True)
+                        ph_path = get_sim_pff_path(sim_cfg, mid, 0, True, True)
+                        simulated_pff_handles[mid] = {'movie_f': open(movie_path, 'ab'), 'ph_f': open(ph_path, 'ab')}
+
+                    simulated_pff_handles[mid]['movie_f'].write(movie_frame_data)
+                    simulated_pff_handles[mid]['movie_f'].flush()
+                    os.write(pipe_fds[mid], f"{sim_cfg['movie_type']:<6}".encode())
+
+                    simulated_pff_handles[mid]['ph_f'].write(ph_frame_data)
+                    simulated_pff_handles[mid]['ph_f'].flush()
+                    os.write(pipe_fds[mid], f"{sim_cfg['ph_type']:<6}".encode())
+
+                fnum += 1
+                await asyncio.sleep(self.server_cfg.get('min_hp_io_update_interval_seconds', 0.1))
 
         except Exception as e:
-            self.logger.error(f"Filesystem simulation failed: {e}", exc_info=True)
+            if not isinstance(e, (BrokenPipeError, asyncio.CancelledError)):
+                self.logger.error(f"Filesystem simulation failed: {e}", exc_info=True)
         finally:
-            self.logger.info("Cleaning up filesystem simulation...")
-            # Close all open file handles
-            for mid in active_pff_handles:
-                if 'movie' in active_pff_handles[mid]: await asyncio.to_thread(active_pff_handles[mid]['movie'].close)
-                if 'ph' in active_pff_handles[mid]: await asyncio.to_thread(active_pff_handles[mid]['ph'].close)
-            # Delete all created files
-            for fpath in daq_active_files + list(set(simulated_files)):
-                try:
-                    if await asyncio.to_thread(os.path.exists, fpath):
-                        # self.logger.critical(f'want to remove {fpath}')
-                        await asyncio.to_thread(os.unlink, fpath)
-                except Exception as e:
-                    self.logger.warning(f"Failed to clean up sim file {fpath}: {e}")
-            self.logger.info("Filesystem simulation finished cleanup.")
+            self.logger.info("Closing simulation file and pipe handles...")
+            for handle_dict in simulated_pff_handles.values():
+                handle_dict['movie_f'].close()
+                handle_dict['ph_f'].close()
+            for fd in pipe_fds.values():
+                os.close(fd)
+            self.logger.info("Filesystem simulation task finished.")
+
 
     async def _run_rpc_sim(self, sim_cfg: dict):
         """

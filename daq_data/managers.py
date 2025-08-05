@@ -46,8 +46,7 @@ class HpIoTaskManager:
 
     async def start(self, hp_io_cfg: dict) -> bool:
         """Creates a new hp_io task. Stops any existing task first."""
-        await self.stop() # Ensure any previous task is stopped
-
+        await self.stop()
         while not self.upload_queue.empty():
             try:
                 self.upload_queue.get_nowait()
@@ -62,18 +61,16 @@ class HpIoTaskManager:
         simulate_daq_cfg = self.server_cfg['simulate_daq_cfg']
         data_dir = hp_io_cfg['data_dir']
 
-        # Start simulation if configured
         if hp_io_cfg['simulate_daq']:
             data_dir = simulate_daq_cfg['files']['data_dir']
             if not await self.simulation_manager.start(simulate_daq_cfg):
                 self.logger.error("Failed to start simulation manager.")
                 return False
-            for i in range(5):
-                if self.simulation_manager.data_flow_valid():
-                    self.logger.info("DAQ simulation started successfully.")
-                    break
-                self.logger.debug(f"Waiting for DAQ simulation thread to start. Try {i+1}/5...")
-                await asyncio.sleep(0.5)
+
+            # Add a small delay to ensure the simulation task has time to
+            # create and pre-populate files before HpIoManager starts.
+            await asyncio.sleep(0.2)
+
         else:
             if not await asyncio.to_thread(os.path.exists, data_dir):
                 self.logger.error(f"Cannot start HpIo task: data_dir '{data_dir}' does not exist.")
@@ -101,7 +98,8 @@ class HpIoTaskManager:
             _, self.active_data_products = await asyncio.wait_for(asyncio.gather(*init_tasks), timeout=3)
 
             is_filesystem_mode = not hp_io_cfg['simulate_daq'] or \
-                (hp_io_cfg['simulate_daq'] and self.server_cfg['simulate_daq_cfg'].get('simulation_mode') == 'filesystem')
+                                 (hp_io_cfg['simulate_daq'] and self.server_cfg['simulate_daq_cfg'].get(
+                                     'simulation_mode') == 'filesystem')
 
             if is_filesystem_mode and len(self.active_data_products) == 0:
                 self.logger.error("hp_io task failed to initialize with active data products in filesystem mode.")
@@ -109,9 +107,8 @@ class HpIoTaskManager:
                 return False
 
             self.logger.info(f"hp_io task initialized with active_data_products={self.active_data_products}")
-
         except asyncio.TimeoutError:
-            self.logger.error(f"Timeout waiting for hp_io task to become valid. ")
+            self.logger.error(f"Timeout waiting for hp_io task to become valid.")
             await self.stop()
             return False
 
