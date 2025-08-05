@@ -56,7 +56,7 @@ def _parse_dp_name(filename: str) -> Optional[str]:
 
 def _parse_seqno(filename: str) -> Optional[int]:
     """Extracts the seqno from a PFF filename."""
-    match = re.search(r'\.seqno_(\d)+\.', filename)
+    match = re.search(r'\.seqno_(\d+)\.', filename)
     seqno = int(match.group(1)) if match else None
     return seqno
 
