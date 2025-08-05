@@ -237,9 +237,9 @@ async def serve(server_cfg):
     logger = logging.getLogger("daq_data.server")
 
     # Add regular socket
-    # listen_addr = "[::]:50051"
-    # server.add_insecure_port(listen_addr)
-    # logger.info(f"Server starting, listening on {listen_addr}")
+    listen_addr = "[::]:50051"
+    server.add_insecure_port(listen_addr)
+    logger.info(f"Server starting, listening on {listen_addr}")
 
     # Add a Unix Domain Socket listener for local, high-performance communication
     uds_listen_addr = server_cfg.get("unix_domain_socket", None)

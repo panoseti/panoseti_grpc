@@ -10,6 +10,7 @@ grpcio_tools>=1.73.0
 
 # async libraries
 watchfiles>=1.1.0
+aiofiles>=24.1.0
 
 # observability
 rich>=14.0.0
