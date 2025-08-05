@@ -49,14 +49,16 @@ from .state import ReaderState, DataProductConfig
 from panoseti_util import pff
 
 
-def _parse_dp_name(filename: str) -> Optional[str]:
+def _parse_dp_name(filename: str, dp_name_re = re.compile(r'\.dp_([a-zA-Z0-9]+)\.')) -> Optional[str]:
     """Extracts the data product name (e.g., 'img16') from a PFF filename."""
-    match = re.search(r'\.dp_([a-zA-Z0-9]+)\.', filename)
+    match = dp_name_re.search(filename)
     return match.group(1) if match else None
 
-def _parse_seqno(filename: str) -> Optional[int]:
+
+
+def _parse_seqno(filename: str, seqno_re=re.compile(r'\.seqno_(\d+)\.')) -> Optional[int]:
     """Extracts the seqno from a PFF filename."""
-    match = re.search(r'\.seqno_(\d+)\.', filename)
+    match = seqno_re.search(filename)
     seqno = int(match.group(1)) if match else None
     return seqno
 
@@ -343,7 +345,8 @@ class HpIoManager:
                     # Group files by data product, as sequence numbers are per-DP.
                     pff_files_by_dp = defaultdict(list)
                     for f_path in all_pff_file_paths:
-                        filename = Path(f_path).name
+                        # filename = Path(f_path).name
+                        filename = f_path.split('/')[-1]
                         dp_name = _parse_dp_name(filename)
                         if dp_name:
                             pff_files_by_dp[dp_name].append(filename)
