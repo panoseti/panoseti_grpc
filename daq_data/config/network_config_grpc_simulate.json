@@ -22,9 +22,17 @@
     ],
     "daq_nodes": [
         {
-            "ip_addr": "192.168.3.84",
+            "ip_addr": "localhost",
             "port_forwarding": {
                 "status": true,
+                "gw_ip": "192.168.3.0",
+                "port": 22
+            }
+        },
+        {
+            "ip_addr": "192.168.3.84",
+            "port_forwarding": {
+                "status": false,
                 "gw_ip": "localhost",
                 "port": 22
             }

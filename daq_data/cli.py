@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import time
 import asyncio
 import signal
 import argparse
@@ -17,6 +18,7 @@ from daq_data import (
     daq_data_pb2,
     daq_data_pb2_grpc
 )
+from .resources import make_rich_logger
 from .daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
 from .client import DaqDataClient, AioDaqDataClient
 from .plot import PulseHeightDistribution, PanoImagePreviewer
@@ -50,14 +52,14 @@ async def run_pulse_height_distribution(
 
 
 async def run_pano_image_preview(
-        addc: AioDaqDataClient,
-        host: str,
-        stream_movie_data: bool,
-        stream_pulse_height_data: bool,
-        update_interval_seconds: float,
-        plot_update_interval: float,
-        module_ids: tuple[int],
-        wait_for_ready: bool = False,
+    addc: AioDaqDataClient,
+    host: str,
+    stream_movie_data: bool,
+    stream_pulse_height_data: bool,
+    update_interval_seconds: float,
+    plot_update_interval: float,
+    module_ids: tuple[int],
+    wait_for_ready: bool = False,
 ):
     """Streams PanoImages from an active observing run."""
     # Make the RPC call
@@ -73,6 +75,33 @@ async def run_pano_image_preview(
     previewer = PanoImagePreviewer(stream_movie_data, stream_pulse_height_data, module_ids, plot_update_interval=plot_update_interval)
     async for parsed_pano_image in stream_images_responses:
         previewer.update(parsed_pano_image)
+
+async def run_speed_test(
+    addc: AioDaqDataClient,
+    host: str,
+    module_ids: tuple[int],
+):
+        # Stream images of all types as fast as possible
+        stream_images_responses = await addc.stream_images(
+            host,
+            stream_movie_data=True,
+            stream_pulse_height_data=True,
+            update_interval_seconds=-1,
+            module_ids=module_ids,
+            parse_pano_images=True
+        )
+        # ph_dist = PulseHeightDistribution(durations_seconds, module_ids, plot_update_interval)
+        npackets = 0
+        ref_t = time.monotonic()
+        logger = make_rich_logger("daq_data.cli", level=logging.INFO)
+        async for _ in stream_images_responses:
+            curr_t = time.monotonic()
+            npackets += 1
+            delta_t = curr_t - ref_t
+            if delta_t > 5:
+                logger.info(f"{npackets} pkts / {delta_t}s = {npackets / delta_t} (pkts / s)")
+                npackets = 0
+                ref_t = curr_t
 
 
 async def do_ping_fn(addc, host):
@@ -143,7 +172,7 @@ async def run_demo_api(args):
     do_list_hosts = args.list_hosts
     do_reflect_services = args.reflect_services
     hp_io_cfg, do_init = load_hp_io_cfg(args)
-    do_plot = args.plot_view or args.plot_phdist
+    do_plot = args.plot_view or args.plot_phdist or args.plot_speed
 
     refresh_period = args.refresh_period
     host = args.host
@@ -195,6 +224,15 @@ async def run_demo_api(args):
                     )
                 )
                 plot_tasks.append(plot_phdist_task)
+            if args.plot_speed:
+                plot_speed_task = asyncio.create_task(
+                    run_speed_test(
+                        addc,
+                        host,
+                        module_ids=module_ids,
+                    )
+                )
+                plot_tasks.append(plot_speed_task)
             # use gather to concurrently do different plots
             await asyncio.gather(*plot_tasks)
 
@@ -262,6 +300,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--plot-phdist",
         help="whether to create a live pulse-height distribution for the specified module id",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "--plot-speed",
+        help="whether to create a live speed test for the specified module id",
         action="store_true",
     )
 

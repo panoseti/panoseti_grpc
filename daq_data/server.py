@@ -129,12 +129,11 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
             self.logger.info(f"Stream ended for {peer}.")
             if not context.cancelled():
-                if reader_state.cancel_reader_event.is_set():
+                if reader_state.shutdown_event.is_set():
+                    await context.abort(grpc.StatusCode.CANCELLED, f"server shutdown_event set for {peer}.")
+                elif reader_state.cancel_reader_event.is_set():
                     await context.abort(grpc.StatusCode.CANCELLED, f"cancel_reader_event set for {peer}."
                                                                    f"A writer has likely forced a reconfiguration of hp_io")
-                elif reader_state.shutdown_event.is_set():
-                    await context.abort(grpc.StatusCode.CANCELLED, f"shutdown_event set for {peer}.")
-
     async def InitHpIo(self, request, context) -> InitHpIoResponse:
         """Initialize or re-initialize the hp_io task. [writer]"""
         peer = urllib.parse.unquote(context.peer())
@@ -196,29 +195,36 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self.logger.warning(emsg)
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
-        try:
+        async with self.client_manager.get_uploader_access(context, self.task_manager):
             image_count = 0
-            async for request in request_iterator:
-                if not request.HasField("pano_image"):
-                    self.logger.warning(f"Received empty UploadImageRequest from {peer}")
-                    continue
+            try:
+                async for request in request_iterator:
+                    if not request.HasField("pano_image"):
+                        self.logger.warning(f"Received empty UploadImageRequest from {peer}")
+                        continue
+                    try:
+                        # Use non-blocking put to avoid holding up the RPC if the system is overloaded.
+                        # self.logger.debug(f"Received image from {peer}.")
+                        self.task_manager.upload_queue.put_nowait(request.pano_image)
+                        image_count += 1
+                    except asyncio.QueueFull:
+                        self.logger.error(f"Upload queue is full. Aborting stream for client {peer}.")
+                        await context.abort(grpc.StatusCode.RESOURCE_EXHAUSTED, "Server upload queue is full.")
+                    if context.cancelled() or self.client_manager.cancel_readers_event.is_set() or self.client_manager.shutdown_event.is_set():
+                        self.logger.info(f"Stream ended for {peer}.")
+                        if not context.cancelled():
+                            if self.client_manager.shutdown_event.is_set():
+                                await context.abort(grpc.StatusCode.CANCELLED, f"server shutdown_event set for {peer}.")
+                            elif self.client_manager.cancel_readers_event.is_set():
+                                await context.abort(grpc.StatusCode.CANCELLED, f"cancel_reader_event set for {peer}."
+                                                                               f"A writer has likely forced a reconfiguration of hp_io")
+                        await context.abort(grpc.StatusCode.CANCELLED, f"client {peer} cancelled stream.")
+                self.logger.info(f"Successfully processed {image_count} uploaded images from {peer}.")
+                return Empty()
 
-                # Use non-blocking put to avoid holding up the RPC if the system is overloaded.
-                try:
-                    # self.logger.debug(f"Received image from {peer}.")
-                    self.task_manager.upload_queue.put_nowait(request.pano_image)
-                    image_count += 1
-                except asyncio.QueueFull:
-                    self.logger.error(f"Upload queue is full. Aborting stream for client {peer}.")
-                    await context.abort(grpc.StatusCode.RESOURCE_EXHAUSTED, "Server upload queue is full.")
-
-            self.logger.info(f"Successfully processed {image_count} uploaded images from {peer}.")
-            return Empty()
-
-        except grpc.aio.AioRpcError as e:
-            self.logger.error(f"Error during UploadImages stream for {peer}: {e.details()}")
-            # This will be raised back to the gRPC framework.
-            raise
+            except grpc.aio.AioRpcError as e:
+                self.logger.error(f"Error during UploadImages stream for {peer}: {e.details()}")
+                raise e
 
 
 async def serve(server_cfg):

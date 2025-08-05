@@ -167,11 +167,20 @@ class ClientManager:
         ]
         self._active_readers = 0
         self._writer_active = False
+        self._uploader_active = False
 
     @property
     def reader_states(self) -> List[ReaderState]:
         """Returns the list of reader states."""
         return self._readers
+
+    @property
+    def cancel_readers_event(self):
+        return self._cancel_readers_event
+
+    @property
+    def shutdown_event(self):
+        return self._shutdown_event
 
     async def cancel_all_readers(self):
         """Signals all active reader streams to terminate."""
@@ -265,3 +274,25 @@ class ClientManager:
                         f"Releasing reader slot for {allocated_reader_state.client_ip}. Active readers: {self._active_readers - 1}")
                     allocated_reader_state.reset()
                     self._active_readers -= 1
+
+    @asynccontextmanager
+    async def get_uploader_access(self, context, hp_io_task_manager: HpIoTaskManager):
+        """A context manager to safely acquire exclusive 'writer' access."""
+        peer = urllib.parse.unquote(context.peer())
+        async with self._lock:
+            self.logger.debug(f"Uploader from {peer} trying to acquire lock. Active readers: {self._active_readers}")
+            simulate_upload = hp_io_task_manager.hp_io_cfg.get('simulate_daq', False)
+            simulate_upload = True
+            if not simulate_upload and self._writer_active:
+                await context.abort(grpc.StatusCode.ABORTED, f"A writer is already active. Try again soon")
+            elif self._uploader_active:
+                await context.abort(grpc.StatusCode.ABORTED, f"An uploader is already active. Try again soon")
+
+            self._uploader_active = True
+            self.logger.debug("Uploader lock acquired.")
+        try:
+            yield
+        finally:
+            async with self._lock:
+                self._uploader_active = False
+                self.logger.debug("Uploader lock released.")

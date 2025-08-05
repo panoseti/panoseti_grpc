@@ -445,7 +445,7 @@ class DaqDataClient:
             init_successes.append(init_hp_io_response.success)
         return all(init_successes)
 
-    def ping(self, host: str, timeout=0.5) -> bool:
+    def ping(self, host: str, timeout=0.1) -> bool:
         """
         Pings a DAQ host to check if its DaqData gRPC server is active and responsive.
 
@@ -895,7 +895,7 @@ class AioDaqDataClient:
         results = await asyncio.gather(*[_init_single_host(host) for host in hosts])
         return all(results)
 
-    async def ping(self, host: str, timeout=0.5) -> bool:
+    async def ping(self, host: str, timeout=0.1) -> bool:
         """Pings a DAQ host asynchronously to check if its server is responsive."""
         if host not in self.daq_nodes:
             return False
@@ -915,17 +915,25 @@ class AioDaqDataClient:
             image_iterator (AsyncGenerator): An async generator that yields PanoImage objects.
         """
         hosts = await self.validate_daq_hosts(hosts)
-
         async def request_generator(iterator):
             async for image in iterator:
                 yield UploadImageRequest(pano_image=image)
 
         upload_tasks = []
-        for host in hosts:
-            stub = self.daq_nodes[host]['stub']
-            #task = asyncio.create_task(stub.UploadImages(request_generator(image_iterator)))
-            task = stub.UploadImages(request_generator(image_iterator), wait_for_ready=True)
-            upload_tasks.append(task)
+        try:
+            for host in hosts:
+                stub = self.daq_nodes[host]['stub']
+                #task = asyncio.create_task(stub.UploadImages(request_generator(image_iterator)))
+                task = stub.UploadImages(request_generator(image_iterator), wait_for_ready=True)
+                upload_tasks.append(task)
 
-        await asyncio.gather(*upload_tasks)
-        self.logger.info(f"Finished uploading images to all specified hosts: {hosts}")
+            await asyncio.gather(*upload_tasks)
+            self.logger.info(f"Finished uploading images to all specified hosts: {hosts}")
+        except grpc.aio.AioRpcError as e:
+            self.logger.error(f"Failed to upload images to all specified hosts: {hosts}")
+            raise e
+        finally:
+            for task in upload_tasks:
+                task.cancel()
+            await asyncio.gather(*upload_tasks, return_exceptions=True)
+

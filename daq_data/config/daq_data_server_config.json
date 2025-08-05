@@ -4,7 +4,7 @@
     "unix_domain_socket": "unix:///tmp/daq_data.sock",
     "max_concurrent_rpcs": 100,
     "max_read_queue_size": 50,
-    "min_hp_io_update_interval_seconds": 0.01,
+    "min_hp_io_update_interval_seconds": 0.001,
     "max_client_update_interval_seconds": 60,
     "max_reader_enqueue_timeouts": 2,
     "max_reader_dequeue_timeouts": 5,
@@ -14,7 +14,7 @@
     "valid_data_products": ["img8", "img16", "ph256", "ph1024"],
 
     "simulate_daq_cfg": {
-        "simulation_mode": "filesystem",
+        "simulation_mode": "rpc",
         "movie_type": "img16",
         "ph_type": "ph256",
         "do_ph": true,

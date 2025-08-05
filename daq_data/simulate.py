@@ -172,14 +172,6 @@ class SimulationManager:
         """
         self.logger.info("RPC simulation thread started.")
 
-        def _blocking_read(dp_config: DataProductConfig, frame_idx: int) -> tuple[str, bytes]:
-            dp_config.f.seek(frame_idx * dp_config.frame_size)
-            header_str = pff.read_json(dp_config.f)
-            img = pff.read_image(dp_config.f, dp_config.image_shape[0], dp_config.bytes_per_pixel)
-            if header_str and img is not None:
-                return json.loads(header_str), img
-            return None, None
-
         daq_active_files = []
         dp_cfg = get_dp_config([sim_cfg['movie_type'], sim_cfg['ph_type']])
         try:
@@ -198,7 +190,16 @@ class SimulationManager:
                 ]
             }
             async with AioDaqDataClient(daq_config=daq_config_uds, network_config=None) as client:
+                def _blocking_read(dp_config: DataProductConfig, frame_idx: int) -> tuple[str, bytes]:
+                    dp_config.f.seek(frame_idx * dp_config.frame_size)
+                    header_str = pff.read_json(dp_config.f)
+                    img = pff.read_image(dp_config.f, dp_config.image_shape[0], dp_config.bytes_per_pixel)
+                    if header_str and img is not None:
+                        return json.loads(header_str), img
+                    return None, None
+
                 ping_success = await client.ping(uds_listen_addr)
+                assert ping_success, "UploadImage RPC simulation ping failed."
                 async def image_generator() -> AsyncGenerator[PanoImage, None]:
                     """Generator that reads from files and yields PanoImage objects."""
                     movie_pff_path = get_sim_pff_path(sim_cfg, sim_cfg['real_module_id'], 0, False, False)
@@ -218,7 +219,8 @@ class SimulationManager:
                                 header, img_data = await asyncio.to_thread(_blocking_read, dp, fnum)
 
                                 if not img_data:
-                                    await asyncio.to_thread(movie_src.seek, 0)
+                                    self.logger.warning("Simulation source file reached EOF, looping.")
+                                    await asyncio.to_thread(dp.f.seek, 0)
                                     continue
 
                                 for mid in sim_cfg['sim_module_ids']:
