@@ -171,6 +171,8 @@ class HpIoManager:
         self.modules: Dict[int, ModuleState] = {}
         self.latest_data_cache: Dict[int, Dict[str, PanoImage]] = defaultdict(lambda: {'ph': None, 'movie': None})
         self.change_queue = asyncio.Queue()
+        self.pipe_fds_to_close = []
+        self._pipe_readers_installed = False
 
     async def run(self):
         """Main entry point to start the monitoring and broadcasting task."""
@@ -178,7 +180,7 @@ class HpIoManager:
         self.valid.clear()
         watcher_task = None
         processing_task = None
-        self.pipe_fds_to_close = []
+        loop = asyncio.get_running_loop()
 
         try:
             if not await self._initialize_modules_from_fs():
@@ -192,7 +194,7 @@ class HpIoManager:
                         if pipe_path.exists() and stat.S_ISFIFO(os.stat(pipe_path).st_mode):
                             self.logger.info(f"Found named pipe at {pipe_path}. Activating pipe-based watcher.")
                             use_pipe_watcher = True
-                            break # Use pipe watcher for all modules if one is found
+                            break
 
             if use_pipe_watcher:
                 watcher_task = asyncio.create_task(self.watch_status_pipe())
@@ -202,9 +204,11 @@ class HpIoManager:
 
             await self._update_active_data_products()
             self.valid.set()
+
             processing_task = asyncio.create_task(self._processing_loop())
 
             await asyncio.gather(watcher_task, processing_task)
+
         except Exception as err:
             self.logger.error(f"HpIoManager task encountered a fatal exception: {err}", exc_info=True)
             if watcher_task: watcher_task.cancel()
@@ -213,15 +217,24 @@ class HpIoManager:
         finally:
             self.valid.clear()
             self.logger.info("Closing all open file and pipe handles...")
+
+            # Clean up pipe readers from the event loop
+            if self._pipe_readers_installed:
+                for fd in self.pipe_fds_to_close:
+                    loop.remove_reader(fd)
+                self._pipe_readers_installed = False
+
             for fd in self.pipe_fds_to_close:
                 try:
                     os.close(fd)
                 except Exception as e:
                     self.logger.warning(f"Error closing pipe fd: {e}")
+
             for module in self.modules.values():
                 for dp_config in module.dp_configs.values():
                     if dp_config.f:
                         await asyncio.to_thread(dp_config.f.close)
+
             self.logger.info("HpIoManager task exited.")
 
 
@@ -263,55 +276,68 @@ class HpIoManager:
             await self.change_queue.put(changes)
 
     async def watch_status_pipe(self):
-        """Watches for signals on a named pipe ('read_status')."""
+        """
+        Watches for signals on a named pipe ('read_status') using asyncio's event loop.
+        """
         self.logger.info("Starting pipe-based watcher.")
-        pipe_fds = {}
+        loop = asyncio.get_running_loop()
+        pipes_to_watch = {}
+
         for mid, module in self.modules.items():
             if module.run_path:
                 pipe_path = module.run_path / "read_status"
                 if pipe_path.exists() and stat.S_ISFIFO(os.stat(pipe_path).st_mode):
                     try:
                         fd = os.open(pipe_path, os.O_RDONLY | os.O_NONBLOCK)
-                        pipe_fds[mid] = fd
+                        pipes_to_watch[fd] = module
                         self.pipe_fds_to_close.append(fd)
                     except Exception as e:
                         self.logger.error(f"Failed to open pipe for reading on module {mid}: {e}")
 
-        if not pipe_fds:
+        if not pipes_to_watch:
             self.logger.warning("No valid pipes found to watch.")
             return
 
+        data_ready = asyncio.Event()
+
+        def _pipe_readable_callback():
+            data_ready.set()
+
+        for fd in pipes_to_watch.keys():
+            loop.add_reader(fd, _pipe_readable_callback)
+        self._pipe_readers_installed = True
+
         try:
             while not self.stop_io.is_set():
-                # Wait for data on any of the pipe file descriptors
-                readable_fds, _, _ = await asyncio.to_thread(select.select, list(pipe_fds.values()), [], [], 0.1)
+                await asyncio.wait_for(data_ready.wait(), timeout=1.0)
 
-                if readable_fds:
-                    # Drain the pipe to reset the select() trigger
-                    for fd in readable_fds:
-                        try:
-                            os.read(fd, 1024)  # Read and discard any data
-                        except BlockingIOError:
-                            continue  # Nothing to read, which is fine
+                # Drain all readable pipes
+                for fd in pipes_to_watch.keys():
+                    try:
+                        while os.read(fd, 1024):
+                            pass
+                    except BlockingIOError:
+                        continue  # Pipe is empty, continue to next fd
 
-                    # A signal means "check for new data". We will generate a
-                    # synthetic 'changes' event like the file watcher would.
-                    all_changes = set()
-                    for module in self.modules.values():
-                        if module.run_path:
-                            # Glob all pff files to check their current state
-                            files = await asyncio.to_thread(glob, str(module.run_path / '*.pff'))
-                            for f in files:
-                                # Add a "modified" event for each file
-                                all_changes.add((2, f))
+                all_changes = set()
+                for module in self.modules.values():
+                    if module.run_path:
+                        files = await asyncio.to_thread(glob, str(module.run_path / '*.pff'))
+                        for f in files:
+                            all_changes.add((2, f))  # (2, f) is a "modified" event
 
-                    if all_changes:
-                        # self.logger.info(f"Pipe watcher detected {all_changes} changes.")
-                        await self.change_queue.put(all_changes)
+                if all_changes:
+                    # self.logger.debug(f"Pipe watcher detected changes {all_changes}, putting on queue.")
+                    await self.change_queue.put(all_changes)
 
-                await asyncio.sleep(0.05)  # Yield control
+                data_ready.clear()  # Reset for the next signal
+        except asyncio.TimeoutError:
+            pass  # It's okay to timeout, the loop will continue
+        except asyncio.CancelledError:
+            self.logger.info("Pipe watcher task cancelled.")
         finally:
             self.logger.info("Pipe watcher task exited.")
+            # Cleanup of readers and fds is handled in the main run() method's finally block.
 
     async def _processing_loop(self):
         """Processes events from filesystem and upload queue."""
@@ -336,6 +362,7 @@ class HpIoManager:
 
             ready_readers, _, _ = self._get_ready_readers(now)
             if ready_readers:
+                # self.logger.debug(f"Broadcasting data to {ready_readers=}")
                 self._broadcast_data(ready_readers, now)
 
     async def _process_changes(self, changes: set):
@@ -393,59 +420,92 @@ class HpIoManager:
         self.latest_data_cache[module_id][cache_key] = pano_image
 
     async def _handle_file_change(self, filepath: Path, module: ModuleState, dp_config: DataProductConfig):
-        """Fetches the latest frame from a modified PFF file."""
-        header, img, frame_idx = await self._fetch_latest_frame(filepath, dp_config)
-        if header and img is not None:
-            pano_image = PanoImage(
-                type=dp_config.pano_image_type,
-                header=ParseDict(header, Struct()),
-                image_array=img,
-                shape=dp_config.image_shape,
-                bytes_per_pixel=dp_config.bytes_per_pixel,
-                file=filepath.name,
-                frame_number=frame_idx,
-                module_id=module.module_id,
-            )
-            cache_key = 'ph' if dp_config.is_ph else 'movie'
-            self.latest_data_cache[module.module_id][cache_key] = pano_image
+        """
+        Handles a file change, managing file handles and fetching the latest frame.
+        This method is now responsible for opening/closing file handles to optimize _fetch_latest_frame.
+        """
+        # Check if the file has changed from the one we are currently tracking
+        if filepath != dp_config.current_filepath or dp_config.f is None:
+            self.logger.info(f"New data file detected for {dp_config.name} in module {module.module_id}: {filepath}")
+            # Close the old file handle if it exists
+            if dp_config.f:
+                await asyncio.to_thread(dp_config.f.close)
 
-    async def _fetch_latest_frame(self, filepath: Path, dp_config: DataProductConfig) -> Tuple[
-        Optional[dict], Optional[list], int]:
-        """Reads the last complete frame from a PFF file."""
+            # Open the new file and cache the handle and path
+            try:
+                dp_config.f = await asyncio.to_thread(open, filepath, 'rb')
+                dp_config.current_filepath = filepath
+                dp_config.last_known_filesize = 0  # Reset for the new file
+                dp_config.last_frame_idx = -1
+            except FileNotFoundError:
+                self.logger.warning(f"File {filepath} disappeared before it could be opened.")
+                dp_config.f = None
+                dp_config.current_filepath = None
+                return
+
+        # If we have a valid file handle, fetch the latest frame
+        if dp_config.f:
+            # self.logger.debug(f"File change detected for {dp_config.name} in module {module.module_id}: {filepath}")
+            header, img, frame_idx = await self._fetch_latest_frame(dp_config)
+            if header and img is not None:
+                # self.logger.debug(f"Received latest frame for {dp_config.name} in module {module.module_id}: ")
+                pano_image = PanoImage(
+                    type=dp_config.pano_image_type,
+                    header=ParseDict(header, Struct()),
+                    image_array=img,
+                    shape=dp_config.image_shape,
+                    bytes_per_pixel=dp_config.bytes_per_pixel,
+                    file=filepath.name,  # Use the original filepath name for the message
+                    frame_number=frame_idx,
+                    module_id=module.module_id,
+                )
+
+                cache_key = 'ph' if dp_config.is_ph else 'movie'
+                self.latest_data_cache[module.module_id][cache_key] = pano_image
+
+    async def _fetch_latest_frame(self, dp_config: DataProductConfig) -> Tuple[Optional[dict], Optional[bytes], int]:
+        """
+        Reads the last complete frame from a PFF file using a cached file handle.
+        This function is now significantly more efficient as it avoids repeated file open/close operations.
+        """
         try:
-            with open(filepath, 'rb') as f:
-                current_size = os.fstat(f.fileno()).st_size
+            # Get the current file size using the cached file descriptor
+            f = dp_config.f
+            current_size = (await asyncio.to_thread(os.fstat, f.fileno())).st_size
 
-                # If the file is smaller than the last time we checked, or has no data, ignore.
-                if current_size <= dp_config.last_known_filesize or dp_config.frame_size == 0:
-                    return None, None, -1
-
-                nframes = current_size // dp_config.frame_size
-
-                # If the number of frames hasn't increased, ignore.
-                if nframes <= dp_config.last_frame_idx:
-                    return None, None, -1
-
-                new_frame_idx = nframes - 1
-
-                def _blocking_read(file_handle, frame_idx):
-                    file_handle.seek(frame_idx * dp_config.frame_size)
-                    header_str = pff.read_json(file_handle)
-                    img = pff.read_image(file_handle, dp_config.image_shape[0], dp_config.bytes_per_pixel)
-                    return (json.loads(header_str), img) if header_str and img is not None else (None, None)
-
-                header, img = await asyncio.to_thread(_blocking_read, f, new_frame_idx)
-
-                if header and img is not None:
-                    # Update state only after a successful read
-                    dp_config.last_known_filesize = current_size
-                    dp_config.last_frame_idx = new_frame_idx
-                    return header, img, new_frame_idx
-
+            # If the file hasn't grown or has no data, ignore.
+            if current_size <= dp_config.last_known_filesize or dp_config.frame_size == 0:
                 return None, None, -1
 
-        except (FileNotFoundError, ValueError) as e:
-            self.logger.warning(f"Could not read latest frame from {filepath}: {e}")
+            nframes = current_size // dp_config.frame_size
+            # If the number of frames hasn't increased, ignore.
+            if nframes <= dp_config.last_frame_idx:
+                return None, None, -1
+
+            new_frame_idx = nframes - 1
+
+            def _blocking_read(file_handle, frame_idx):
+                """Blocking I/O operations to be run in a separate thread."""
+                file_handle.seek(frame_idx * dp_config.frame_size)
+                header_str = pff.read_json(file_handle)
+                img = pff.read_image(file_handle, dp_config.image_shape[0], dp_config.bytes_per_pixel)
+                return (json.loads(header_str), img) if header_str and img is not None else (None, None)
+
+            header, img = await asyncio.to_thread(_blocking_read, f, new_frame_idx)
+
+            if header and img is not None:
+                # Update state only after a successful read
+                dp_config.last_known_filesize = current_size
+                dp_config.last_frame_idx = new_frame_idx
+                return header, img, new_frame_idx
+
+            return None, None, -1
+        except (IOError, ValueError) as e:
+            self.logger.warning(f"Could not read latest frame from {dp_config.current_filepath}: {e}")
+            # Close the potentially corrupted file handle so it can be reopened on the next change
+            if dp_config.f:
+                await asyncio.to_thread(dp_config.f.close)
+                dp_config.f = None
             return None, None, -1
 
     def _get_ready_readers(self, now: float):
@@ -462,6 +522,7 @@ class HpIoManager:
         # Iterate over a copy of module IDs, as the cache dict might be modified.
         for mid in list(self.latest_data_cache.keys()):
             data = self.latest_data_cache[mid]
+            # self.logger.debug(f"Broadcasting data for module {mid}: {data}")
 
             ph_image = data.get('ph')
             movie_image = data.get('movie')
@@ -473,6 +534,7 @@ class HpIoManager:
                     if rs.config['stream_pulse_height_data'] and \
                             (not rs.config['module_ids'] or mid in rs.config['module_ids']):
                         try:
+                            # self.logger.debug(f"Sending {ph_image=} to {rs.uid}")
                             rs.queue.put_nowait(ph_image)
                             rs.enqueue_timeouts = 0  # Reset on successful send
                         except asyncio.QueueFull:
@@ -489,6 +551,7 @@ class HpIoManager:
                     if rs.config['stream_movie_data'] and \
                             (not rs.config['module_ids'] or mid in rs.config['module_ids']):
                         try:
+                            # self.logger.debug(f"Sending {movie_image=} to {rs.uid}")
                             rs.queue.put_nowait(movie_image)
                             rs.enqueue_timeouts = 0  # Reset on successful send
                         except asyncio.QueueFull:

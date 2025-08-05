@@ -108,7 +108,7 @@ async def run_speed_test(
             npackets += 1
             delta_t = curr_t - ref_t
             if delta_t > 1:
-                logger.info(f"{npackets} pkts / {delta_t}s = {npackets / delta_t} (pkts / s)")
+                logger.info(f"{npackets:>6} pkts / {delta_t:6.5f}s = {npackets / delta_t: 10.5f} (pkts/s)")
                 npackets = 0
                 ref_t = curr_t
 
