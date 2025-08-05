@@ -171,31 +171,21 @@ class DaqDataClient:
                 continue
         return self
 
-    def __exit__(self, etype, value, traceback):
-        """
-        Closes all open gRPC channels upon exiting a context block.
-        """
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Closes all open gRPC channels upon exiting a context block."""
+        self.logger.info("Closing all client gRPC channels.")
         for daq_host, daq_node in self.daq_nodes.items():
             if daq_node.get('channel'):
                 daq_node['channel'].close()
-                self.logger.debug(f"DaqDataClient closed channel to {daq_node['connection_target']}")
-        exit_ok = False
-        if value is None or isinstance(value, KeyboardInterrupt):
-            exit_ok = True
-        elif isinstance(value, SystemExit) and value.code == 0:
-            exit_ok = True
-        elif isinstance(value, grpc.FutureCancelledError):
-            self.logger.info("\nStream cancelled.")
-            exit_ok = True
-        elif isinstance(value, grpc.RpcError):
-            self.logger.error(f"\nStream failed with RPC error: {value}")
-            exit_ok = True
+                self.logger.debug(f"Closed channel to {daq_node['connection_target']}")
 
-        if exit_ok:
-            self.logger.debug(f"{etype=}, {value=}, {traceback=}")
-            return True
-        self.logger.error(f"{etype=}, {value=}, {traceback=}")
-        return False
+        self.logger.info("All client channels closed.")
+
+        # Let the context manager suppress expected exceptions on exit, but re-raise others.
+        if exc_type and exc_type not in [grpc.FutureCancelledError, grpc.RpcError, KeyboardInterrupt, SystemExit]:
+            self.logger.error(f"Client exiting due to an unhandled exception: {exc_val}")
+            return False # Re-raise the exception
+        return True # Suppress expected exceptions
 
     def get_valid_daq_hosts(self) -> Set[str]:
         """
@@ -615,32 +605,28 @@ class AioDaqDataClient:
                 continue
         return self
 
-    async def __aexit__(self, etype, value, traceback):
-        """Closes all open gRPC channels."""
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Closes all open async gRPC channels."""
+        self.logger.info("Closing all async client gRPC channels.")
         tasks = []
         for daq_host, daq_node in self.daq_nodes.items():
             if daq_node.get('channel'):
+                # Create a task to close each channel
                 task = asyncio.create_task(daq_node['channel'].close())
                 tasks.append(task)
-                self.logger.debug(f"DaqDataClient closed channel to {daq_node['connection_target']}")
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        exit_ok = False
-        if value is None or isinstance(value, KeyboardInterrupt):
-            exit_ok = True
-        elif isinstance(value, SystemExit) and value.code == 0:
-            exit_ok = True
-        elif isinstance(value, asyncio.CancelledError):
-            self.logger.info("\nStream cancelled.")
-            exit_ok = True
-        elif isinstance(value, grpc.aio.AioRpcError):
-            self.logger.error(f"\nStream failed with RPC error: {value}")
-            exit_ok = True
 
-        if exit_ok:
-            self.logger.debug(f"{etype=}, {value=}, {traceback=}")
-            return True
-        self.logger.error(f"{etype=}, {value=}, {traceback=}")
-        return False
+        if tasks:
+            # Wait for all close tasks to complete, even if some have errors
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        self.logger.info("All async client channels closed.")
+
+        # Suppress common exceptions that occur during a graceful shutdown (like Ctrl+C),
+        # but allow other, unexpected exceptions to propagate.
+        if exc_type and exc_type not in [asyncio.CancelledError, KeyboardInterrupt, SystemExit, grpc.aio.AioRpcError]:
+            self.logger.error(f"Client exiting due to an unhandled exception: {exc_val}")
+            return False  # Re-raise the exception
+        return True  # Suppress expected exceptions
 
     def get_valid_daq_hosts(self) -> Set[str]:
         """

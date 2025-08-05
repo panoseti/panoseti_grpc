@@ -256,7 +256,7 @@ String with the associated filename for the image, if provided.
 - `module_id`:
 Unsigned module ID of the telescope that produced this image.
 
-### Full Example Workflow
+### Example Workflow
 This example demonstrates a complete workflow: initialize the server for a simulated run and then stream data from it. This pattern is shown in [daq_data_client_demo.ipynb](daq_data_client_demo.ipynb).
 
 ```python
@@ -315,7 +315,8 @@ The API methods mirror the synchronous client, but they are coroutines and must 
 
 - Async iteration: The `stream_images` method returns an `AsyncGenerator`, which must be iterated over with `async for`.
 
-## Example: Asynchronous Workflow
+## Asynchronous Workflow Examples
+### Introductory
 This example demonstrates how to use the AioDaqDataClient to initialize a simulated run and stream data asynchronously. This pattern is ideal for applications that need to handle concurrent operations efficiently, such as a real-time dashboard or a multi-threaded analysis script.
 
 ```python
@@ -363,6 +364,75 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         print("Stream stopped.")
+```
+
+### Example: Robust Asynchronous Workflow
+Building on the introductory example, here we demonstrate the best practice for using the `AioDaqDataClient` to ensure graceful shutdown and resource cleanup. By handling system signals like Ctrl+C (SIGINT), you can prevent unhandled exceptions and ensure that all network connections and files are closed properly.
+If we don't carefully handle signals, the `asyncio` event loop may terminate our resource clean-up tasks before they have a chance to run.
+
+```python
+import asyncio
+import signal
+import logging
+from daq_data.client import AioDaqDataClient
+import grpc
+
+async def main():
+    # Graceful Shutdown Setup 
+    shutdown_event = asyncio.Event()
+    def _signal_handler(*_):
+        logging.getLogger("daq_data.client").info(
+            "Shutdown signal received, closing client stream..."
+        )
+        shutdown_event.set()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, _signal_handler)
+
+    # 0. Specify configuration file paths
+    daq_config_path = 'daq_data/config/daq_config_grpc_simulate.json'
+    network_config_path = 'daq_data/config/network_config_grpc_simulate.json'
+
+    # 1. Connect to all DAQ nodes asynchronously
+    try:
+        async with AioDaqDataClient(daq_config_path, network_config_path) as client:
+            # 2. Get valid hosts and initialize simulation
+            valid_hosts = await client.get_valid_daq_hosts()
+            if not valid_hosts:
+                raise RuntimeError("No valid DAQ hosts found.")
+            await client.init_sim(valid_hosts)
+            
+            # 3. Asynchronously stream data
+            pano_image_stream = client.stream_images(
+                hosts=valid_hosts,
+                stream_movie_data=True,
+                stream_pulse_height_data=True,
+                update_interval_seconds=1.0,
+            )
+
+            # 4. Process the stream until the shutdown event is set
+            print("Starting async data stream. Press Ctrl+C to stop.")
+            async for pano_image in pano_image_stream:
+                if shutdown_event.is_set():
+                    break
+                # Your real-time visualization, analysis code here...
+                print(
+                    f"Image: Module {pano_image['module_id']}, "
+                    f"Type: {pano_image['type']}"
+                )
+
+    except (asyncio.CancelledError, grpc.aio.AioRpcError) as e:
+        logging.getLogger("daq_data.client").warning(f"Stream cancelled or gRPC error: {e}")
+    finally:
+        print("Stream processing finished.")
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        # This is now just a fallback for immediate interrupts
+        print("\nClient stopped forcefully.")
 ```
 
 ## Using the DaqData Client CLI
@@ -537,6 +607,101 @@ See [daq_data.proto](protos/daq_data.proto) for the protobuf specification of th
 - `module_ids`: whitelist of module data sources.
     - If empty, the server will broadcast data snapshots from all active modules (detected automatically).
     - If non-empty, the server will only broadcast data from the specified modules.
+
+
+## The `daq_data_server_config.json` File
+The `daq_data_server_config.json` file provides settings for the DaqData gRPC server, controlling everything from initial state and network listeners to resource limits and simulation behavior. These parameters are key to deploying and debugging the server effectively.
+
+```json
+{
+    "init_from_default": false,
+    "default_hp_io_config_file": "hp_io_config_simulate.json",
+    "unix_domain_socket": "unix:///tmp/daq_data.sock",
+    "max_concurrent_rpcs": 100,
+    "max_read_queue_size": 50,
+    "min_hp_io_update_interval_seconds": 0.01,
+    "max_client_update_interval_seconds": 60,
+    "max_reader_enqueue_timeouts": 2,
+    "max_reader_dequeue_timeouts": 3,
+    "reader_timeout": 5,
+    "shutdown_grace_period": 5,
+    "hp_io_stop_timeout": 5.0,
+    "valid_data_products": ["img8", "img16", "ph256", "ph1024"],
+    "simulate_daq_cfg": {
+        "simulation_mode": "filesystem",
+        "movie_type": "img16",
+        "ph_type": "ph256",
+        "frames_per_pff": 1000,
+        "sim_module_ids": [224],
+        "real_module_id": 1,
+        "files": {
+            "data_dir": "daq_data/simulated_data_dir",
+            "real_run_dir": "obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd",
+            "sim_run_dir_template": "module_{module_id}/obs_SIMULATE",
+            "movie_pff_template": "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_{module_id}.seqno_{seqno}.debug_TRUNCATED.pff",
+            "ph_pff_template": "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_{module_id}.seqno_{seqno}.debug_TRUNCATED.pff",
+            "daq_active_file": "module_{module_id}.daq-active"
+        }
+    }
+}
+```
+### Server Configuration
+These fields control the server's core behavior, network listeners, and shutdown procedure.
+
+- `init_from_default`: (boolean) If true, the server will automatically start the hp_io task on launch using the configuration specified in default_hp_io_config_file. This is useful for development or dedicated servers that should always start in a known state.
+
+- `default_hp_io_config_file`: (string) The path to a default hp_io_config.json file, used when init_from_default is true.
+
+- `unix_domain_socket`: (string) Defines the path for a Unix Domain Socket (UDS) listener (e.g., `unix:///tmp/daq_data.sock`). UDS provides a high-performance, low-latency connection for local clients on the same machine, bypassing the network stack.
+
+- `shutdown_grace_period`: (integer) The number of seconds the server will wait for active RPCs to complete during a graceful shutdown before forcefully terminating them.
+
+### Resource and Client Management
+These parameters prevent the server from being overwhelmed by too many requests or misbehaving clients. They are primarily used by the `ClientManager`.
+
+- `max_concurrent_rpcs`: (integer) The maximum number of simultaneous client connections (readers) the server will accept. This acts as the pool size for ReaderState objects.
+
+- `max_read_queue_size`: (integer) The maximum number of PanoImage messages that can be buffered in the queue for each individual client. If a client's queue is full, the server may drop data for that client.
+
+- `max_reader_enqueue_timeouts`: (integer) The number of consecutive times the server can fail to add an image to a specific client's queue (because it's full) before that client is considered unresponsive.
+
+- `max_reader_dequeue_timeouts`: (integer) The number of times a StreamImages client can time out waiting for new data from the server's broadcast before the server automatically disconnects it.
+
+- `reader_timeout`: (integer) The time in seconds a StreamImages client's internal queue will wait for a new image before timing out. This interacts with max_reader_dequeue_timeouts to detect stalled clients.
+
+### `hp_io` Task Configuration
+These fields directly govern the behavior of the HpIoManager, which is responsible for monitoring the filesystem for new data.
+
+- `min_hp_io_update_interval_seconds`: (float) The absolute minimum update interval (in seconds) that the hp_io task can be configured to use. Any `InitHpIo` request with a shorter interval will be rejected.
+
+- `valid_data_products`: (list of strings) A list of all supported data product names (e.g., `img16`, `ph256`). This is used to validate and configure data product parsers.
+
+### Simulation Configuration (`simulate_daq_cfg`)
+This object contains all the parameters needed to run the server in simulation mode, where it generates a data stream from existing PFF files instead of a live observatory.
+
+- `simulation_mode`: (string) Determines the simulation method.
+
+  - `"filesystem"`: The simulator writes data to a temporary directory structure, and the HpIoManager monitors it just like a real run. This is the primary mode for testing the full server data path.
+
+  - `"rpc"`: The simulator uses an internal gRPC client to send data directly to the server's `UploadImages` RPC, bypassing the filesystem monitor. This is for testing the RPC data path directly.
+
+- `movie_type` / `ph_type`: (string) The names of the data products (e.g., `img16`, `ph256`) to use as the source for the simulated movie and pulse-height data streams.
+
+- `sim_module_ids`: (list of integers) A list of module IDs that the server will simulate.
+
+- `real_module_id`: (integer) The module ID from which the source data is read.
+
+- `files`: (object) An object containing path templates for creating the simulated run directory and files.
+
+  - `data_dir`: The root directory for the simulated data.
+
+  - `real_run_dir`: The path to the directory containing the real PFF files that will be used as the source for the simulation.
+
+  - `sim_run_dir_template`: A template string for creating the run directory for each simulated module.
+
+  - `movie_pff_template` / `ph_pff_template`: Template strings for the names of the PFF files that will be created in the simulation directory.
+
+  - `daq_active_file`: The template for the `*.daq-active` file, which signals that a simulated module is "online".
 
 
 

@@ -30,6 +30,7 @@ async def run_pulse_height_distribution(
     host: str,
     plot_update_interval: float,
     module_ids: tuple[int],
+    shutdown_event: asyncio.Event,
     durations_seconds=(5, 10, 30),
 ):
     """Streams pulse-height images and updates max pixel distribution histograms."""
@@ -48,6 +49,8 @@ async def run_pulse_height_distribution(
     )
     ph_dist = PulseHeightDistribution(durations_seconds, module_ids, plot_update_interval)
     async for parsed_pano_image in stream_images_responses:
+        if shutdown_event.is_set():
+            break
         ph_dist.update(parsed_pano_image)
 
 
@@ -59,6 +62,7 @@ async def run_pano_image_preview(
     update_interval_seconds: float,
     plot_update_interval: float,
     module_ids: tuple[int],
+    shutdown_event: asyncio.Event,
     wait_for_ready: bool = False,
 ):
     """Streams PanoImages from an active observing run."""
@@ -74,12 +78,15 @@ async def run_pano_image_preview(
     )
     previewer = PanoImagePreviewer(stream_movie_data, stream_pulse_height_data, module_ids, plot_update_interval=plot_update_interval)
     async for parsed_pano_image in stream_images_responses:
+        if shutdown_event.is_set():
+            break
         previewer.update(parsed_pano_image)
 
 async def run_speed_test(
     addc: AioDaqDataClient,
     host: str,
     module_ids: tuple[int],
+    shutdown_event: asyncio.Event,
 ):
         # Stream images of all types as fast as possible
         stream_images_responses = await addc.stream_images(
@@ -95,6 +102,8 @@ async def run_speed_test(
         ref_t = time.monotonic()
         logger = make_rich_logger("daq_data.cli", level=logging.INFO)
         async for _ in stream_images_responses:
+            if shutdown_event.is_set():
+                break
             curr_t = time.monotonic()
             npackets += 1
             delta_t = curr_t - ref_t
@@ -168,6 +177,19 @@ def load_hp_io_cfg(args):
     return hp_io_cfg, do_init
 
 async def run_demo_api(args):
+    # Graceful Shutdown Setup
+    shutdown_event = asyncio.Event()
+
+    def _signal_handler(*_):
+        logging.getLogger("daq_data.client").info(
+            "Shutdown signal received, closing client stream..."
+        )
+        shutdown_event.set()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, _signal_handler)
+
     do_ping = args.ping
     do_list_hosts = args.list_hosts
     do_reflect_services = args.reflect_services
@@ -209,6 +231,7 @@ async def run_demo_api(args):
                         plot_update_interval=refresh_period,
                         module_ids=module_ids,
                         wait_for_ready=True,
+                        shutdown_event=shutdown_event
                     )
                 )
                 plot_tasks.append(plot_view_task)
@@ -221,6 +244,7 @@ async def run_demo_api(args):
                         plot_update_interval=refresh_period,
                         durations_seconds=(10, 60, 600),
                         module_ids=module_ids,
+                        shutdown_event=shutdown_event
                     )
                 )
                 plot_tasks.append(plot_phdist_task)
@@ -230,6 +254,7 @@ async def run_demo_api(args):
                         addc,
                         host,
                         module_ids=module_ids,
+                        shutdown_event=shutdown_event
                     )
                 )
                 plot_tasks.append(plot_speed_task)
@@ -335,8 +360,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     try:
         asyncio.run(run_demo_api(args))
-    except Exception as e:
-        print(f"Error: '{e}'")
-        print("Exiting...")
-        # raise e
-        sys.exit(1)
+    except KeyboardInterrupt:
+        print("\nClient stopped forcefully.")
