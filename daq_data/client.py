@@ -222,7 +222,7 @@ class DaqDataClient:
         self.valid_daq_hosts.add(host)
         return True
 
-    def validate_daq_hosts(self, hosts: Union[List[str], str]) -> Optional[List[str]]:
+    def validate_daq_hosts(self, hosts: Union[List[str], str]) -> Set[str]:
         """
         Validates that a given list of hosts are active and reachable.
 
@@ -237,17 +237,22 @@ class DaqDataClient:
         Raises:
             ValueError: If any host is invalid or if no valid hosts can be found.
         """
+        host_set = set()
         if isinstance(hosts, str):
-            hosts = [hosts]
+            host_set = {hosts}
+        elif isinstance(hosts, list):
+            host_set = set(hosts)
         elif hosts is None or len(hosts) == 0:
             valid_hosts = self.get_valid_daq_hosts()
             if len(valid_hosts) == 0:
                 raise ValueError("No valid daq hosts found")
-            hosts = valid_hosts
-        for host in hosts:
+            host_set = valid_hosts
+        else:
+            raise ValueError(f"hosts must be a str, list of str, or None, got {type(hosts)}")
+        for host in host_set:
             if not self.is_daq_host_valid(host):
                 raise ValueError(f"daq_host={host} does not have a valid gRPC server channel. Valid daq_hosts: {self.valid_daq_hosts}")
-        return hosts
+        return host_set
 
     def reflect_services(self, hosts: Union[List[str], str]) -> str:
         """
@@ -274,8 +279,8 @@ class DaqDataClient:
             return f"rpc {name}({client_stream}{input_type}) returns ({server_stream}{output_type})"
 
         ret = ""
-        hosts = self.validate_daq_hosts(hosts)
-        for host in hosts:
+        host_set = self.validate_daq_hosts(hosts)
+        for host in host_set:
             daq_node = self.daq_nodes[host]
             channel = daq_node['channel']
             reflection_db = ProtoReflectionDescriptorDatabase(channel)
@@ -297,7 +302,7 @@ class DaqDataClient:
         stream_movie_data: bool,
         stream_pulse_height_data: bool,
         update_interval_seconds: float,
-        module_ids: Tuple[int]=(),
+        module_ids: Union[Tuple[int], Tuple[()]]=(),
         wait_for_ready=False,
         parse_pano_images=True,
     ) ->  Generator[dict[str, Any], Any, Any]:
@@ -327,7 +332,7 @@ class DaqDataClient:
         Raises:
             grpc.RpcError: If the stream is interrupted or the connection fails.
         """
-        hosts = self.validate_daq_hosts(hosts)
+        host_set = self.validate_daq_hosts(hosts)
 
         # Create the request message
         stream_images_request = StreamImagesRequest(
@@ -341,7 +346,7 @@ class DaqDataClient:
 
         # Call the RPC
         streams = []
-        for host in hosts:
+        for host in host_set:
             daq_node = self.daq_nodes[host]
             stub = daq_node['stub']
             stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=wait_for_ready)
@@ -410,11 +415,11 @@ class DaqDataClient:
         Returns:
             bool: True if the `InitHpIo` RPC succeeds on all specified hosts, False otherwise.
         """
-        hosts = self.validate_daq_hosts(hosts)
+        host_set = self.validate_daq_hosts(hosts)
 
         # Call InitHpIo RPCs
         init_successes = []
-        for host in hosts:
+        for host in host_set:
             daq_node = self.daq_nodes[host]
             stub = daq_node['stub']
 
@@ -463,13 +468,13 @@ class DaqDataClient:
             hosts (Union[List[str], str]): The DAQ host(s) to upload to.
             image_iterator (Generator): A generator that yields PanoImage protobuf objects.
         """
-        hosts = self.validate_daq_hosts(hosts)
+        host_set = self.validate_daq_hosts(hosts)
 
         def request_generator(iterator):
             for image in iterator:
                 yield UploadImageRequest(pano_image=image, wait_for_ready=True)
 
-        for host in hosts:
+        for host in host_set:
             stub = self.daq_nodes[host]['stub']
             try:
                 stub.UploadImages(request_generator(image_iterator))
@@ -663,7 +668,7 @@ class AioDaqDataClient:
         self.valid_daq_hosts.add(host)
         return True
 
-    async def validate_daq_hosts(self, hosts: Union[List[str], str]) -> Optional[List[str]]:
+    async def validate_daq_hosts(self, hosts: Union[List[str], str]) -> Set[str]:
         """
         Validates that a given list of hosts are active and reachable.
 
@@ -678,17 +683,23 @@ class AioDaqDataClient:
         Raises:
             ValueError: If any host is invalid or if no valid hosts can be found.
         """
+        host_set = set()
         if isinstance(hosts, str):
-            hosts = [hosts]
+            host_set = {hosts}
+        elif isinstance(hosts, list):
+            host_set = set(hosts)
         elif hosts is None or len(hosts) == 0:
             valid_hosts = self.get_valid_daq_hosts()
             if len(valid_hosts) == 0:
                 raise ValueError("No valid daq hosts found")
-            hosts = valid_hosts
-        for host in hosts:
+            host_set = valid_hosts
+        else:
+            raise ValueError(f"hosts must be a str, list of str, or None, got {type(hosts)}")
+
+        for host in host_set:
             if not await self.is_daq_host_valid(host):
                 raise ValueError(f"daq_host={host} does not have a valid gRPC server channel. Valid daq_hosts: {self.valid_daq_hosts}")
-        return hosts
+        return host_set
 
     async def reflect_services(self, hosts: Union[List[str], str]) -> str:
         """
@@ -715,8 +726,8 @@ class AioDaqDataClient:
             return f"rpc {name}({client_stream}{input_type}) returns ({server_stream}{output_type})"
 
         ret = ""
-        hosts = await self.validate_daq_hosts(hosts)
-        for host in hosts:
+        host_set = await self.validate_daq_hosts(hosts)
+        for host in host_set:
             daq_node = self.daq_nodes[host]
             channel = daq_node['channel']
             reflection_db = ProtoReflectionDescriptorDatabase(channel)
@@ -738,7 +749,7 @@ class AioDaqDataClient:
             stream_movie_data: bool,
             stream_pulse_height_data: bool,
             update_interval_seconds: float,
-            module_ids: Tuple[int]=(),
+            module_ids: Union[Tuple[int], Tuple[()]]=(),
             wait_for_ready=False,
             parse_pano_images=True,
     ) -> AsyncIterator[dict[str, Any]]:
@@ -764,7 +775,7 @@ class AioDaqDataClient:
         Raises:
             grpc.RpcError: If the stream is interrupted or the connection fails.
         """
-        hosts = await self.validate_daq_hosts(hosts)
+        host_set = await self.validate_daq_hosts(hosts)
 
         # Create the request message
         stream_images_request = StreamImagesRequest(
@@ -774,8 +785,8 @@ class AioDaqDataClient:
             module_ids=module_ids,
         )
 
-        streams = [self.daq_nodes[host]['stub'].StreamImages(stream_images_request, wait_for_ready=wait_for_ready) for host in hosts]
-        self.logger.info(f"Created {len(streams)} StreamImages RPCs to hosts: {hosts}")
+        streams = [self.daq_nodes[host]['stub'].StreamImages(stream_images_request, wait_for_ready=wait_for_ready) for host in host_set]
+        self.logger.info(f"Created {len(streams)} StreamImages RPCs to hosts: {host_set}")
 
         async def response_generator():
             # Create a queue to merge results from all streams
@@ -835,7 +846,7 @@ class AioDaqDataClient:
         return await self.init_hp_io(hosts, hp_io_config, timeout=timeout)
 
 
-    async def init_hp_io(self, hosts: Union[List[str] or str], hp_io_cfg: dict, timeout=10.0) -> bool:
+    async def init_hp_io(self, hosts: Union[List[str], str], hp_io_cfg: dict, timeout=10.0) -> bool:
         """
         Initializes or reconfigures the `hp_io` thread on the DaqData server asynchronously.
 
@@ -855,7 +866,7 @@ class AioDaqDataClient:
         Returns:
             bool: True if the RPC succeeds on all specified hosts, False otherwise.
         """
-        hosts = await self.validate_daq_hosts(hosts)
+        host_set = await self.validate_daq_hosts(hosts)
 
         async def _init_single_host(host):
             daq_node = self.daq_nodes[host]
@@ -878,7 +889,7 @@ class AioDaqDataClient:
                 return False
 
         # Run all InitHpIo calls concurrently
-        results = await asyncio.gather(*[_init_single_host(host) for host in hosts])
+        results = await asyncio.gather(*[_init_single_host(host) for host in host_set])
         return all(results)
 
     async def ping(self, host: str, timeout=0.3) -> bool:
@@ -892,7 +903,7 @@ class AioDaqDataClient:
         except grpc.aio.AioRpcError:
             return False
 
-    async def upload_images(self, hosts: List[str] or str, image_iterator: AsyncGenerator[PanoImage, None]):
+    async def upload_images(self, hosts: Union[List[str], str], image_iterator: AsyncGenerator[PanoImage, None]):
         """
         Asynchronously uploads a stream of PanoImage objects to the server.
 
@@ -900,23 +911,23 @@ class AioDaqDataClient:
             hosts (Union[List[str], str]): The DAQ host(s) to upload to.
             image_iterator (AsyncGenerator): An async generator that yields PanoImage objects.
         """
-        hosts = await self.validate_daq_hosts(hosts)
+        host_set = await self.validate_daq_hosts(hosts)
         async def request_generator(iterator):
             async for image in iterator:
                 yield UploadImageRequest(pano_image=image)
 
         upload_tasks = []
         try:
-            for host in hosts:
+            for host in host_set:
                 stub = self.daq_nodes[host]['stub']
                 #task = asyncio.create_task(stub.UploadImages(request_generator(image_iterator)))
                 task = stub.UploadImages(request_generator(image_iterator), wait_for_ready=True)
                 upload_tasks.append(task)
-
+            
             await asyncio.gather(*upload_tasks)
-            self.logger.info(f"Finished uploading images to all specified hosts: {hosts}")
+            self.logger.info(f"Finished uploading images to all specified hosts: {host_set}")
         except grpc.aio.AioRpcError as e:
-            self.logger.error(f"Failed to upload images to all specified hosts: {hosts}")
+            self.logger.error(f"Failed to upload images to all specified hosts: {host_set}")
             raise e
         finally:
             for task in upload_tasks:

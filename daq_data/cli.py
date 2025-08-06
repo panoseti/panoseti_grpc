@@ -11,7 +11,6 @@ from rich import print
 from rich.pretty import pprint
 from pathlib import Path
 
-import grpc
 from google.protobuf.json_format import MessageToDict
 
 from daq_data import (
@@ -162,14 +161,16 @@ def load_hp_io_cfg(args):
     if args.init_sim or args.cfg_path is not None:
         do_init = True
         if args.init_sim:
-            hp_io_cfg_path = f'{CFG_DIR}/hp_io_config_simulate.json'
+            hp_io_cfg_path = CFG_DIR / 'hp_io_config_simulate.json'
         elif args.cfg_path is not None:
             hp_io_cfg_path = f'{args.cfg_path}'
         else:
             hp_io_cfg_path = None
 
         # try to open the config file
-        if hp_io_cfg_path is not None and not os.path.exists(hp_io_cfg_path):
+        if hp_io_cfg_path is None:
+            raise ValueError("Either --init-sim or --init must be specified with a valid config path")
+        elif not hp_io_cfg_path and not os.path.exists(hp_io_cfg_path):
             raise FileNotFoundError(f"Config file not found: '{os.path.abspath(hp_io_cfg_path)}'")
         else:
             with open(hp_io_cfg_path, "r") as f:
@@ -212,6 +213,7 @@ async def run_demo_api(args):
 
         if do_init:
             # concurrently send init commands to all DAQ nodes
+            print(f"Initializing hp_io thread with config: {hp_io_cfg}")
             await do_init_fn(addc, host, hp_io_cfg)
 
         if do_plot:

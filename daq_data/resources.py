@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import logging
 import time
-from typing import List, Callable, Tuple, Any, Dict, AsyncIterator, Optional
+from typing import Any, Dict
 import numpy as np
 from pandas import to_datetime, Timestamp
 from datetime import datetime
@@ -16,23 +16,20 @@ import re
 # rich formatting
 from rich import print
 from rich.logging import RichHandler
-from rich.pretty import pprint, Pretty
-from rich.console import Console
+# from rich.pretty import pprint, Pretty
+# from rich.console import Console
 
 ## gRPC imports
 # Standard gRPC protobuf types
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import MessageToDict, ParseDict
-from google.protobuf import timestamp_pb2
+# from google.protobuf import timestamp_pb2
 
 # protoc-generated marshalling / demarshalling code
-# from .daq_data_pb2
-# import daq_data_pb2_grpc
 from daq_data import daq_data_pb2
 from .daq_data_pb2 import PanoImage
 from daq_data.daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
 from panoseti_util import pff, control_utils
-from .state import ReaderState, DataProductConfig
 
 CFG_DIR = Path('daq_data/config')
 
@@ -51,39 +48,6 @@ def _parse_seqno(filename: str, seqno_re=re.compile(r'\.seqno_(\d+)\.')) -> int:
     return seqno
 
 
-
-def get_dp_config(dps: List[str]) -> Dict[str, DataProductConfig]:
-    """
-    Returns a dictionary of DataProductConfig objects for the given data products.
-    """
-    dp_cfg = {}
-    for dp in dps:
-        if dp == 'img16' or dp == 'ph1024':
-            image_shape = (32, 32)
-            bytes_per_pixel = 2
-        elif dp == 'img8':
-            image_shape = (32, 32)
-            bytes_per_pixel = 1
-        elif dp == 'ph256':
-            image_shape = (16, 16)
-            bytes_per_pixel = 2
-        else:
-            raise ValueError(f"Unknown data product: {dp}")
-
-        bytes_per_image = bytes_per_pixel * image_shape[0] * image_shape[1]
-        is_ph = 'ph' in dp
-        pano_image_type = PanoImage.Type.PULSE_HEIGHT if is_ph else PanoImage.Type.MOVIE
-
-        # Directly instantiate the dataclass instead of creating a dictionary
-        dp_cfg[dp] = DataProductConfig(
-            name=dp,
-            is_ph=is_ph,
-            pano_image_type=pano_image_type,
-            image_shape=image_shape,
-            bytes_per_pixel=bytes_per_pixel,
-            bytes_per_image=bytes_per_image,
-        )
-    return dp_cfg
 
 def get_dp_name_from_props(pano_type: PanoImage.Type or str, shape: list, bytes_per_pixel: int) -> str:
     """Derives the data product name from PanoImage properties."""
@@ -121,16 +85,15 @@ def make_rich_logger(name: str, level=logging.INFO) -> logging.Logger:
     Returns:
         logging.Logger: A configured logger instance.
     """
-    # 1. Silence noisy third-party loggers
     # The 'watchfiles' logger can be verbose, so we set its level higher.
     logging.getLogger("watchfiles").setLevel(logging.WARNING)
 
-    # 2. Define log directory and file path
+    # define log directory and file path
     log_dir = Path("daq_data/logs")
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file_path = log_dir / f"{name}_{datetime.now().strftime('%Y-%m-%d')}.log"
 
-    # 3. Get the logger and set its level.
+    # Get the logger and set its level.
     # We use getLogger(name) to get our specific application logger.
     logger = logging.getLogger(name)
     logger.setLevel(level)
@@ -138,7 +101,7 @@ def make_rich_logger(name: str, level=logging.INFO) -> logging.Logger:
     # Prevent messages from being passed to the root logger
     logger.propagate = False
 
-    # 4. Configure and add the RichHandler for console output
+    # Configure and add the RichHandler for console output
     # This handler is for pretty-printing logs to the terminal.
     console_handler = RichHandler(
         level=level,
@@ -150,7 +113,7 @@ def make_rich_logger(name: str, level=logging.INFO) -> logging.Logger:
     )
     console_handler.setFormatter(logging.Formatter("[%(funcName)s()] %(message)s", datefmt="%H:%M:%S"))
 
-    # 5. Configure and add the FileHandler for file output
+    # Configure and add the FileHandler for file output
     # This handler writes logs to the file defined above.
     file_handler = logging.FileHandler(log_file_path)
     file_handler.setLevel(level)
@@ -159,7 +122,7 @@ def make_rich_logger(name: str, level=logging.INFO) -> logging.Logger:
     )
     file_handler.setFormatter(file_formatter)
 
-    # 6. Add handlers to the logger, but only if they haven't been added already
+    # Add handlers to the logger, but only if they haven't been added already
     if not logger.handlers:
         logger.addHandler(console_handler)
         logger.addHandler(file_handler)
@@ -228,28 +191,28 @@ def format_stream_images_response(stream_images_response: StreamImagesResponse) 
 
 """ hp_io test macros """
 def get_daq_active_file(sim_cfg, module_id):
-    sim_data_dir = sim_cfg['strategies']['filesystem']['sim_data_dir']
-    sim_run_dir = sim_cfg['strategies']['filesystem']['sim_run_dir_template'].format(module_id=module_id)
+    sim_data_dir = sim_cfg['filesystem_cfg']['sim_data_dir']
+    sim_run_dir = sim_cfg['filesystem_cfg']['sim_run_dir_template'].format(module_id=module_id)
     os.makedirs(f"{sim_data_dir}/{sim_run_dir}", exist_ok=True)
-    daq_active_file = sim_cfg['strategies']['filesystem']['daq_active_file'].format(module_id=module_id)
+    daq_active_file = sim_cfg['filesystem_cfg']['daq_active_file'].format(module_id=module_id)
     return f"{sim_data_dir}/{sim_run_dir}/{daq_active_file}"
 
 def get_sim_pff_path(sim_cfg, module_id, seqno, is_ph, is_simulated):
     """
     Returns the path of the pff files in the simulated daq directory.
     """
-    sim_data_dir = sim_cfg['strategies']['filesystem']['sim_data_dir']
+    sim_data_dir = sim_cfg['filesystem_cfg']['sim_data_dir']
     if is_simulated:
-        run_dir = sim_cfg['strategies']['filesystem']['sim_run_dir_template'].format(module_id=module_id)
+        run_dir = sim_cfg['filesystem_cfg']['sim_run_dir_template'].format(module_id=module_id)
         os.makedirs(f"{sim_data_dir}/{run_dir}", exist_ok=True)
     else:
-        run_dir = sim_cfg['strategies']['filesystem']['real_run_dir']
+        run_dir = sim_cfg['filesystem_cfg']['real_run_dir']
 
     if is_ph:
-        ph_pff = sim_cfg['strategies']['filesystem']['ph_pff_template'].format(module_id=module_id, seqno=seqno)
+        ph_pff = sim_cfg['filesystem_cfg']['ph_pff_template'].format(module_id=module_id, seqno=seqno)
         return f"{sim_data_dir}/{run_dir}/{ph_pff}"
     else:
-        movie_pff = sim_cfg['strategies']['filesystem']['movie_pff_template'].format(module_id=module_id, seqno=seqno)
+        movie_pff = sim_cfg['filesystem_cfg']['movie_pff_template'].format(module_id=module_id, seqno=seqno)
         return f"{sim_data_dir}/{run_dir}/{movie_pff}"
 
 def is_daq_active_sync(simulate_daq, sim_cfg=None):
@@ -258,7 +221,7 @@ def is_daq_active_sync(simulate_daq, sim_cfg=None):
         if sim_cfg is None:
             raise ValueError("sim_cfg must be provided when simulate_daq is True")
         mode = sim_cfg.get('simulation_mode', 'filesystem')
-        if mode == 'filesystem':
+        if mode in ['filesystem_poll', 'filesystem_pipe']:
             daq_active_files = [get_daq_active_file(sim_cfg, mid) for mid in sim_cfg['sim_module_ids']]
             daq_active = any([os.path.exists(file) for file in daq_active_files])
         elif mode in ['rpc', 'uds']:

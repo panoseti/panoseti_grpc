@@ -169,13 +169,14 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             last_valid_config = self.task_manager.hp_io_cfg.copy()
 
             # Filter hp_io_fields from the request
-            # hp_io_cfg = MessageToDict(request, preserving_proto_field_name=True)
+            # hp_io_cfg = MessageToDict(request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)
             hp_io_cfg = {
                 "data_dir": request.data_dir,
                 "simulate_daq": request.simulate_daq,
                 "update_interval_seconds": request.update_interval_seconds,
                 "module_ids": list(request.module_ids),
             }
+            self.logger.debug(f"Received hp_io configuration: {hp_io_cfg}")
 
             # Delegate starting the new task to the HpIoTaskManager
             success = await self.task_manager.start(hp_io_cfg)
@@ -209,7 +210,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self.logger.warning(emsg)
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
-        async with self.client_manager.get_uploader_access(context, self.task_manager) as uid:
+        async with self.client_manager.get_uploader_access(context) as uid:
             image_count = 0
             try:
                 async for request in request_iterator:
@@ -224,7 +225,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     except asyncio.QueueFull:
                         self.logger.error(f"Upload queue is full. Aborting stream for client ({uid}) from '{peer}'.")
                         await context.abort(grpc.StatusCode.RESOURCE_EXHAUSTED, "Server upload queue is full.")
-                    if context.cancelled() or self.client_manager.cancel_readers_event.is_set() or self.client_manager.shutdown_event.is_set():
+                    if context.cancelled() or self.client_manager.shutdown_event.is_set():
                         self.logger.info(f"Stream ended for ({uid}) from '{peer}'.")
                         if not context.cancelled():
                             if self.client_manager.shutdown_event.is_set():

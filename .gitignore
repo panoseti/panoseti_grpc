@@ -216,3 +216,6 @@ __marimo__/
 
 # logging
 daq_data/logs
+
+# data simulation
+daq_data/simulated_data_dir/module_*

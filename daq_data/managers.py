@@ -1,20 +1,13 @@
 """Classes for managing DaqData server state."""
 import uuid
-import os
 import asyncio
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
-from typing import List, Dict
-import time
+from typing import List, Dict, Optional
 import logging
-import urllib.parse
-from pathlib import Path
 import grpc
 
-from .resources import ReaderState
 from .hp_io_manager import HpIoManager
-from .sim_thread import daq_sim_thread_fn
-from .state import ReaderState, DataProductConfig
+from .state import ReaderState, DataProductState
 from .simulate import SimulationManager
 
 class HpIoTaskManager:
@@ -24,8 +17,8 @@ class HpIoTaskManager:
         self.logger = logger
         self.server_cfg = server_cfg
         self.reader_states = reader_states
-        self.hp_io_task: asyncio.Task = None
-        self.hp_io_manager: HpIoManager = None
+        self.hp_io_task: Optional[asyncio.Task] = None
+        self.hp_io_manager: Optional[HpIoManager] = None
         self.hp_io_valid_event = asyncio.Event()
         self.active_data_products = set()
         self.hp_io_cfg: Dict = {}
@@ -45,45 +38,50 @@ class HpIoTaskManager:
     async def start(self, hp_io_cfg: dict) -> bool:
         """Creates a new hp_io task. Stops any existing task first."""
         await self.stop()
+
+        # If in simulation mode, ensure the data_dir in the runtime config
+        # points to the simulation data directory defined in the main server config.
+        if hp_io_cfg.get('simulate_daq', False):
+            sim_cfg = self.server_cfg.get('simulate_daq_cfg', {})
+            # Navigate through the nested simulation config to find the data directory
+            fs_cfg = sim_cfg.get('filesystem_cfg', {})
+            sim_data_dir = fs_cfg.get('sim_data_dir')
+            if sim_data_dir:
+                self.logger.info(f"Simulation mode detected. Overriding data_dir to '{sim_data_dir}'.")
+                hp_io_cfg['data_dir'] = sim_data_dir
+            else:
+                self.logger.warning("Simulation mode is on, but 'sim_data_dir' not found in config.")
+
         self.hp_io_cfg = hp_io_cfg
-        
-        # Pass the specific hp_io_cfg to the server_cfg for the manager to use
+
         temp_server_cfg = self.server_cfg.copy()
         temp_server_cfg['hp_io_cfg'] = hp_io_cfg
-
         active_data_products_queue = asyncio.Queue()
+
         self.hp_io_manager = HpIoManager(temp_server_cfg, self.reader_states, self.stop_event,
                                          self.hp_io_valid_event, active_data_products_queue, self.logger)
         self.hp_io_task = asyncio.create_task(self.hp_io_manager.run())
-
+        
         try:
-            # Wait for the IO task to start its data sources and become valid.
             await asyncio.wait_for(self.hp_io_valid_event.wait(), timeout=5.0)
-            
-            # Now that IO task is ready, get the active data products.
             self.active_data_products = await active_data_products_queue.get()
             self.logger.info(f"hp_io task initialized with active_data_products={self.active_data_products}")
-
         except asyncio.TimeoutError:
             self.logger.error("Timeout waiting for hp_io task to become valid.")
             await self.stop()
             return False
 
-        if hp_io_cfg['simulate_daq']:
+        if hp_io_cfg.get('simulate_daq', False):
             if not await self.simulation_manager.start():
                 self.logger.error("Failed to start simulation manager after IO manager was ready.")
-                await self.stop() # Stop the IO manager if simulation fails to start
+                await self.stop()
                 return False
-            await asyncio.sleep(0.2) # Brief pause to ensure sim has started
-        
+
         # Final validation
         acq_config = self.server_cfg.get("acquisition_methods", {})
         is_fs_mode = acq_config.get("filesystem_poll", {}).get("enabled") or acq_config.get("filesystem_pipe", {}).get("enabled")
         if is_fs_mode and not self.active_data_products and not acq_config.get("uds", {}).get("enabled"):
-            self.logger.error("hp_io task failed validation: no active data products found in filesystem mode and UDS is disabled.")
-            await self.stop()
-            return False
-            
+            self.logger.warning("hp_io task validation: no active data products found in filesystem mode and UDS is disabled.")
         return self.is_valid(verbose=True)
 
     async def stop(self):
@@ -96,7 +94,7 @@ class HpIoTaskManager:
             self.logger.info("Stopping hp_io task...")
             self.stop_event.set()
             try:
-                await asyncio.wait_for(self.hp_io_task, timeout=1.0)
+                await asyncio.wait_for(self.hp_io_task, timeout=2.0)
                 self.logger.info("Successfully terminated hp_io task.")
             except asyncio.TimeoutError:
                 self.logger.warning("Timeout stopping hp_io task. Cancelling.")
@@ -123,8 +121,7 @@ class ClientManager:
                 queue=asyncio.Queue(maxsize=server_cfg['max_read_queue_size']),
                 cancel_reader_event=self._cancel_readers_event,
                 shutdown_event=self._shutdown_event,
-            )
-            for _ in range(self.max_clients)
+            ) for _ in range(self.max_clients)
         ]
         self._active_readers = 0
         self._writer_active = False
@@ -162,14 +159,14 @@ class ClientManager:
         try:
             self.logger.debug(f"Writer ({uid}) acquired writer lock.")
             # check for active readers and handle cancellation
-            async with self._readers_lock:
-                if self._active_readers > 0:
-                    if not force:
-                        active_ips = [rs.client_ip for rs in self._readers if rs.is_allocated]
-                        msg = f"Cannot modify server state: {self._active_readers} clients are streaming: {active_ips}"
-                        await context.abort(grpc.StatusCode.FAILED_PRECONDITION, msg)
-                    else:
-                        self.logger.warning("Forcing write access by cancelling all active readers.")
+            # async with self._readers_lock:
+            if self._active_readers > 0:
+                if not force:
+                    active_ips = [rs.client_ip for rs in self._readers if rs.is_allocated]
+                    msg = f"Cannot modify server state: {self._active_readers} clients are streaming: {active_ips}"
+                    await context.abort(grpc.StatusCode.FAILED_PRECONDITION, msg)
+                else:
+                    self.logger.warning("Forcing write access by cancelling all active readers.")
             await self.cancel_all_readers()
             yield uid
         finally:
@@ -221,8 +218,8 @@ class ClientManager:
         uid = uuid.uuid4()
 
         # acquire the dedicated uploader lock and check writer lock **
-        if self._writer_lock.locked():
-             await context.abort(grpc.StatusCode.ABORTED, "A writer is active, cannot accept uploads.")
+        # if self._writer_lock.locked():
+        #      await context.abort(grpc.StatusCode.ABORTED, "A writer is active, cannot accept uploads.")
 
         await self._uploader_lock.acquire()
         try:

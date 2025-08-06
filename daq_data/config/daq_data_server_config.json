@@ -15,8 +15,12 @@
     "read_status_pipe_name": "read_status_2",
     
     "acquisition_methods": {
-        "filesystem_poll": { "enabled": false },
-        "filesystem_pipe": { "enabled": false },
+        "filesystem_poll": {
+            "enabled": true
+        },
+        "filesystem_pipe": {
+            "enabled": false
+        },
         "uds": {
             "enabled": true,
             "data_products": ["ph256", "img16"]
@@ -25,7 +29,7 @@
 
 
     "simulate_daq_cfg": {
-        "simulation_mode": "uds",
+        "simulation_mode": "filesystem_poll",
         "sim_module_ids": [224],
         "movie_type": "img16",
         "ph_type": "ph256",
@@ -37,14 +41,18 @@
             "ph_pff_path": "daq_data/simulated_data_dir/obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd/start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_3.seqno_0.debug_TRUNCATED.pff"
         },
 
+        "filesystem_cfg": {
+            "sim_data_dir": "daq_data/simulated_data_dir",
+            "sim_run_dir_template": "module_{module_id}/obs_SIMULATE",
+            "daq_active_file": "module_{module_id}.daq-active"
+        },
+
         "strategies": {
-            "filesystem": {
-                "frames_per_pff": 1000,
-                "sim_data_dir": "daq_data/simulated_data_dir",
-                "sim_run_dir_template": "module_{module_id}/obs_SIMULATE",
-                "daq_active_file": "module_{module_id}.daq-active",
-                "movie_pff_template": "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_{module_id}.seqno_{seqno}.debug_TRUNCATED.pff",
-                "ph_pff_template": "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_{module_id}.seqno_{seqno}.debug_TRUNCATED.pff"
+            "filesystem_poll": {
+                "frames_per_pff": 1000
+            },
+            "filesystem_pipe": {
+                "frames_per_pff": 1000
             },
             "uds": {
                 "data_products": ["ph256", "img16"]

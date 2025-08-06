@@ -8,16 +8,16 @@ from io import BytesIO
 import json
 import logging
 import os
-import stat
+import errno
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from google.protobuf.json_format import ParseDict
 from google.protobuf.struct_pb2 import Struct
 
 from .client import AioDaqDataClient
 from .daq_data_pb2 import PanoImage
-from .resources import get_dp_config
+from .state import get_dp_config
 from panoseti_util import pff
 
 
@@ -119,36 +119,25 @@ class BaseSimulationStrategy(abc.ABC):
             self.logger.info(f"Simulation strategy '{self.__class__.__name__}' finished.")
 
 
-class FilesystemStrategy(BaseSimulationStrategy):
-    """Simulates DAQ by writing to files and signaling via a named pipe."""
-
+class FilesystemBaseStrategy(BaseSimulationStrategy):
+    """Base class for filesystem-based simulation strategies."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.pipe_fds = {}
         self.pff_handles = {}
         self.module_states = {}
-        self.read_status_pipe_name = self.server_config['read_status_pipe_name']
 
-    async def setup(self) -> bool:
-        self.logger.info("Setting up initial files and pipes for filesystem simulation.")
-        fs_cfg = self.strategy_config
+    async def _common_setup(self) -> bool:
+        """Shared setup logic for creating directories and rollover state."""
+        fs_cfg = self.common_config['filesystem_cfg']
         try:
             for mid in self.common_config['sim_module_ids']:
                 sim_run_dir = Path(fs_cfg['sim_data_dir']) / fs_cfg['sim_run_dir_template'].format(module_id=mid)
                 os.makedirs(sim_run_dir, exist_ok=True)
-                
                 active_file = sim_run_dir / fs_cfg['daq_active_file'].format(module_id=mid)
                 active_file.touch()
                 self.sim_created_resources.append(str(active_file))
-
-                pipe_path = sim_run_dir / self.read_status_pipe_name
-                if not os.path.exists(pipe_path):
-                    os.mkfifo(pipe_path)
-                self.sim_created_resources.append(str(pipe_path))
-
                 self.module_states[mid] = {'seqno': 0, 'frames_written': 0}
                 self.pff_handles[mid] = {}
-
                 await self._rollover_pff_files(mid)
             return True
         except Exception as e:
@@ -158,64 +147,115 @@ class FilesystemStrategy(BaseSimulationStrategy):
     async def _rollover_pff_files(self, mid: int):
         state = self.module_states[mid]
         self.logger.info(f"Module {mid}: Rolling over to seqno {state['seqno']}.")
-
-        if self.pff_handles[mid]:
+        if self.pff_handles.get(mid):
             for handle in self.pff_handles[mid].values():
                 handle.close()
-
-        base_path = Path(self.strategy_config['sim_data_dir']) / self.strategy_config['sim_run_dir_template'].format(module_id=mid)
+        fs_cfg = self.common_config['filesystem_cfg']
+        base_path = Path(fs_cfg['sim_data_dir']) / fs_cfg['sim_run_dir_template'].format(module_id=mid)
         movie_path = base_path / f"sim.dp_{self.common_config['movie_type']}.module_{mid}.seqno_{state['seqno']}.pff"
         ph_path = base_path / f"sim.dp_{self.common_config['ph_type']}.module_{mid}.seqno_{state['seqno']}.pff"
 
         self.pff_handles[mid]['movie_f'] = open(movie_path, 'wb')
         self.pff_handles[mid]['ph_f'] = open(ph_path, 'wb')
-        
         self.sim_created_resources.extend([str(movie_path), str(ph_path)])
         state['frames_written'] = 0
 
-    async def send_frame(self, frame_data: bytes, data_product_type: str, module_id: int, frame_num: int):
+    async def _write_frame_to_file(self, frame_data: bytes, data_product_type: str, module_id: int):
+        """Shared logic to write a frame to a PFF file and handle rollover."""
         state = self.module_states[module_id]
-        
-        if 'img' in data_product_type:
-            key = 'movie_f'
-        else:
-            key = 'ph_f'
-            # Only increment frames_written for one of the data types to count pairs
+        key = 'movie_f' if 'img' in data_product_type else 'ph_f'
+
+        # Increment frames_written only once per pair to count frames correctly
+        if key == 'movie_f':
             if state['frames_written'] >= self.strategy_config.get('frames_per_pff', 1000):
                 state['seqno'] += 1
                 await self._rollover_pff_files(module_id)
             state['frames_written'] += 1
-        
+
         handle = self.pff_handles[module_id][key]
         handle.write(frame_data)
         handle.flush()
 
-        try:
-            if module_id not in self.pipe_fds:
-                sim_run_dir = Path(self.strategy_config['sim_data_dir']) / self.strategy_config['sim_run_dir_template'].format(module_id=module_id)
-                pipe_path = sim_run_dir / self.read_status_pipe_name
-                self.pipe_fds[module_id] = os.open(pipe_path, os.O_WRONLY | os.O_NONBLOCK)
-            os.write(self.pipe_fds[module_id], b'1')
-        except OSError:
-            self.logger.debug(f"Pipe for module {module_id} not open for reading yet. Skipping signal.")
-        except Exception as e:
-            self.logger.warning(f"Error writing to pipe for module {module_id}: {e}")
-
-    async def cleanup(self):
-        self.logger.info("Cleaning up filesystem simulation resources...")
+    async def _common_cleanup(self):
+        """Shared cleanup for closing file handles and removing resources."""
         for mid, handles in self.pff_handles.items():
             for handle in handles.values():
                 if not handle.closed:
                     handle.close()
-        for fd in self.pipe_fds.values():
-            os.close(fd)
-        
         for fpath in self.sim_created_resources:
             try:
                 if os.path.exists(fpath):
                     os.unlink(fpath)
             except Exception as e:
                 self.logger.warning(f"Failed to clean up sim resource {fpath}: {e}")
+
+class FilesystemPollStrategy(FilesystemBaseStrategy):
+    """Simulates DAQ by writing to files to be detected by polling."""
+    async def setup(self) -> bool:
+        self.logger.info("Setting up initial files for filesystem polling simulation.")
+        return await self._common_setup()
+
+    async def send_frame(self, frame_data: bytes, data_product_type: str, module_id: int, frame_num: int):
+        await self._write_frame_to_file(frame_data, data_product_type, module_id)
+
+    async def cleanup(self):
+        self.logger.info("Cleaning up filesystem polling simulation resources...")
+        await self._common_cleanup()
+
+class FilesystemPipeStrategy(FilesystemBaseStrategy):
+    """Simulates DAQ by writing to files and signaling via a named pipe."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.pipe_fds = {}
+        self.read_status_pipe_name = self.server_config['read_status_pipe_name']
+
+    async def setup(self) -> bool:
+        self.logger.info("Setting up initial files and pipes for filesystem pipe simulation.")
+        if not await self._common_setup():
+            return False
+        try:
+            fs_cfg = self.common_config['filesystem_cfg']
+            for mid in self.common_config['sim_module_ids']:
+                sim_run_dir = Path(fs_cfg['sim_data_dir']) / fs_cfg['sim_run_dir_template'].format(module_id=mid)
+                pipe_path = sim_run_dir / self.read_status_pipe_name
+                if not os.path.exists(pipe_path):
+                    os.mkfifo(pipe_path)
+                self.sim_created_resources.append(str(pipe_path))
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to create named pipes for simulation: {e}", exc_info=True)
+            return False
+
+    async def send_frame(self, frame_data: bytes, data_product_type: str, module_id: int, frame_num: int):
+        await self._write_frame_to_file(frame_data, data_product_type, module_id)
+        try:
+            fs_cfg = self.common_config['filesystem_cfg']
+            if module_id not in self.pipe_fds:
+                sim_run_dir = Path(fs_cfg['sim_data_dir']) / fs_cfg['sim_run_dir_template'].format(module_id=module_id)
+                pipe_path = sim_run_dir / self.read_status_pipe_name
+                # Open in non-blocking mode to avoid waiting for a reader
+                self.pipe_fds[module_id] = os.open(pipe_path, os.O_WRONLY | os.O_NONBLOCK)
+
+            # Pad dp_name to 10 bytes as per new spec
+            msg = data_product_type.encode().ljust(10)
+            os.write(self.pipe_fds[module_id], msg)
+        except OSError as e:
+            # This can happen if the reader end of the pipe isn't open yet.
+            if e.errno == errno.ENXIO: 
+                # self.logger.debug(f"Pipe for module {module_id} not open for reading yet. Skipping signal.")
+                # The fd is invalid now, so remove it to force re-opening
+                if self.pipe_fds.get(module_id):
+                    os.close(self.pipe_fds.pop(module_id))
+            else:
+                self.logger.warning(f"OSError writing to pipe for module {module_id}: {e}")
+        except Exception as e:
+            self.logger.warning(f"Error writing to pipe for module {module_id}: {e}")
+
+    async def cleanup(self):
+        self.logger.info("Cleaning up filesystem pipe simulation resources...")
+        await self._common_cleanup()
+        for fd in self.pipe_fds.values():
+            os.close(fd)
 
 
 class UdsStrategy(BaseSimulationStrategy):
@@ -227,7 +267,7 @@ class UdsStrategy(BaseSimulationStrategy):
 
     async def setup(self) -> bool:
         self.logger.info("Connecting to UDS sockets for simulation.")
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.5) # Give time for the server to start and create sockets
         for dp_name in self.strategy_config['data_products']:
             socket_path = f"/tmp/hashpipe_grpc_{dp_name}.sock"
             try:
@@ -235,7 +275,7 @@ class UdsStrategy(BaseSimulationStrategy):
                 self._writers[dp_name] = writer
                 self.logger.info(f"UDS sim: Connected to {socket_path}")
             except (ConnectionRefusedError, FileNotFoundError):
-                self.logger.error(f"UDS sim: Could not connect to {socket_path}. Is server running?")
+                self.logger.error(f"UDS sim: Could not connect to {socket_path}. Is the server's UDS source running?")
                 return False
             except Exception as e:
                 self.logger.error(f"UDS sim: Unexpected error connecting to {socket_path}: {e}")
@@ -281,6 +321,7 @@ class RpcStrategy(BaseSimulationStrategy):
             self.stop_event.set()
             return False
 
+        # Assuming client can use the UDS address directly
         daq_config = {'daq_nodes': [{'ip_addr': uds_addr}]}
         self.client = AioDaqDataClient(daq_config, network_config=None)
         await self.client.__aenter__()
@@ -359,7 +400,7 @@ class SimulationManager:
     def __init__(self, server_cfg: dict, logger: logging.Logger):
         self.server_cfg = server_cfg
         self.logger = logger
-        self.sim_task: asyncio.Task = None
+        self.sim_task: Optional[asyncio.Task] = None
         self._sim_stop_event = asyncio.Event()
 
     async def start(self) -> bool:
@@ -375,7 +416,8 @@ class SimulationManager:
         self.logger.info(f"Attempting to start simulation in '{mode}' mode.")
 
         strategy_map = {
-            "filesystem": FilesystemStrategy,
+            "filesystem_poll": FilesystemPollStrategy,
+            "filesystem_pipe": FilesystemPipeStrategy,
             "uds": UdsStrategy,
             "rpc": RpcStrategy,
         }
@@ -389,8 +431,8 @@ class SimulationManager:
         strategy = StrategyClass(sim_cfg, strategy_config, self.server_cfg, self.logger, self._sim_stop_event)
 
         self.sim_task = asyncio.create_task(strategy.run())
-        await asyncio.sleep(0.1)
-        
+        await asyncio.sleep(0.2)  # Give the task a moment to start and potentially fail
+
         if self.sim_task.done():
             self.logger.error(f"Simulation task for mode '{mode}' exited immediately after starting.")
             try:
@@ -420,5 +462,7 @@ class SimulationManager:
         finally:
             self.sim_task = None
 
-    def data_flow_valid(self) -> bool:
-        return self.sim_task and not self.sim_task.done()
+    def data_flow_valid(self) -> Optional[bool]:
+        if not self.sim_task:
+            return None
+        return not self.sim_task.done()
