@@ -119,9 +119,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                                                                    f"A writer has likely forced a reconfiguration of hp_io")
 
     def _get_fresh_images_for_client(self, rs: ReaderState) -> List[PanoImage]:
-        """
-        ** FIX: Checks the cache for images that are newer than what the client has already seen. **
-        """
+        """ Checks the cache for images that are newer than what the client has already seen.  """
         images_to_send = []
         if not self.task_manager.hp_io_manager:
             return images_to_send
@@ -165,7 +163,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         if request.update_interval_seconds < self.server_cfg['min_hp_io_update_interval_seconds']:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "update_interval_seconds is below server minimum.")
 
-        async with self.client_manager.get_writer_access(context, self.task_manager, force=request.force) as uid:
+        async with self.client_manager.get_writer_access(context, force=request.force) as uid:
             self.logger.info(f"({uid}) acquired writer lock. Initializing hp_io task.")
 
             last_valid_config = self.task_manager.hp_io_cfg.copy()

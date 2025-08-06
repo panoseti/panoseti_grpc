@@ -118,7 +118,6 @@ class ClientManager:
         self.max_clients = server_cfg['max_concurrent_rpcs']
         self._cancel_readers_event = asyncio.Event()
         self._shutdown_event = asyncio.Event()
-        self._lock = asyncio.Lock()
         self._readers: List[ReaderState] = [
             ReaderState(
                 queue=asyncio.Queue(maxsize=server_cfg['max_read_queue_size']),
@@ -130,6 +129,11 @@ class ClientManager:
         self._active_readers = 0
         self._writer_active = False
         self._uploader_active = False
+
+        # Locks to synchronize access to shared resources
+        self._writer_lock = asyncio.Lock()
+        self._uploader_lock = asyncio.Lock()
+        self._readers_lock = asyncio.Lock() # Protects the _readers list and _active_readers count
 
     @property
     def reader_states(self) -> List[ReaderState]: return self._readers
@@ -156,95 +160,81 @@ class ClientManager:
         self._shutdown_event.set()
 
     @asynccontextmanager
-    async def get_writer_access(self, context, hp_io_task_manager: HpIoTaskManager, force: bool = False):
+    async def get_writer_access(self, context, force: bool = False):
         """A context manager to safely acquire exclusive 'writer' access."""
         uid = uuid.uuid4()
-        peer = urllib.parse.unquote(context.peer())
-        async with self._lock:
-            self.logger.debug(f"Writer ({uid}) from '{peer=}' trying to acquire lock. Active readers: {self._active_readers}")
-            if self._writer_active:
-                 await context.abort(grpc.StatusCode.ABORTED, f"Another writer is already active.")
-
-            if self._active_readers > 0:
-                if not force:
-                    active_client_ips = [rs.client_ip for rs in self._readers if rs.is_allocated]
-                    emsg = (f"Cannot modify server state: {self._active_readers} clients are streaming. "
-                            f"Set force=True or stop clients: {active_client_ips}")
-                    self.logger.warning(emsg)
-                    await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
-                else:
-                    self.logger.warning("Forcing write access by cancelling all active readers.")
-                    await self.cancel_all_readers()
-
-            self._writer_active = True
-            self.logger.debug(f"Writer ({uid}) lock acquired.")
-
+        
+        # acquire writer lock **
+        await self._writer_lock.acquire()
         try:
+            self.logger.debug(f"Writer ({uid}) acquired writer lock.")
+            # check for active readers and handle cancellation
+            async with self._readers_lock:
+                if self._active_readers > 0:
+                    if not force:
+                        active_ips = [rs.client_ip for rs in self._readers if rs.is_allocated]
+                        msg = f"Cannot modify server state: {self._active_readers} clients are streaming: {active_ips}"
+                        await context.abort(grpc.StatusCode.FAILED_PRECONDITION, msg)
+                    else:
+                        self.logger.warning("Forcing write access by cancelling all active readers.")
+                        await self.cancel_all_readers()
             yield uid
         finally:
-            async with self._lock:
-                self._writer_active = False
-                self._cancel_readers_event.clear() # Allow new readers
-                self.logger.debug(f"Writer ({uid}) lock released.")
+            self._cancel_readers_event.clear()
+            self._writer_lock.release()
+            self.logger.debug(f"Writer ({uid}) released writer lock.")
 
     @asynccontextmanager
     async def get_reader_access(self, context, hp_io_task_manager: HpIoTaskManager):
         """A context manager to safely acquire a 'reader' slot."""
         uid = uuid.uuid4()
-        peer = urllib.parse.unquote(context.peer())
-        async with self._lock:
-            self.logger.debug(f"Reader {uid} from '{peer}' trying to acquire lock.")
-            # Perform all pre-condition checks inside the lock
-            if self._shutdown_event.is_set():
+        
+        # check for writer lock before proceeding **
+        if self._writer_lock.locked() or self._cancel_readers_event.is_set():
+            await context.abort(grpc.StatusCode.UNAVAILABLE, "Server is being configured, please try again soon.")
+            
+        async with self._readers_lock:
+            # Perform other pre-condition checks
+            if self.shutdown_event.is_set():
                 await context.abort(grpc.StatusCode.CANCELLED, "Server is shutting down.")
-            if self._writer_active or self._cancel_readers_event.is_set():
-                await context.abort(grpc.StatusCode.UNAVAILABLE, "Server is being configured, please try again soon.")
             if not hp_io_task_manager.is_valid():
-                await context.abort(grpc.StatusCode.FAILED_PRECONDITION,
-                                    "hp_io task is not initialized or has become invalid.")
+                await context.abort(grpc.StatusCode.FAILED_PRECONDITION, "hp_io task is not valid.")
             if self._active_readers >= self.max_clients:
-                await context.abort(grpc.StatusCode.RESOURCE_EXHAUSTED,
-                                    f"Max number of clients ({self.max_clients}) reached.")
-
+                await context.abort(grpc.StatusCode.RESOURCE_EXHAUSTED, f"Max clients ({self.max_clients}) reached.")
+            
             rs_to_allocate = next((rs for rs in self._readers if not rs.is_allocated), None)
             if rs_to_allocate is None:
-                self.logger.critical("Mismatch between active_readers count and allocated slots!")
                 await context.abort(grpc.StatusCode.INTERNAL, "Internal server error: no reader slots available.")
                 return
 
-            # Allocation successful
-            self._active_readers += 1
             rs_to_allocate.is_allocated = True
-            rs_to_allocate.client_ip = peer
+            rs_to_allocate.client_ip = context.peer()
             rs_to_allocate.uid = uid
-            self.logger.info( f"Reader slot allocated for ({uid}) from "
-                              f"'{rs_to_allocate.client_ip}'. Active readers: {self._active_readers}")
+            self._active_readers += 1
+            self.logger.info(f"Reader slot allocated for ({uid}). Active readers: {self._active_readers}")
+
         try:
             yield rs_to_allocate
         finally:
-            async with self._lock:
-                if rs_to_allocate and rs_to_allocate.is_allocated:
-                    self.logger.info(
-                        f"Releasing reader slot for ({uid}) from '{rs_to_allocate.client_ip}'. "
-                        f"Active readers: {self._active_readers - 1}")
+            async with self._readers_lock:
+                if rs_to_allocate.is_allocated:
                     rs_to_allocate.reset()
                     self._active_readers -= 1
+                    self.logger.info(f"Reader slot released for ({uid}). Active readers: {self._active_readers - 1}")
 
     @asynccontextmanager
-    async def get_uploader_access(self, context, hp_io_task_manager: HpIoTaskManager):
+    async def get_uploader_access(self, context):
         """A context manager to safely acquire 'uploader' access."""
         uid = uuid.uuid4()
-        peer = urllib.parse.unquote(context.peer())
-        async with self._lock:
-            self.logger.debug(f"Uploader ({uid}) from '{peer}' trying to acquire lock. Active readers: {self._active_readers}")
-            simulate_upload = hp_io_task_manager.hp_io_cfg.get('simulate_daq', False)
-            simulate_upload = True
-            if not simulate_upload and self._writer_active:
-                await context.abort(grpc.StatusCode.ABORTED, "A writer is active.")
-            if self._uploader_active: await context.abort(grpc.StatusCode.ABORTED, "An uploader is already active.")
-            self._uploader_active = True
+
+        # acquire the dedicated uploader lock and check writer lock **
+        if self._writer_lock.locked():
+             await context.abort(grpc.StatusCode.ABORTED, "A writer is active, cannot accept uploads.")
+
+        await self._uploader_lock.acquire()
         try:
+            self.logger.debug(f"Uploader ({uid}) acquired uploader lock.")
             yield uid
         finally:
-            async with self._lock:
-                self._uploader_active = False
+            self._uploader_lock.release()
+            self.logger.debug(f"Uploader ({uid}) released uploader lock.")
