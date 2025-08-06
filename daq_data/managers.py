@@ -96,7 +96,7 @@ class HpIoTaskManager:
             self.logger.info("Stopping hp_io task...")
             self.stop_event.set()
             try:
-                await asyncio.wait_for(self.hp_io_task, timeout=5.0)
+                await asyncio.wait_for(self.hp_io_task, timeout=1.0)
                 self.logger.info("Successfully terminated hp_io task.")
             except asyncio.TimeoutError:
                 self.logger.warning("Timeout stopping hp_io task. Cancelling.")
@@ -148,13 +148,6 @@ class ClientManager:
         """Signals all active reader streams to terminate."""
         self.logger.warning("Cancelling all active and waiting reader RPCs.")
         self._cancel_readers_event.set()
-        async with self._lock:
-            for rs in self._readers:
-                if rs.is_allocated:
-                    try:
-                        rs.queue.put_nowait("shutdown")
-                    except asyncio.QueueFull:
-                        pass # The reader will time out or see the event anyway
 
     def signal_shutdown(self):
         self._shutdown_event.set()
@@ -177,7 +170,7 @@ class ClientManager:
                         await context.abort(grpc.StatusCode.FAILED_PRECONDITION, msg)
                     else:
                         self.logger.warning("Forcing write access by cancelling all active readers.")
-                        await self.cancel_all_readers()
+            await self.cancel_all_readers()
             yield uid
         finally:
             self._cancel_readers_event.clear()
@@ -220,7 +213,7 @@ class ClientManager:
                 if rs_to_allocate.is_allocated:
                     rs_to_allocate.reset()
                     self._active_readers -= 1
-                    self.logger.info(f"Reader slot released for ({uid}). Active readers: {self._active_readers - 1}")
+                    self.logger.info(f"Reader slot released for ({uid}). Active readers: {self._active_readers}")
 
     @asynccontextmanager
     async def get_uploader_access(self, context):
