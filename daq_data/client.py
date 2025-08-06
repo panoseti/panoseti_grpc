@@ -435,7 +435,7 @@ class DaqDataClient:
             init_successes.append(init_hp_io_response.success)
         return all(init_successes)
 
-    def ping(self, host: str, timeout=0.1) -> bool:
+    def ping(self, host: str, timeout=0.3) -> bool:
         """
         Pings a DAQ host to check if its DaqData gRPC server is active and responsive.
 
@@ -881,7 +881,7 @@ class AioDaqDataClient:
         results = await asyncio.gather(*[_init_single_host(host) for host in hosts])
         return all(results)
 
-    async def ping(self, host: str, timeout=0.1) -> bool:
+    async def ping(self, host: str, timeout=0.3) -> bool:
         """Pings a DAQ host asynchronously to check if its server is responsive."""
         if host not in self.daq_nodes:
             return False

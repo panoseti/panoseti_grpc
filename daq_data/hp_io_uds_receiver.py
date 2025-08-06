@@ -138,7 +138,8 @@ class UdsReceiver:
                     self.upload_queue.put_nowait(pano_image)
                     frame_count += 1
                 except asyncio.QueueFull:
-                    self.logger.warning(f"Upload queue is full. Dropping frame from UDS {self.dp_name}.")
+                    if frame_count % 1000 == 0:
+                        self.logger.warning(f"Upload queue is full. Dropping frame from UDS {self.dp_name}.")
 
         except asyncio.IncompleteReadError:
             self.logger.info(f"Client disconnected from {self.dp_name} socket.")
