@@ -14,6 +14,11 @@
     "valid_data_products": ["img8", "img16", "ph256", "ph1024"],
     "read_status_pipe_name": "read_status_2",
 
+    "uds_input_config": {
+        "enabled": true,
+        "data_products": ["ph256", "ph1024", "img16", "img8"]
+    },
+
     "simulate_daq_cfg": {
         "simulation_mode": "filesystem",
         "movie_type": "img16",

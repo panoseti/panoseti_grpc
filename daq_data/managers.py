@@ -62,6 +62,19 @@ class HpIoTaskManager:
         simulate_daq_cfg = self.server_cfg['simulate_daq_cfg']
         data_dir = hp_io_cfg['data_dir']
 
+
+        # Pre-start validation for UDS sockets
+        uds_config = self.server_cfg.get("uds_input_config", {})
+        if not hp_io_cfg['simulate_daq'] and uds_config.get("enabled", False):
+            for dp_name in uds_config.get("data_products", []):
+                socket_path = f"/tmp/hashpipe_grpc_{dp_name}.sock"
+                if not await asyncio.to_thread(os.path.exists, socket_path):
+                    self.logger.error(
+                        f"Cannot start HpIo task: Required UDS file '{socket_path}' does not exist. "
+                        f"Ensure the DAQ software is running and has created the socket."
+                    )
+                    return False
+
         if hp_io_cfg['simulate_daq']:
             data_dir = simulate_daq_cfg['files']['data_dir']
             if not await self.simulation_manager.start(simulate_daq_cfg):
@@ -91,7 +104,8 @@ class HpIoTaskManager:
                 self.upload_queue,
                 self.logger,
                 self.read_status_pipe_name,
-                simulate_daq_cfg
+                simulate_daq_cfg,
+                uds_config
             ).run()
         )
 
@@ -100,11 +114,12 @@ class HpIoTaskManager:
             _, self.active_data_products = await asyncio.wait_for(asyncio.gather(*init_tasks), timeout=3)
 
             is_filesystem_mode = not hp_io_cfg['simulate_daq'] or \
-                                 (hp_io_cfg['simulate_daq'] and self.server_cfg['simulate_daq_cfg'].get(
-                                     'simulation_mode') == 'filesystem')
+                                 (hp_io_cfg['simulate_daq'] and
+                                  self.server_cfg['simulate_daq_cfg'].get('simulation_mode') == 'filesystem')
 
-            if is_filesystem_mode and len(self.active_data_products) == 0:
-                self.logger.error("hp_io task failed to initialize with active data products in filesystem mode.")
+            if is_filesystem_mode and len(self.active_data_products) == 0 and not uds_config.get("enabled", False):
+                self.logger.error(
+                    "hp_io task failed to initialize with active data products in filesystem mode and UDS is disabled.")
                 await self.stop()
                 return False
 
@@ -264,8 +279,8 @@ class ClientManager:
             allocated_reader_state.is_allocated = True
             allocated_reader_state.client_ip = peer
             allocated_reader_state.uid = uid
-            self.logger.info(
-                f"Reader slot allocated for ({uid}) from '{allocated_reader_state.client_ip}'. Active readers: {self._active_readers}")
+            self.logger.info( f"Reader slot allocated for ({uid}) from "
+                              f"'{allocated_reader_state.client_ip}'. Active readers: {self._active_readers}")
 
         try:
             yield allocated_reader_state
@@ -273,7 +288,8 @@ class ClientManager:
             async with self._lock:
                 if allocated_reader_state and allocated_reader_state.is_allocated:
                     self.logger.info(
-                        f"Releasing reader slot for ({uid}) from '{allocated_reader_state.client_ip}'. Active readers: {self._active_readers - 1}")
+                        f"Releasing reader slot for ({uid}) from '{allocated_reader_state.client_ip}'. "
+                        f"Active readers: {self._active_readers - 1}")
                     allocated_reader_state.reset()
                     self._active_readers -= 1
 

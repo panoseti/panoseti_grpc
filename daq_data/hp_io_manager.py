@@ -165,6 +165,7 @@ class HpIoManager:
             logger: logging.Logger,
             read_status_pipe_name: str,
             sim_cfg: Dict[str, Any],
+            uds_config: Dict[str, Any]
     ):
         self.data_dir = data_dir
         self.update_interval_seconds = update_interval_seconds
@@ -178,6 +179,7 @@ class HpIoManager:
         self.logger = logger
         self.read_status_pipe_name = read_status_pipe_name
         self.sim_cfg = sim_cfg
+        self.uds_config = uds_config
 
         self.modules: Dict[int, ModuleState] = {}
         self.latest_data_cache: Dict[int, Dict[str, PanoImage]] = defaultdict(lambda: {'ph': None, 'movie': None})
@@ -185,12 +187,21 @@ class HpIoManager:
         self.pipe_fds_to_close = []
         self._pipe_readers_installed = False
 
+        self.uds_receivers: List[UdsReceiver] = []
+
+        if not self.simulate_daq and self.uds_config.get("enabled", False):
+            for dp_name in self.uds_config["data_products"]:
+                # For simplicity, assume module_id is 0, but architecture is general
+                receiver = UdsReceiver(dp_name, module_id=0, upload_queue=self.upload_queue, logger=self.logger)
+                self.uds_receivers.append(receiver)
+
     async def run(self):
         """Main entry point to start the monitoring and broadcasting task."""
         self.logger.info("HpIoManager task starting.")
         self.valid.clear()
-        watcher_task = None
+        filesystem_watcher_task = None
         processing_task = None
+        uds_watcher_task = None
         loop = asyncio.get_running_loop()
 
         try:
@@ -208,22 +219,29 @@ class HpIoManager:
                             break
 
             if use_pipe_watcher:
-                watcher_task = asyncio.create_task(self.watch_status_pipe())
+                filesystem_watcher_task = asyncio.create_task(self.watch_status_pipe())
             else:
                 self.logger.info("No named pipe found. Using filesystem polling watcher.")
-                watcher_task = asyncio.create_task(self._file_watcher())
+                filesystem_watcher_task = asyncio.create_task(self._file_watcher())
+
+            if self.uds_receivers:
+                uds_watcher_task = asyncio.create_task(self._run_uds_watchers())
 
             await self._update_active_data_products()
             self.valid.set()
 
             processing_task = asyncio.create_task(self._processing_loop())
 
-            await asyncio.gather(watcher_task, processing_task)
+            tasks_to_gather = [filesystem_watcher_task, processing_task]
+            if uds_watcher_task:
+                tasks_to_gather.append(uds_watcher_task)
+            await asyncio.gather(*tasks_to_gather)
 
         except Exception as err:
             self.logger.error(f"HpIoManager task encountered a fatal exception: {err}", exc_info=True)
-            if watcher_task: watcher_task.cancel()
+            if filesystem_watcher_task: filesystem_watcher_task.cancel()
             if processing_task: processing_task.cancel()
+            if uds_watcher_task: uds_watcher_task.cancel()
             raise
         finally:
             self.valid.clear()
@@ -241,6 +259,10 @@ class HpIoManager:
                 except Exception as e:
                     self.logger.warning(f"Error closing pipe fd: {e}")
 
+            if self.uds_receivers:
+                self.logger.info("Stopping UDS receivers...")
+                await asyncio.gather(*[r.stop() for r in self.uds_receivers])
+
             for module in self.modules.values():
                 for dp_config in module.dp_configs.values():
                     if dp_config.f:
@@ -255,8 +277,7 @@ class HpIoManager:
             self.logger.warning("DAQ data flow not active, filesystem scan may be incomplete.")
 
         module_dirs = await asyncio.to_thread(glob, str(self.data_dir / "module_*"))
-        all_module_ids = [int(os.path.basename(m).split('_')[1]) for m in module_dirs if
-                          os.path.isdir(m) and os.path.basename(m).split('_')[1].isdigit()]
+        all_module_ids = [int(os.path.basename(m).split('_')[1]) for m in module_dirs if os.path.isdir(m) and os.path.basename(m).split('_')[1].isdigit()]
 
         if not all_module_ids: return False
 
@@ -273,6 +294,18 @@ class HpIoManager:
         for module in self.modules.values():
             active_dps_union.update(module.dp_configs.keys())
         await self.active_data_products_queue.put(active_dps_union)
+
+    async def _run_uds_watchers(self):
+        """Starts and manages all configured UDS receiver tasks."""
+        if not self.uds_receivers:
+            return
+        self.logger.info(f"Starting {len(self.uds_receivers)} UDS receiver tasks.")
+        try:
+            await asyncio.gather(*[receiver.run() for receiver in self.uds_receivers])
+        except asyncio.CancelledError:
+            self.logger.info("UDS watcher task cancelled.")
+        finally:
+            self.logger.info("UDS watcher task finished.")
 
     async def _file_watcher(self):
         """Watches for file changes and puts them on the queue."""

@@ -46,11 +46,17 @@ class SimulationManager:
             self.sim_task = asyncio.create_task(self._run_filesystem_sim(sim_cfg))
         elif mode == "rpc":
             self.sim_task = asyncio.create_task(self._run_rpc_sim(sim_cfg))
+        elif mode == "uds":
+            if "uds_input_config" not in self.server_cfg or not self.server_cfg["uds_input_config"].get("enabled"):
+                self.logger.error(
+                    "UDS simulation mode selected, but 'uds_input_config' is not enabled in server config.")
+                return False
+            self.sim_task = asyncio.create_task(self._run_uds_sim(sim_cfg))
         else:
             self.logger.error(f"Unknown simulation mode: {mode}")
             return False
 
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.1) # yield control and wait for simulation task to start
         return True
 
     async def stop(self):
@@ -263,12 +269,12 @@ class SimulationManager:
             self.logger.info(f"RPC simulation connecting to server... on {uds_listen_addr}")
             assert os.path.exists(uds_path), f"Unix Domain Socket path at {os.path.abspath(uds_path)} does not exist."
             daq_config_uds = {
-                'daq_nodes': [
-                    {
-                        'ip_addr': uds_listen_addr,
-                    }
-                ]
-            }
+
+                'daq_nodes': [{
+
+                    'ip_addr': uds_listen_addr,
+
+                }]}
             async with AioDaqDataClient(daq_config=daq_config_uds, network_config=None) as client:
                 def _blocking_read(dp_config: DataProductConfig, frame_idx: int) -> tuple[str, bytes]:
                     dp_config.f.seek(frame_idx * dp_config.frame_size)
@@ -352,4 +358,124 @@ class SimulationManager:
                 except Exception as e:
                     self.logger.warning(f"Failed to clean up sim file {fpath}: {e}")
             self.logger.info("RPC simulation exited.")
+
+
+    async def _run_uds_sim(self, sim_cfg: dict):
+        """
+        Simulates the DAQ by writing PFF frame data directly to the Unix Domain Sockets
+        that the HpIoManager is configured to listen on.
+        """
+        self.logger.info("UDS simulation task started.")
+        connections = {}
+        source_frames = {}
+        frame_counters = {}
+
+        try:
+            # 1. Get data products to simulate from the main server config
+            uds_config = self.server_cfg.get("uds_input_config", {})
+            data_products = uds_config.get("data_products", [])
+            if not data_products:
+                self.logger.warning(
+                    "UDS simulation running, but no data_products are configured in 'uds_input_config'. Exiting.")
+                return
+
+            self.logger.info(f"UDS simulation will stream data for: {data_products}")
+
+            # 2. Load all source frames into memory for each data product type
+            # Note: We use the single movie_type and ph_type files as generic sources.
+            # A more advanced setup could map each DP to a specific file in the config.
+            real_module_id = sim_cfg['real_module_id']
+
+            # Load movie source
+            dp_configs = get_dp_config([sim_cfg['movie_type']])
+            movie_dp_config = dp_configs[sim_cfg['movie_type']]
+            movie_pff_path = get_sim_pff_path(sim_cfg, real_module_id, 0, is_ph=False, is_simulated=False)
+            movie_source_data = []
+            with open(movie_pff_path, "rb") as f:
+                frame_size, nframes, _, _ = pff.img_info(f, movie_dp_config.bytes_per_image)
+                f.seek(0, os.SEEK_SET)
+                for _ in range(nframes):
+                    movie_source_data.append(f.read(frame_size))
+
+            # Load pulse-height source
+            dp_configs = get_dp_config([sim_cfg['ph_type']])
+            ph_dp_config = dp_configs[sim_cfg['ph_type']]
+            ph_pff_path = get_sim_pff_path(sim_cfg, real_module_id, 0, is_ph=True, is_simulated=False)
+            ph_source_data = []
+            with open(ph_pff_path, "rb") as f:
+                frame_size, nframes, _, _ = pff.img_info(f, ph_dp_config.bytes_per_image)
+                f.seek(0, os.SEEK_SET)
+                for _ in range(nframes):
+                    ph_source_data.append(f.read(frame_size))
+
+            self.logger.info(
+                f"Loaded {len(movie_source_data)} movie and {len(ph_source_data)} PH source frames for UDS sim.")
+
+            for dp_name in data_products:
+                connections[dp_name] = None
+                frame_counters[dp_name] = 0
+                if 'ph' in dp_name:
+                    source_frames[dp_name] = ph_source_data
+                else:
+                    source_frames[dp_name] = movie_source_data
+
+                if not source_frames[dp_name]:
+                    self.logger.warning(f"No source frames loaded for {dp_name}. It will not be simulated.")
+
+            # 3. Main simulation loop
+            while not self._sim_stop_event.is_set():
+                for dp_name in data_products:
+                    if not source_frames[dp_name]:
+                        continue  # Skip if no data for this product
+
+                    socket_path = f"/tmp/hashpipe_grpc_{dp_name}.sock"
+
+                    # Attempt to connect if not already connected
+                    if connections.get(dp_name) is None:
+                        try:
+                            _, writer = await asyncio.open_unix_connection(socket_path)
+                            connections[dp_name] = writer
+                            self.logger.info(f"UDS sim: Connected to {socket_path}")
+                        except (ConnectionRefusedError, FileNotFoundError):
+                            self.logger.debug(f"UDS sim: Could not connect to {socket_path}. Will retry.")
+                            continue  # Try again on the next loop iteration
+
+                    # Write data to the socket
+                    writer = connections[dp_name]
+                    frame_idx = frame_counters[dp_name]
+                    frame_data = source_frames[dp_name][frame_idx]
+
+                    try:
+                        writer.write(frame_data)
+                        await writer.drain()
+
+                        # Increment frame counter, looping back to 0 at EOF
+                        frame_counters[dp_name] = (frame_idx + 1) % len(source_frames[dp_name])
+
+                    except (BrokenPipeError, ConnectionResetError) as e:
+                        self.logger.warning(
+                            f"UDS sim: Connection to {socket_path} lost: {e}. Will attempt to reconnect.")
+                        if not writer.is_closing():
+                            writer.close()
+                            await writer.wait_closed()
+                        connections[dp_name] = None
+
+                # Control the simulation speed
+                await asyncio.sleep(self.server_cfg.get('min_hp_io_update_interval_seconds', 0.1))
+
+        except asyncio.CancelledError:
+            self.logger.info("UDS simulation task was cancelled.")
+        except Exception as e:
+            if not self._sim_stop_event.is_set():
+                self.logger.error(f"UDS simulation failed: {e}", exc_info=True)
+        finally:
+            self.logger.info("Closing all UDS simulation connections...")
+            for dp_name, writer in connections.items():
+                if writer and not writer.is_closing():
+                    try:
+                        writer.close()
+                        await writer.wait_closed()
+                    except Exception as e:
+                        self.logger.warning(f"Error closing writer for {dp_name}: {e}")
+            self.logger.info("UDS simulation task finished.")
 
