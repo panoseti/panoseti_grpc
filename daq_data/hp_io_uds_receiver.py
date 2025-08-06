@@ -15,10 +15,11 @@ from panoseti_util import pff
 class UdsReceiver:
     """Manages reading PFF data from a single Unix Domain Socket."""
 
-    def __init__(self, dp_name: str, module_id: int, upload_queue: asyncio.Queue, logger: logging.Logger):
+    def __init__(self, dp_name: str, module_id: int, upload_queue: asyncio.Queue, shutdown_event: asyncio.Event, logger: logging.Logger):
         self.dp_name = dp_name
         self.module_id = module_id
         self.upload_queue = upload_queue
+        self._shutdown_event = shutdown_event
         self.logger = logger
 
         # Derive socket path from data product name
@@ -35,12 +36,12 @@ class UdsReceiver:
         self.logger.info(f"Starting UDS receiver for {self.dp_name} on {self.socket_path}")
 
         # Clean up old socket file if it exists
-        # if os.path.exists(self.socket_path):
-        #     try:
-        #         os.unlink(self.socket_path)
-        #     except OSError as e:
-        #         self.logger.error(f"Error removing existing socket file {self.socket_path}: {e}")
-        #         return
+        if os.path.exists(self.socket_path):
+            try:
+                os.unlink(self.socket_path)
+            except OSError as e:
+                self.logger.error(f"Error removing existing socket file {self.socket_path}: {e}")
+                return
 
         try:
             self.server = await asyncio.start_unix_server(self._handle_client, path=self.socket_path)
@@ -52,8 +53,8 @@ class UdsReceiver:
             if self.server:
                 self.server.close()
                 await self.server.wait_closed()
-            # if os.path.exists(self.socket_path):
-            #     os.unlink(self.socket_path)
+            if os.path.exists(self.socket_path):
+                os.unlink(self.socket_path)
             self.logger.info(f"UDS receiver for {self.dp_name} has stopped.")
 
     async def stop(self):
@@ -67,67 +68,75 @@ class UdsReceiver:
         self.logger.info(f"New connection on {self.dp_name} socket from {peer or 'unknown'}")
         frame_count = 0
 
-# Create a file-like object for pff.read_json
-# This is a workaround as pff library expects a file object
-class StreamReaderWrapper:
-    def __init__(self, stream_reader):
-        self._reader = stream_reader
-        self._buffer = b''
-
-    async def read(self, n=-1):
-        if n == -1:
-            return await self._reader.read()
-
-        while len(self._buffer) < n:
-            chunk = await self._reader.read(n - len(self._buffer))
-            if not chunk:
-                raise asyncio.IncompleteReadError(self._buffer, n)
-            self._buffer += chunk
-
-        data = self._buffer[:n]
-        self._buffer = self._buffer[n:]
-        return data
-
-        def readinto(self, b):
-            # Placeholder for compatibility if needed
-            return 0
-
         try:
-            while not self._stop_event.is_set():
-                # The pff functions are blocking, so run them in a thread
-                def _blocking_pff_read(data_chunk):
+            # The pff functions are blocking, so run them in a thread
+            def _get_header_size(data_chunk) -> tuple[dict or None, int] :
+                try:
                     f = BytesIO(data_chunk)
                     header_str = pff.read_json(f)
                     header_size = f.tell()
-                    return json.loads(header_str) if header_str else None, header_size
+                    header = json.loads(header_str)
+                    return header, header_size
+                except Exception:
+                    return None, -1
 
-                # First, read a chunk to parse the header
-                # A reasonable guess for max header size
-                initial_chunk = await reader.read(4096)
-                if not initial_chunk:
-                    break
+            def _blocking_pff_read(data_chunk) -> tuple[str, bytes]:
+                f = BytesIO(data_chunk)
+                header_str = pff.read_json(f)
+                img = pff.read_image(f, self.dp_config.image_shape[0], self.dp_config.bytes_per_pixel)
+                if header_str and img is not None:
+                    return json.loads(header_str), img
+                return None, None
 
-                header, header_size = await asyncio.to_thread(_blocking_pff_read, initial_chunk)
+            # First, read a chunk to parse the header
+            # Ensure we initially read less than a complete PFF frame
+            frame_size = self.dp_config.bytes_per_image
+            initial_chunk = await reader.read(frame_size)
+            if len(initial_chunk) < frame_size:
+                self.logger.error(f"Initial chunk on {self.dp_name} stream is too short."
+                                  f"Expected {frame_size} bytes, got {len(initial_chunk)}. Closing connection.")
+                return
 
+            header, header_size = await asyncio.to_thread(_get_header_size, initial_chunk)
+            if header is None:
+                self.logger.error(f"Could not parse JSON header on initial PFF frame of type {self.dp_name}.")
+                return
+
+            # Compute the size of each image frame based on the first frame
+            frame_size = header_size + 1 + self.dp_config.bytes_per_image  # the `+ 1` is for the special '*' prefix char
+            self.dp_config.frame_size = frame_size
+
+            # Read the remaining bytes for the image
+            img_buffer = initial_chunk[header_size + 1:]
+            bytes_to_read = self.dp_config.bytes_per_image - len(img_buffer)
+            try:
+                if bytes_to_read > 0:
+                    img_buffer += await reader.readexactly(bytes_to_read)
+            except asyncio.IncompleteReadError:
+                self.logger.error(f"Incomplete image array on initial PFF frame for {self.dp_name}.")
+                raise
+
+            self.logger.info(f"Parsed {self.dp_name} frame sizes: "
+                             f"{frame_size=} = ({header_size=}) + (bytes_per_image={self.dp_config.bytes_per_image}) + 1")
+
+            # After determining the constant frame size, we can exactly read complete PFF frames of this data type.
+            while not self._stop_event.is_set() and not self._shutdown_event.is_set():
+                pff_frame_bytes = await reader.readexactly(frame_size)
+                header, img = await asyncio.to_thread(_blocking_pff_read, pff_frame_bytes)
                 if not header:
                     self.logger.warning(f"Could not parse JSON header on {self.dp_name} stream.")
                     continue
-
-                # The rest of the initial chunk is the start of the image
-                img_buffer = initial_chunk[header_size:]
-
-                # Read the remaining bytes for the image
-                bytes_to_read = self.dp_config.bytes_per_image - len(img_buffer)
-                if bytes_to_read > 0:
-                    img_buffer += await reader.readexactly(bytes_to_read)
+                elif not img:
+                    self.logger.warning(f"Could not parse image array on {self.dp_name} stream.")
+                    continue
 
                 pano_image = PanoImage(
                     type=self.dp_config.pano_image_type,
                     header=ParseDict(header, Struct()),
-                    image_array=img_buffer,
+                    image_array=img,
                     shape=self.dp_config.image_shape,
                     bytes_per_pixel=self.dp_config.bytes_per_pixel,
-                    file=f"uds_{self.dp_name}",
+                    file=f"start_NONE.uds_{self.dp_name}",
                     frame_number=frame_count,
                     module_id=self.module_id,
                 )

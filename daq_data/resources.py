@@ -245,7 +245,7 @@ def is_daq_active_sync(simulate_daq, sim_cfg=None):
         if mode == 'filesystem':
             daq_active_files = [get_daq_active_file(sim_cfg, mid) for mid in sim_cfg['sim_module_ids']]
             daq_active = any([os.path.exists(file) for file in daq_active_files])
-        elif mode == 'rpc':
+        elif mode in ['rpc', 'uds']:
             daq_active = True
         else:
             raise ValueError(f"Unknown simulation mode: {mode}")

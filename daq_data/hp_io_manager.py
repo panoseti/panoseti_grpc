@@ -46,6 +46,7 @@ from watchfiles import awatch
 from .daq_data_pb2 import PanoImage
 from .resources import get_dp_config, get_dp_name_from_props, is_daq_active
 from .state import ReaderState, DataProductConfig
+from .hp_io_uds_receiver import UdsReceiver
 from panoseti_util import pff
 
 
@@ -148,6 +149,109 @@ class ModuleState:
         return False
 
 
+def _parse_dp_name(filename: str, dp_name_re=re.compile(r'\.dp_([a-zA-Z0-9]+)\.')) -> Optional[str]:
+    """Extracts the data product name (e.g., 'img16') from a PFF filename."""
+    match = dp_name_re.search(filename)
+    return match.group(1) if match else None
+
+
+def _parse_seqno(filename: str, seqno_re=re.compile(r'\.seqno_(\d+)\.')) -> Optional[int]:
+    """Extracts the seqno from a PFF filename."""
+    match = seqno_re.search(filename)
+    seqno = int(match.group(1)) if match else None
+    return seqno
+
+
+class ModuleState:
+    """Manages the state and logic for a single PANOSETI module's data acquisition."""
+
+    def __init__(self, module_id: int, data_dir: Path, logger: logging.Logger):
+        self.module_id = module_id
+        self.data_dir = data_dir
+        self.logger = logger
+        self.run_path: Optional[Path] = None
+        self.dp_configs: Dict[str, DataProductConfig] = {}
+
+    async def discover_and_initialize_from_fs(self, timeout: float = 2.0) -> bool:
+        """Finds the active run directory and initializes all discoverable data products."""
+        run_pattern = self.data_dir / f"module_{self.module_id}" / "obs_*"
+        runs = await asyncio.to_thread(glob, str(run_pattern))
+        if not runs:
+            self.logger.warning(f'No run directory found for module {self.module_id} matching {run_pattern}')
+            return False
+
+        self.run_path = Path(sorted(runs, key=os.path.getmtime)[-1])
+        self.logger.info(f"Module {self.module_id}: Found active run at {self.run_path}")
+
+        pff_files = await asyncio.to_thread(glob, str(self.run_path / '*.pff'))
+        discovered_dp_names = set(_parse_dp_name(Path(f).name) for f in pff_files if _parse_dp_name(Path(f).name))
+
+        if not discovered_dp_names:
+            return True  # No data products is not a fatal error here
+
+        self.logger.info(f"Module {self.module_id}: Discovered data products: {discovered_dp_names}")
+
+        init_tasks = [self.add_dp_from_fs(dp_name, timeout) for dp_name in discovered_dp_names]
+        results = await asyncio.gather(*init_tasks)
+        return any(results)
+
+    async def add_dp_from_fs(self, dp_name: str, timeout: float = 1.0) -> bool:
+        """Adds and initializes a data product configuration from the filesystem."""
+        if dp_name in self.dp_configs: return True
+        try:
+            dp_configs = get_dp_config([dp_name])
+            dp_config = dp_configs[dp_name]
+            if await self._initialize_dp(dp_config, timeout):
+                self.dp_configs[dp_name] = dp_config
+                self.logger.info(f"Module {self.module_id}: Successfully initialized data product '{dp_name}'")
+                return True
+        except ValueError as e:
+            self.logger.error(f"Module {self.module_id}: Could not get config for '{dp_name}': {e}")
+        return False
+
+    def add_dp_for_upload(self, dp_name: str):
+        """Adds a data product configuration for data received via upload."""
+        if dp_name in self.dp_configs: return
+        try:
+            dp_configs = get_dp_config([dp_name])
+            self.dp_configs[dp_name] = dp_configs[dp_name]
+            self.logger.info(f"Module {self.module_id}: Added config for uploaded data product '{dp_name}'")
+        except ValueError as e:
+            self.logger.error(f"Module {self.module_id}: Could not get config for uploaded DP '{dp_name}': {e}")
+
+    async def _initialize_dp(self, dp_config: DataProductConfig, timeout: float) -> bool:
+        """Initializes a single data product by finding a valid data file and its frame size."""
+        start_time = time.monotonic()
+        dp_config.glob_pat = str(self.run_path / f'*{dp_config.name}*.pff')
+        while time.monotonic() - start_time < timeout:
+            files = await asyncio.to_thread(glob, dp_config.glob_pat)
+            if not files:
+                await asyncio.sleep(0.25)
+                continue
+
+            latest_file = Path(sorted(files, key=os.path.getmtime)[-1])
+            try:
+                if os.path.getsize(latest_file) >= dp_config.bytes_per_image:
+                    with open(latest_file, 'rb') as f:
+                        try:
+                            dp_config.frame_size = pff.img_frame_size(f, dp_config.bytes_per_image)
+                        except Exception as e:
+                            self.logger.warning(
+                                f"Failed to get frame size for {dp_config.name} for module {self.module_id}: {e}")
+                            return False
+                    dp_config.current_filepath = latest_file
+                    dp_config.last_known_filesize = await asyncio.to_thread(os.path.getsize, latest_file)
+                    dp_config.last_seqno = _parse_seqno(latest_file.name)
+                    return True
+            except (FileNotFoundError, ValueError) as e:
+                self.logger.warning(f"Failed to initialize {dp_config.name} for module {self.module_id}: {e}")
+                return False
+            await asyncio.sleep(0.25)
+
+        self.logger.warning(f"Timeout initializing data product {dp_config.name} for module {self.module_id}")
+        return False
+
+
 class HpIoManager:
     """Orchestrates dynamic filesystem monitoring and data broadcasting for PANOSETI DAQ."""
 
@@ -188,11 +292,12 @@ class HpIoManager:
         self._pipe_readers_installed = False
 
         self.uds_receivers: List[UdsReceiver] = []
-
-        if not self.simulate_daq and self.uds_config.get("enabled", False):
-            for dp_name in self.uds_config["data_products"]:
+        # MODIFICATION: The UDS pathway should be enabled if configured,
+        # regardless of simulation mode. This allows the simulation to connect to it.
+        if self.uds_config.get("enabled", False):
+            for dp_name in self.uds_config.get("data_products", []):
                 # For simplicity, assume module_id is 0, but architecture is general
-                receiver = UdsReceiver(dp_name, module_id=0, upload_queue=self.upload_queue, logger=self.logger)
+                receiver = UdsReceiver(dp_name, module_id=0, upload_queue=self.upload_queue, shutdown_event=stop_io, logger=self.logger)
                 self.uds_receivers.append(receiver)
 
     async def run(self):
@@ -205,24 +310,30 @@ class HpIoManager:
         loop = asyncio.get_running_loop()
 
         try:
-            if not await self._initialize_modules_from_fs():
-                self.logger.warning("HpIoManager did not find any modules on filesystem at startup.")
+            # In UDS simulation mode, the filesystem might not be used.
+            sim_mode = self.sim_cfg.get("simulation_mode")
+            is_uds_sim = self.simulate_daq and sim_mode == "uds"
 
-            use_pipe_watcher = False
-            if self.modules:
-                for module in self.modules.values():
-                    if module.run_path:
-                        pipe_path = module.run_path / self.read_status_pipe_name
-                        if pipe_path.exists() and stat.S_ISFIFO(os.stat(pipe_path).st_mode):
-                            self.logger.info(f"Found named pipe at {pipe_path}. Activating pipe-based watcher.")
-                            use_pipe_watcher = True
-                            break
+            # Only initialize from filesystem if not in a pure UDS simulation
+            if not is_uds_sim:
+                if not await self._initialize_modules_from_fs():
+                    self.logger.warning("HpIoManager did not find any modules on filesystem at startup.")
 
-            if use_pipe_watcher:
-                filesystem_watcher_task = asyncio.create_task(self.watch_status_pipe())
-            else:
-                self.logger.info("No named pipe found. Using filesystem polling watcher.")
-                filesystem_watcher_task = asyncio.create_task(self._file_watcher())
+                use_pipe_watcher = False
+                if self.modules:
+                    for module in self.modules.values():
+                        if module.run_path:
+                            pipe_path = module.run_path / self.read_status_pipe_name
+                            if pipe_path.exists() and stat.S_ISFIFO(os.stat(pipe_path).st_mode):
+                                self.logger.info(f"Found named pipe at {pipe_path}. Activating pipe-based watcher.")
+                                use_pipe_watcher = True
+                                break
+
+                if use_pipe_watcher:
+                    filesystem_watcher_task = asyncio.create_task(self.watch_status_pipe())
+                else:
+                    self.logger.info("No named pipe found. Using filesystem polling watcher.")
+                    filesystem_watcher_task = asyncio.create_task(self._file_watcher())
 
             if self.uds_receivers:
                 uds_watcher_task = asyncio.create_task(self._run_uds_watchers())
@@ -232,10 +343,17 @@ class HpIoManager:
 
             processing_task = asyncio.create_task(self._processing_loop())
 
-            tasks_to_gather = [filesystem_watcher_task, processing_task]
+            tasks_to_gather = [processing_task]
+            if filesystem_watcher_task:
+                tasks_to_gather.append(filesystem_watcher_task)
             if uds_watcher_task:
                 tasks_to_gather.append(uds_watcher_task)
-            await asyncio.gather(*tasks_to_gather)
+
+            self.logger.debug(f"HpIoManager task will gather {tasks_to_gather}.")
+            try:
+                await asyncio.gather(*tasks_to_gather)
+            finally:
+                self.logger.debug(f"HpIoManager finished. {tasks_to_gather=}")
 
         except Exception as err:
             self.logger.error(f"HpIoManager task encountered a fatal exception: {err}", exc_info=True)
@@ -301,7 +419,7 @@ class HpIoManager:
             return
         self.logger.info(f"Starting {len(self.uds_receivers)} UDS receiver tasks.")
         try:
-            await asyncio.gather(*[receiver.run() for receiver in self.uds_receivers])
+            await asyncio.gather(*[receiver.run() for receiver in self.uds_receivers], return_exceptions=True)
         except asyncio.CancelledError:
             self.logger.info("UDS watcher task cancelled.")
         finally:

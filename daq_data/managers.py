@@ -111,11 +111,12 @@ class HpIoTaskManager:
 
         try:
             init_tasks = [self.hp_io_valid_event.wait(), active_data_products_queue.get()]
-            _, self.active_data_products = await asyncio.wait_for(asyncio.gather(*init_tasks), timeout=3)
+            wait_timeout = 5.0 if uds_config.get("enabled") else 3.0
+            _, self.active_data_products = await asyncio.wait_for(asyncio.gather(*init_tasks), timeout=wait_timeout)
 
             is_filesystem_mode = not hp_io_cfg['simulate_daq'] or \
-                                 (hp_io_cfg['simulate_daq'] and
-                                  self.server_cfg['simulate_daq_cfg'].get('simulation_mode') == 'filesystem')
+                                 (hp_io_cfg['simulate_daq'] and self.server_cfg['simulate_daq_cfg'].get(
+                                     'simulation_mode') == 'filesystem')
 
             if is_filesystem_mode and len(self.active_data_products) == 0 and not uds_config.get("enabled", False):
                 self.logger.error(
@@ -152,7 +153,7 @@ class HpIoTaskManager:
         if not self.hp_io_task.done():
             self.logger.info("Stopping hp_io task...")
             try:
-                await self.hp_io_task
+                await asyncio.wait_for(self.hp_io_task, timeout=5.0)
                 self.logger.info("Successfully terminated hp_io task.")
             except Exception as e:
                 self.logger.critical(f"Exception while stopping hp_io task: {e}", exc_info=True)

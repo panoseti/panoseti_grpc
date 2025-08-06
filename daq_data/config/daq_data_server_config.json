@@ -20,7 +20,7 @@
     },
 
     "simulate_daq_cfg": {
-        "simulation_mode": "filesystem",
+        "simulation_mode": "uds",
         "movie_type": "img16",
         "ph_type": "ph256",
         "do_ph": true,
