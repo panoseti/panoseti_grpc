@@ -27,7 +27,7 @@ def read_json(f):
 # returns the image as a list of N numbers
 # see https://docs.python.org/3/library/struct.html
 #
-def read_image(f, img_size, bytes_per_pixel):
+def read_image(f, img_size: int, bytes_per_pixel: int):
     c = f.read(1)
     if c == '':
         return None

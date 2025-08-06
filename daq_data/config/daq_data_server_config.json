@@ -4,7 +4,7 @@
     "unix_domain_socket": "unix:///tmp/daq_data.sock",
     "max_concurrent_rpcs": 100,
     "max_read_queue_size": 50,
-    "min_hp_io_update_interval_seconds": 0.1,
+    "min_hp_io_update_interval_seconds": 0.01,
     "max_client_update_interval_seconds": 60,
     "max_reader_enqueue_timeouts": 2,
     "max_reader_dequeue_timeouts": 3,
@@ -13,32 +13,43 @@
     "hp_io_stop_timeout": 5.0,
     "valid_data_products": ["img8", "img16", "ph256", "ph1024"],
     "read_status_pipe_name": "read_status_2",
-
-    "uds_input_config": {
-        "enabled": true,
-        "data_products": ["ph256", "ph1024", "img16", "img8"]
+    
+    "acquisition_methods": {
+        "filesystem_poll": { "enabled": false },
+        "filesystem_pipe": { "enabled": false },
+        "uds": {
+            "enabled": true,
+            "data_products": ["ph256", "img16"]
+        }
     },
 
+
     "simulate_daq_cfg": {
-        "simulation_mode": "uds",
+        "simulation_mode": "rpc",
+        "sim_module_ids": [224],
         "movie_type": "img16",
         "ph_type": "ph256",
-        "do_ph": true,
-        "do_movie": true,
-        "frames_per_pff": 1000,
-        "sim_module_ids": [224],
-        "real_module_id": 1,
-        "files": {
-            "data_dir": "daq_data/simulated_data_dir",
-            "real_run_dir": "obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd",
-            "sim_run_dir_template": "module_{module_id}/obs_SIMULATE",
-            "movie_pff_template": "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_{module_id}.seqno_{seqno}.debug_TRUNCATED.pff",
-            "ph_pff_template": "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_{module_id}.seqno_{seqno}.debug_TRUNCATED.pff",
-            "daq_active_file": "module_{module_id}.daq-active"
+        "update_interval_seconds": 0.1,
+
+        "source_data": {
+            "real_module_id": 1,
+            "movie_pff_path": "daq_data/simulated_data_dir/obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd/start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_0.debug_TRUNCATED.pff",
+            "ph_pff_path": "daq_data/simulated_data_dir/obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd/start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_3.seqno_0.debug_TRUNCATED.pff"
         },
-        "early_exit": {
-            "do_exit": false,
-            "nframes_before_exit": 125
+
+        "strategies": {
+            "filesystem": {
+                "frames_per_pff": 1000,
+                "sim_data_dir": "daq_data/simulated_data_dir",
+                "sim_run_dir_template": "module_{module_id}/obs_SIMULATE",
+                "daq_active_file": "module_{module_id}.daq-active",
+                "movie_pff_template": "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_{module_id}.seqno_{seqno}.debug_TRUNCATED.pff",
+                "ph_pff_template": "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_{module_id}.seqno_{seqno}.debug_TRUNCATED.pff"
+            },
+            "uds": {
+                "data_products": ["ph256", "img16"]
+            },
+            "rpc": {}
         }
     }
 }

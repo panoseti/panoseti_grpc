@@ -7,7 +7,7 @@ Requires the following to work:
 Run this on the headnode to configure the u-blox GNSS receivers in remote domes.
 """
 import asyncio
-from typing import Set, List, Callable, Tuple, Any, Dict, Generator, AsyncIterator, Union, AsyncGenerator
+from typing import Set, List, Callable, Tuple, Any, Dict, Generator, AsyncIterator, Union, AsyncGenerator, Optional
 import logging
 import os
 import json
@@ -60,7 +60,7 @@ class DaqDataClient:
     def __init__(
         self,
         daq_config: Union[str, Path, Dict[str, Any]],
-        network_config: Union[str, Path, Dict[str, Any]],
+        network_config: Optional[Union[str, Path, Dict[str, Any]]],
         log_level: int =logging.INFO
     ):
         """Initializes the DaqDataClient with DAQ and network configurations.
@@ -95,46 +95,46 @@ class DaqDataClient:
                 self.logger.error(emsg)
                 raise FileNotFoundError(emsg)
             with open(daq_config, 'r') as f:
-                daq_config = json.load(f)
+                daq_config_dict = json.load(f)
         elif isinstance(daq_config, dict):
-            pass
+            daq_config_dict = daq_config
         else:
             raise ValueError(f"daq_config is not a str, Path, or dict: {daq_config=}")
 
         # validate daq_config
-        if 'daq_nodes' not in daq_config or daq_config['daq_nodes'] is None or len(daq_config['daq_nodes']) == 0:
-            raise ValueError(f"daq_nodes is empty: {daq_config=}")
-        for daq_node in daq_config['daq_nodes']:
+        if 'daq_nodes' not in daq_config_dict or daq_config_dict['daq_nodes'] is None or len(daq_config_dict['daq_nodes']) == 0:
+            raise ValueError(f"daq_nodes is empty: {daq_config_dict=}")
+        for daq_node in daq_config_dict['daq_nodes']:
             if 'ip_addr' not in daq_node:
                 raise ValueError(f"daq_node={daq_node} does not have an 'ip_addr' key")
 
         # Validate network_config
         if not network_config:
-            network_config = None
+            network_config_dict = None
         elif isinstance(network_config, str) or isinstance(network_config, Path):
             if not os.path.exists(network_config):
-                abs_path = os.path.abspath(daq_config)
+                abs_path = os.path.abspath(network_config)
                 emsg = f"network_config_path={abs_path} does not exist"
                 self.logger.error(emsg)
                 raise FileNotFoundError(emsg)
             with open(network_config, 'r') as f:
-                network_config = json.load(f)
+                network_config_dict = json.load(f)
         elif isinstance(network_config, dict):
-            pass
+            network_config_dict = network_config
         else:
             raise ValueError(f"network_config is not a str, Path, or dict: {network_config=}")
 
         # add port forwarding info to daq_config if network_config is specified
-        if network_config is not None:
-            if 'daq_nodes' not in network_config or network_config['daq_nodes'] is None or len(
-                    network_config['daq_nodes']) == 0:
-                raise ValueError(f"daq_nodes is empty: {network_config=}")
-            control_utils.attach_daq_config(daq_config, network_config)
+        if network_config_dict is not None:
+            if 'daq_nodes' not in network_config_dict or network_config_dict['daq_nodes'] is None or len(
+                    network_config_dict['daq_nodes']) == 0:
+                raise ValueError(f"daq_nodes is empty: {network_config_dict=}")
+            control_utils.attach_daq_config(daq_config_dict, network_config_dict)
 
         # Parse real host ips for each daq node
         self.valid_daq_hosts = set()
         self.daq_nodes = {}
-        for daq_node in daq_config['daq_nodes']:
+        for daq_node in daq_config_dict['daq_nodes']:
             daq_cfg_ip = daq_node['ip_addr']
             if 'port_forwarding' in daq_node:
                 real_ip = daq_node['port_forwarding']['gw_ip']
@@ -222,7 +222,7 @@ class DaqDataClient:
         self.valid_daq_hosts.add(host)
         return True
 
-    def validate_daq_hosts(self, hosts: List[str] or str) -> List[str] or None:
+    def validate_daq_hosts(self, hosts: Union[List[str], str]) -> Optional[List[str]]:
         """
         Validates that a given list of hosts are active and reachable.
 
@@ -249,7 +249,7 @@ class DaqDataClient:
                 raise ValueError(f"daq_host={host} does not have a valid gRPC server channel. Valid daq_hosts: {self.valid_daq_hosts}")
         return hosts
 
-    def reflect_services(self, hosts: List[str] or str) -> str:
+    def reflect_services(self, hosts: Union[List[str], str]) -> str:
         """
         Discovers and lists all available gRPC services and RPCs on the specified hosts.
 
@@ -293,7 +293,7 @@ class DaqDataClient:
 
     def stream_images(
         self,
-        hosts: List[str] or str,
+        hosts: Union[List[str], str],
         stream_movie_data: bool,
         stream_pulse_height_data: bool,
         update_interval_seconds: float,
@@ -364,7 +364,7 @@ class DaqDataClient:
                         yield stream_images_response
         return response_generator()
 
-    def init_sim(self, hosts: List[str] or str, hp_io_sim_cfg_path=hp_io_config_simulate_path,timeout=10.0) -> bool:
+    def init_sim(self, hosts: Union[List[str], str], hp_io_sim_cfg_path=hp_io_config_simulate_path, timeout=10.0) -> bool:
         """
         A convenience method for initializing a simulated run using a JSON config file.
 
@@ -386,7 +386,7 @@ class DaqDataClient:
             assert hp_io_config['simulate_daq'] is True, f"{hp_io_sim_cfg_path} used init_sim must have simulate_daq=True"
         return self.init_hp_io(hosts, hp_io_config, timeout=timeout)
 
-    def init_hp_io(self, hosts: List[str] or str, hp_io_cfg: dict, timeout=10.0) -> bool:
+    def init_hp_io(self, hosts: Union[List[str], str], hp_io_cfg: dict, timeout=10.0) -> bool:
         """
         Initializes or reconfigures the `hp_io` thread on the DaqData server.
 
@@ -455,7 +455,7 @@ class DaqDataClient:
         except grpc.RpcError as e:
             return False
 
-    def upload_images(self, hosts: List[str] or str, image_iterator: Generator[PanoImage, None, None]):
+    def upload_images(self, hosts: Union[List[str], str], image_iterator: Generator[PanoImage, None, None]):
         """
         Uploads a stream of PanoImage objects to the server.
 
@@ -497,12 +497,12 @@ class AioDaqDataClient:
     GRPC_PORT = 50051
 
     def __init__(
-            self,
-            daq_config: Union[str, Path, Dict[str, Any]],
-            network_config: Union[str, Path, Dict[str, Any]],
-            log_level: int = logging.INFO
+        self,
+        daq_config: Union[str, Path, Dict[str, Any]],
+        network_config: Optional[Union[str, Path, Dict[str, Any]]],
+        log_level: int =logging.INFO
     ):
-        """Initializes the AioDaqDataClient with DAQ and network configurations.
+        """Initializes the DaqDataClient with DAQ and network configurations.
 
         Args:
             daq_config: The DAQ system configuration. Can be a path to a
@@ -534,46 +534,46 @@ class AioDaqDataClient:
                 self.logger.error(emsg)
                 raise FileNotFoundError(emsg)
             with open(daq_config, 'r') as f:
-                daq_config = json.load(f)
+                daq_config_dict = json.load(f)
         elif isinstance(daq_config, dict):
-            pass
+            daq_config_dict = daq_config
         else:
             raise ValueError(f"daq_config is not a str, Path, or dict: {daq_config=}")
 
         # validate daq_config
-        if 'daq_nodes' not in daq_config or daq_config['daq_nodes'] is None or len(daq_config['daq_nodes']) == 0:
-            raise ValueError(f"daq_nodes is empty: {daq_config=}")
-        for daq_node in daq_config['daq_nodes']:
+        if 'daq_nodes' not in daq_config_dict or daq_config_dict['daq_nodes'] is None or len(daq_config_dict['daq_nodes']) == 0:
+            raise ValueError(f"daq_nodes is empty: {daq_config_dict=}")
+        for daq_node in daq_config_dict['daq_nodes']:
             if 'ip_addr' not in daq_node:
                 raise ValueError(f"daq_node={daq_node} does not have an 'ip_addr' key")
 
         # Validate network_config
         if not network_config:
-            network_config = None
+            network_config_dict = None
         elif isinstance(network_config, str) or isinstance(network_config, Path):
             if not os.path.exists(network_config):
-                abs_path = os.path.abspath(daq_config)
+                abs_path = os.path.abspath(network_config)
                 emsg = f"network_config_path={abs_path} does not exist"
                 self.logger.error(emsg)
                 raise FileNotFoundError(emsg)
             with open(network_config, 'r') as f:
-                network_config = json.load(f)
+                network_config_dict = json.load(f)
         elif isinstance(network_config, dict):
-            pass
+            network_config_dict = network_config
         else:
             raise ValueError(f"network_config is not a str, Path, or dict: {network_config=}")
 
         # add port forwarding info to daq_config if network_config is specified
-        if network_config is not None:
-            if 'daq_nodes' not in network_config or network_config['daq_nodes'] is None or len(
-                    network_config['daq_nodes']) == 0:
-                raise ValueError(f"daq_nodes is empty: {network_config=}")
-            control_utils.attach_daq_config(daq_config, network_config)
+        if network_config_dict is not None:
+            if 'daq_nodes' not in network_config_dict or network_config_dict['daq_nodes'] is None or len(
+                    network_config_dict['daq_nodes']) == 0:
+                raise ValueError(f"daq_nodes is empty: {network_config_dict=}")
+            control_utils.attach_daq_config(daq_config_dict, network_config_dict)
 
         # Parse real host ips for each daq node
         self.valid_daq_hosts = set()
         self.daq_nodes = {}
-        for daq_node in daq_config['daq_nodes']:
+        for daq_node in daq_config_dict['daq_nodes']:
             daq_cfg_ip = daq_node['ip_addr']
             if 'port_forwarding' in daq_node:
                 real_ip = daq_node['port_forwarding']['gw_ip']
@@ -663,7 +663,7 @@ class AioDaqDataClient:
         self.valid_daq_hosts.add(host)
         return True
 
-    async def validate_daq_hosts(self, hosts: List[str] or str) -> List[str] or None:
+    async def validate_daq_hosts(self, hosts: Union[List[str], str]) -> Optional[List[str]]:
         """
         Validates that a given list of hosts are active and reachable.
 
@@ -690,7 +690,7 @@ class AioDaqDataClient:
                 raise ValueError(f"daq_host={host} does not have a valid gRPC server channel. Valid daq_hosts: {self.valid_daq_hosts}")
         return hosts
 
-    async def reflect_services(self, hosts: List[str] or str) -> str:
+    async def reflect_services(self, hosts: Union[List[str], str]) -> str:
         """
         Discovers and lists all available gRPC services and RPCs on the specified hosts.
 
@@ -734,7 +734,7 @@ class AioDaqDataClient:
 
     async def stream_images(
             self,
-            hosts: List[str] or str,
+            hosts: Union[List[str], str],
             stream_movie_data: bool,
             stream_pulse_height_data: bool,
             update_interval_seconds: float,
@@ -811,7 +811,7 @@ class AioDaqDataClient:
                 await asyncio.gather(*tasks, return_exceptions=True)
         return response_generator()
 
-    async def init_sim(self, hosts: List[str] or str, hp_io_sim_cfg_path=hp_io_config_simulate_path,
+    async def init_sim(self, hosts: Union[List[str], str], hp_io_sim_cfg_path=hp_io_config_simulate_path,
                        timeout=5.0) -> bool:
         """
         Asynchronously initializes a simulated run using a JSON config file.

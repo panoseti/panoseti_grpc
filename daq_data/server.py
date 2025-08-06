@@ -18,55 +18,43 @@ from pathlib import Path
 from typing import AsyncIterator
 import signal
 
-# --- gRPC imports ---
+# gRPC imports
 import grpc
 from grpc_reflection.v1alpha import reflection
 from google.protobuf.json_format import MessageToDict
 from google.protobuf.empty_pb2 import Empty
 
-# --- Protoc-generated imports ---
+# Protoc-generated imports
 from . import daq_data_pb2, daq_data_pb2_grpc
 from .daq_data_pb2 import InitHpIoResponse, StreamImagesResponse
 
-# --- DAQ Data Utils ---
+# Package imports
 from .resources import make_rich_logger, CFG_DIR, is_daq_active
 from .testing import is_os_posix
 from .managers import ClientManager, HpIoTaskManager
 
 
 class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
-    """
-    Provides implementations for DaqData RPCs by orchestrating manager classes.
-    """
+    """ Provides implementations for DaqData RPCs by orchestrating manager classes. """
 
-    def __init__(self, server_cfg, logging_level=logging.INFO):
+    def __init__(self, server_cfg, logging_level=logging.DEBUG):
         self.logger = make_rich_logger("daq_data.server", level=logging_level)
         test_result, msg = is_os_posix()
         assert test_result, msg
-
         self.server_cfg = server_cfg
-
-        # 1. Compose the manager classes to delegate responsibilities
         self.client_manager = ClientManager(self.logger, server_cfg)
-        self.task_manager = HpIoTaskManager(
-            self.logger,
-            server_cfg,
-            self.client_manager.reader_states
-        )
-
-        self.initial_task_started = asyncio.Event()
+        self.task_manager = HpIoTaskManager(self.logger, server_cfg, self.client_manager.reader_states)
 
     async def start_initial_task(self):
         """Starts the initial hp_io task if configured to do so."""
         if self.server_cfg.get("init_from_default", False):
-            self.logger.info(f"Creating initial hp_io task from default config.")
+            self.logger.info("Creating initial hp_io task from default config.")
             try:
                 with open(CFG_DIR / self.server_cfg["default_hp_io_config_file"], "r") as f:
                     hp_io_cfg = json.load(f)
                 await self.task_manager.start(hp_io_cfg)
             except Exception as e:
                 self.logger.error(f"Failed to start initial hp_io task: {e}", exc_info=True)
-        self.initial_task_started.set()
 
     async def shutdown(self):
         """Gracefully shuts down the server by delegating to the managers."""
@@ -79,16 +67,11 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
     async def StreamImages(self, request, context) -> AsyncIterator[StreamImagesResponse]:
         """Forward PanoImages to the client. [reader]"""
         peer = urllib.parse.unquote(context.peer())
-        self.logger.info(f"New StreamImages rpc from '{peer}': "
-                         f"{MessageToDict(request, preserving_proto_field_name=True)}")
-
+        self.logger.info(f"New StreamImages rpc from '{peer}': {MessageToDict(request, True, True)}")
         if not request.stream_movie_data and not request.stream_pulse_height_data:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "At least one stream flag must be True.")
 
-        # Use the ClientManager to safely acquire a reader slot and handle all preconditions
         async with self.client_manager.get_reader_access(context, self.task_manager) as reader_state:
-            # At this point, a reader slot is allocated and the server is in a valid state for streaming.
-
             # Configure the reader's stream based on the request
             reader_state.config['stream_movie_data'] = request.stream_movie_data
             reader_state.config['stream_pulse_height_data'] = request.stream_pulse_height_data
@@ -98,26 +81,18 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             req_interval = request.update_interval_seconds
             hp_io_interval = self.task_manager.hp_io_cfg.get('update_interval_seconds', 1.0)
             reader_state.config['update_interval_seconds'] = max(req_interval, hp_io_interval)
-
-            self.logger.info(
-                f"Stream configured for ({reader_state.uid}) from '{peer}' with interval {reader_state.config['update_interval_seconds']}s")
+            self.logger.info( f"Stream configured for ({reader_state.uid}) from '{peer}' with interval {reader_state.config['update_interval_seconds']}s")
 
             # Main streaming loop
-            while not (context.cancelled() or reader_state.cancel_reader_event.is_set() or reader_state.shutdown_event.is_set()):
+            while not any([context.cancelled(), reader_state.cancel_reader_event.is_set(), reader_state.shutdown_event.is_set()]):
                 try:
                     # Wait for an image from the HpIoManager's broadcast
-                    pano_image = await asyncio.wait_for(
-                        reader_state.queue.get(),
-                        timeout=self.server_cfg['reader_timeout']
-                    )
-
+                    pano_image = await asyncio.wait_for(reader_state.queue.get(), timeout=self.server_cfg['reader_timeout'])
                     if pano_image == "shutdown":
-                        self.logger.info(f"Client ({reader_state.uid}) from '{peer}' received shutdown signal in queue. Ending stream.")
+                        self.logger.debug(f"Client ({reader_state.uid}) from '{peer}' received shutdown signal in queue. Ending stream.")
                         break
-
                     yield StreamImagesResponse(pano_image=pano_image)
                     reader_state.dequeue_timeouts = 0  # Reset on success
-
                 except asyncio.TimeoutError:
                     reader_state.dequeue_timeouts += 1
                     if reader_state.dequeue_timeouts >= self.server_cfg['max_reader_dequeue_timeouts']:
@@ -136,13 +111,14 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 elif reader_state.cancel_reader_event.is_set():
                     await context.abort(grpc.StatusCode.CANCELLED, f"cancel_reader_event set for ({reader_state.uid}) from '{peer}'."
                                                                    f"A writer has likely forced a reconfiguration of hp_io")
+
     async def InitHpIo(self, request, context) -> InitHpIoResponse:
         """Initialize or re-initialize the hp_io task. [writer]"""
         peer = urllib.parse.unquote(context.peer())
         self.logger.info(f"New InitHpIo rpc from {peer}: "
-                         f"{MessageToDict(request, preserving_proto_field_name=True)}")
+                         f"{MessageToDict(request, True, True)}")
 
-        # --- Request Validation ---
+        # Request validation
         if not request.simulate_daq:
             if not os.path.exists(request.data_dir):
                 await context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"data_dir '{request.data_dir}' does not exist.")
@@ -152,12 +128,13 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         if request.update_interval_seconds < self.server_cfg['min_hp_io_update_interval_seconds']:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "update_interval_seconds is below server minimum.")
 
-        # Use ClientManager to safely acquire exclusive writer access
         async with self.client_manager.get_writer_access(context, self.task_manager, force=request.force) as uid:
-            self.logger.info("Acquired writer lock. Proceeding with hp_io task re-initialization.")
+            self.logger.info(f"({uid}) acquired writer lock. Initializing hp_io task.")
 
             last_valid_config = self.task_manager.hp_io_cfg.copy()
 
+            # Filter hp_io_fields from the request
+            # hp_io_cfg = MessageToDict(request, preserving_proto_field_name=True)
             hp_io_cfg = {
                 "data_dir": request.data_dir,
                 "simulate_daq": request.simulate_daq,
@@ -240,12 +217,12 @@ async def serve(server_cfg):
 
     # Attach the signal handler to the running event loop
     loop = asyncio.get_running_loop()
-    loop.add_signal_handler(signal.SIGINT, _signal_handler)
-    loop.add_signal_handler(signal.SIGTERM, _signal_handler)
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, _signal_handler)
 
     server = grpc.aio.server()
-    daq_data_servicer = DaqDataServicer(server_cfg, logging_level=logging.DEBUG)
-    daq_data_pb2_grpc.add_DaqDataServicer_to_server(daq_data_servicer, server)
+    servicer = DaqDataServicer(server_cfg)
+    daq_data_pb2_grpc.add_DaqDataServicer_to_server(servicer, server)
 
     SERVICE_NAMES = (
         daq_data_pb2.DESCRIPTOR.services_by_name["DaqData"].full_name,
@@ -253,31 +230,28 @@ async def serve(server_cfg):
     )
     reflection.enable_server_reflection(SERVICE_NAMES, server)
 
-
     # Add regular socket
     listen_addr = "[::]:50051"
     server.add_insecure_port(listen_addr)
     logger.info(f"Server starting, listening on '{listen_addr}'")
 
-    # Add a Unix Domain Socket listener for local, high-performance communication
-    uds_listen_addr = server_cfg.get("unix_domain_socket")
+    # Add a Unix Domain Socket listener for local inter-process communication
+    uds_listen_addr = server_cfg.get("unix_domain_socket", None)
     if uds_listen_addr:
-        if os.path.exists(uds_listen_addr.split("://")[-1]):
-            os.remove(uds_listen_addr.split("://")[-1])
         server.add_insecure_port(uds_listen_addr)
         logger.info(f"Server also listening on '{uds_listen_addr}'")
 
     # Start the server and initial tasks
     await server.start()
-    initial_task = asyncio.create_task(daq_data_servicer.start_initial_task())
+    initial_task = asyncio.create_task(servicer.start_initial_task())
 
-    logger.info("Server started. Awaiting shutdown signal...")
+    # shutdown sequence:
+    # 0. wait for the shutdown event to be set
+    logger.info("Server started.")
     await shutdown_event.wait()
-    logger.info("Shutdown event received. Stopping server and tasks.")
-
-    # --- Graceful Shutdown Sequence ---
+    logger.info("Shutting down...")
     # 1. Stop the application-level managers first.
-    await daq_data_servicer.shutdown()
+    await servicer.shutdown()
     # 2. Stop the gRPC server to prevent new connections.
     grace = server_cfg.get("shutdown_grace_period", 5)
     await server.stop(grace)

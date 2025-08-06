@@ -44,63 +44,43 @@ from google.protobuf.json_format import ParseDict
 from watchfiles import awatch
 
 from .daq_data_pb2 import PanoImage
-from .resources import get_dp_config, get_dp_name_from_props, is_daq_active
+from .resources import get_dp_config, get_dp_name_from_props, is_daq_active, _parse_dp_name, _parse_seqno
 from .state import ReaderState, DataProductConfig
-from .hp_io_uds_receiver import UdsReceiver
+from .data_sources import UdsDataSource, PollWatcherDataSource, PipeWatcherDataSource
 from panoseti_util import pff
 
 
-def _parse_dp_name(filename: str, dp_name_re = re.compile(r'\.dp_([a-zA-Z0-9]+)\.')) -> Optional[str]:
-    """Extracts the data product name (e.g., 'img16') from a PFF filename."""
-    match = dp_name_re.search(filename)
-    return match.group(1) if match else None
-
-
-
-def _parse_seqno(filename: str, seqno_re=re.compile(r'\.seqno_(\d+)\.')) -> Optional[int]:
-    """Extracts the seqno from a PFF filename."""
-    match = seqno_re.search(filename)
-    seqno = int(match.group(1)) if match else None
-    return seqno
-
-
 class ModuleState:
-    """Manages the state and logic for a single PANOSETI module's data acquisition."""
-
+    """Manages the state for a single PANOSETI module's data acquisition."""
     def __init__(self, module_id: int, data_dir: Path, logger: logging.Logger):
         self.module_id = module_id
         self.data_dir = data_dir
         self.logger = logger
-        self.run_path: Optional[Path] = None
+        self.run_path: Path
         self.dp_configs: Dict[str, DataProductConfig] = {}
 
     async def discover_and_initialize_from_fs(self, timeout: float = 2.0) -> bool:
         """Finds the active run directory and initializes all discoverable data products."""
         run_pattern = self.data_dir / f"module_{self.module_id}" / "obs_*"
-        runs = await asyncio.to_thread(glob, str(run_pattern))
-        if not runs:
-            self.logger.warning(f'No run directory found for module {self.module_id} matching {run_pattern}')
+        runs = await asyncio.to_thread(os.listdir, self.data_dir / f"module_{self.module_id}")
+        run_paths = [self.data_dir / f"module_{self.module_id}" / r for r in runs if r.startswith("obs_")]
+        if not run_paths:
+            self.logger.warning(f'No run directory found for module {self.module_id}')
             return False
-        self.run_path = Path(sorted(runs, key=os.path.getmtime)[-1])
+        self.run_path = Path(sorted(run_paths, key=os.path.getmtime)[-1])
         self.logger.info(f"Module {self.module_id}: Found active run at {self.run_path}")
-
-        pff_files = await asyncio.to_thread(glob, str(self.run_path / '*.pff'))
-        discovered_dp_names = set(_parse_dp_name(Path(f).name) for f in pff_files if _parse_dp_name(Path(f).name))
-
+        pff_files = list(self.run_path.glob('*.pff'))
+        discovered_dp_names = set(_parse_dp_name(f.name) for f in pff_files if _parse_dp_name(f.name))
         if not discovered_dp_names:
-            return True  # No data products is not a fatal error here
-
+            return True
         self.logger.info(f"Module {self.module_id}: Discovered data products: {discovered_dp_names}")
-        init_tasks = [self.add_dp_from_fs(dp_name, timeout) for dp_name in discovered_dp_names]
-        results = await asyncio.gather(*init_tasks)
+        results = await asyncio.gather(*(self.add_dp_from_fs(dp_name, timeout) for dp_name in discovered_dp_names))
         return any(results)
 
     async def add_dp_from_fs(self, dp_name: str, timeout: float = 1.0) -> bool:
-        """Adds and initializes a data product configuration from the filesystem."""
         if dp_name in self.dp_configs: return True
         try:
-            dp_configs = get_dp_config([dp_name])
-            dp_config = dp_configs[dp_name]
+            dp_config = get_dp_config([dp_name])[dp_name]
             if await self._initialize_dp(dp_config, timeout):
                 self.dp_configs[dp_name] = dp_config
                 self.logger.info(f"Module {self.module_id}: Successfully initialized data product '{dp_name}'")
@@ -108,23 +88,20 @@ class ModuleState:
         except ValueError as e:
             self.logger.error(f"Module {self.module_id}: Could not get config for '{dp_name}': {e}")
         return False
-
+        
     def add_dp_for_upload(self, dp_name: str):
-        """Adds a data product configuration for data received via upload."""
         if dp_name in self.dp_configs: return
         try:
-            dp_configs = get_dp_config([dp_name])
-            self.dp_configs[dp_name] = dp_configs[dp_name]
+            self.dp_configs[dp_name] = get_dp_config([dp_name])[dp_name]
             self.logger.info(f"Module {self.module_id}: Added config for uploaded data product '{dp_name}'")
         except ValueError as e:
             self.logger.error(f"Module {self.module_id}: Could not get config for uploaded DP '{dp_name}': {e}")
-
+            
     async def _initialize_dp(self, dp_config: DataProductConfig, timeout: float) -> bool:
-        """Initializes a single data product by finding a valid data file and its frame size."""
         start_time = time.monotonic()
-        dp_config.glob_pat = str(self.run_path / f'*{dp_config.name}*.pff')
+        glob_pat = self.run_path / f'*{dp_config.name}*.pff'
         while time.monotonic() - start_time < timeout:
-            files = await asyncio.to_thread(glob, dp_config.glob_pat)
+            files = list(glob_pat.parent.glob(glob_pat.name))
             if not files:
                 await asyncio.sleep(0.25)
                 continue
@@ -132,623 +109,255 @@ class ModuleState:
             try:
                 if os.path.getsize(latest_file) >= dp_config.bytes_per_image:
                     with open(latest_file, 'rb') as f:
-                        try:
-                            dp_config.frame_size = pff.img_frame_size(f, dp_config.bytes_per_image)
-                        except Exception as e:
-                            self.logger.warning(f"Failed to get frame size for {dp_config.name} for module {self.module_id}: {e}")
-                            return False
+                        dp_config.frame_size = pff.img_frame_size(f, dp_config.bytes_per_image)
                     dp_config.current_filepath = latest_file
-                    dp_config.last_known_filesize = await asyncio.to_thread(os.path.getsize, latest_file)
+                    dp_config.last_known_filesize = os.path.getsize(latest_file)
                     dp_config.last_seqno = _parse_seqno(latest_file.name)
                     return True
-            except (FileNotFoundError, ValueError) as e:
+            except (FileNotFoundError, ValueError, Exception) as e:
                 self.logger.warning(f"Failed to initialize {dp_config.name} for module {self.module_id}: {e}")
                 return False
             await asyncio.sleep(0.25)
-        self.logger.warning(f"Timeout initializing data product {dp_config.name} for module {self.module_id}")
-        return False
-
-
-def _parse_dp_name(filename: str, dp_name_re=re.compile(r'\.dp_([a-zA-Z0-9]+)\.')) -> Optional[str]:
-    """Extracts the data product name (e.g., 'img16') from a PFF filename."""
-    match = dp_name_re.search(filename)
-    return match.group(1) if match else None
-
-
-def _parse_seqno(filename: str, seqno_re=re.compile(r'\.seqno_(\d+)\.')) -> Optional[int]:
-    """Extracts the seqno from a PFF filename."""
-    match = seqno_re.search(filename)
-    seqno = int(match.group(1)) if match else None
-    return seqno
-
-
-class ModuleState:
-    """Manages the state and logic for a single PANOSETI module's data acquisition."""
-
-    def __init__(self, module_id: int, data_dir: Path, logger: logging.Logger):
-        self.module_id = module_id
-        self.data_dir = data_dir
-        self.logger = logger
-        self.run_path: Optional[Path] = None
-        self.dp_configs: Dict[str, DataProductConfig] = {}
-
-    async def discover_and_initialize_from_fs(self, timeout: float = 2.0) -> bool:
-        """Finds the active run directory and initializes all discoverable data products."""
-        run_pattern = self.data_dir / f"module_{self.module_id}" / "obs_*"
-        runs = await asyncio.to_thread(glob, str(run_pattern))
-        if not runs:
-            self.logger.warning(f'No run directory found for module {self.module_id} matching {run_pattern}')
-            return False
-
-        self.run_path = Path(sorted(runs, key=os.path.getmtime)[-1])
-        self.logger.info(f"Module {self.module_id}: Found active run at {self.run_path}")
-
-        pff_files = await asyncio.to_thread(glob, str(self.run_path / '*.pff'))
-        discovered_dp_names = set(_parse_dp_name(Path(f).name) for f in pff_files if _parse_dp_name(Path(f).name))
-
-        if not discovered_dp_names:
-            return True  # No data products is not a fatal error here
-
-        self.logger.info(f"Module {self.module_id}: Discovered data products: {discovered_dp_names}")
-
-        init_tasks = [self.add_dp_from_fs(dp_name, timeout) for dp_name in discovered_dp_names]
-        results = await asyncio.gather(*init_tasks)
-        return any(results)
-
-    async def add_dp_from_fs(self, dp_name: str, timeout: float = 1.0) -> bool:
-        """Adds and initializes a data product configuration from the filesystem."""
-        if dp_name in self.dp_configs: return True
-        try:
-            dp_configs = get_dp_config([dp_name])
-            dp_config = dp_configs[dp_name]
-            if await self._initialize_dp(dp_config, timeout):
-                self.dp_configs[dp_name] = dp_config
-                self.logger.info(f"Module {self.module_id}: Successfully initialized data product '{dp_name}'")
-                return True
-        except ValueError as e:
-            self.logger.error(f"Module {self.module_id}: Could not get config for '{dp_name}': {e}")
-        return False
-
-    def add_dp_for_upload(self, dp_name: str):
-        """Adds a data product configuration for data received via upload."""
-        if dp_name in self.dp_configs: return
-        try:
-            dp_configs = get_dp_config([dp_name])
-            self.dp_configs[dp_name] = dp_configs[dp_name]
-            self.logger.info(f"Module {self.module_id}: Added config for uploaded data product '{dp_name}'")
-        except ValueError as e:
-            self.logger.error(f"Module {self.module_id}: Could not get config for uploaded DP '{dp_name}': {e}")
-
-    async def _initialize_dp(self, dp_config: DataProductConfig, timeout: float) -> bool:
-        """Initializes a single data product by finding a valid data file and its frame size."""
-        start_time = time.monotonic()
-        dp_config.glob_pat = str(self.run_path / f'*{dp_config.name}*.pff')
-        while time.monotonic() - start_time < timeout:
-            files = await asyncio.to_thread(glob, dp_config.glob_pat)
-            if not files:
-                await asyncio.sleep(0.25)
-                continue
-
-            latest_file = Path(sorted(files, key=os.path.getmtime)[-1])
-            try:
-                if os.path.getsize(latest_file) >= dp_config.bytes_per_image:
-                    with open(latest_file, 'rb') as f:
-                        try:
-                            dp_config.frame_size = pff.img_frame_size(f, dp_config.bytes_per_image)
-                        except Exception as e:
-                            self.logger.warning(
-                                f"Failed to get frame size for {dp_config.name} for module {self.module_id}: {e}")
-                            return False
-                    dp_config.current_filepath = latest_file
-                    dp_config.last_known_filesize = await asyncio.to_thread(os.path.getsize, latest_file)
-                    dp_config.last_seqno = _parse_seqno(latest_file.name)
-                    return True
-            except (FileNotFoundError, ValueError) as e:
-                self.logger.warning(f"Failed to initialize {dp_config.name} for module {self.module_id}: {e}")
-                return False
-            await asyncio.sleep(0.25)
-
         self.logger.warning(f"Timeout initializing data product {dp_config.name} for module {self.module_id}")
         return False
 
 
 class HpIoManager:
-    """Orchestrates dynamic filesystem monitoring and data broadcasting for PANOSETI DAQ."""
+    """Orchestrates data acquisition from multiple sources and broadcasts to clients."""
 
-    def __init__(
-            self,
-            data_dir: Path,
-            update_interval_seconds: float,
-            simulate_daq: bool,
-            reader_states: List[ReaderState],
-            stop_io: asyncio.Event,
-            valid: asyncio.Event,
-            max_reader_enqueue_timeouts: int,
-            active_data_products_queue: asyncio.Queue,
-            upload_queue: asyncio.Queue,
-            logger: logging.Logger,
-            read_status_pipe_name: str,
-            sim_cfg: Dict[str, Any],
-            uds_config: Dict[str, Any]
-    ):
-        self.data_dir = data_dir
-        self.update_interval_seconds = update_interval_seconds
-        self.simulate_daq = simulate_daq
+    def __init__(self, server_config: Dict, reader_states: List[ReaderState], stop_io: asyncio.Event, valid: asyncio.Event,
+                 active_data_products_queue: asyncio.Queue, logger: logging.Logger):
+        self.server_config = server_config
         self.reader_states = reader_states
         self.stop_io = stop_io
         self.valid = valid
-        self.max_reader_enqueue_timeouts = max_reader_enqueue_timeouts
         self.active_data_products_queue = active_data_products_queue
-        self.upload_queue = upload_queue
         self.logger = logger
-        self.read_status_pipe_name = read_status_pipe_name
-        self.sim_cfg = sim_cfg
-        self.uds_config = uds_config
+        
+        # Core components of the new architecture
+        self.data_queue = asyncio.Queue(maxsize=500)
+        self.data_sources = []
 
+        # State management
+        self.hp_io_cfg = server_config['hp_io_cfg']
+        self.data_dir = Path(self.hp_io_cfg['data_dir'])
+        self.update_interval_seconds = self.hp_io_cfg['update_interval_seconds']
+        self.simulate_daq = self.hp_io_cfg['simulate_daq']
+        self.read_status_pipe_name = server_config['read_status_pipe_name']
         self.modules: Dict[int, ModuleState] = {}
         self.latest_data_cache: Dict[int, Dict[str, PanoImage]] = defaultdict(lambda: {'ph': None, 'movie': None})
-        self.change_queue = asyncio.Queue()
-        self.pipe_fds_to_close = []
-        self._pipe_readers_installed = False
+        self.module_id_re = re.compile(r'module_(\d+)')
 
-        self.uds_receivers: List[UdsReceiver] = []
-        # MODIFICATION: The UDS pathway should be enabled if configured,
-        # regardless of simulation mode. This allows the simulation to connect to it.
-        if self.uds_config.get("enabled", False):
-            for dp_name in self.uds_config.get("data_products", []):
-                # For simplicity, assume module_id is 0, but architecture is general
-                receiver = UdsReceiver(dp_name, module_id=0, upload_queue=self.upload_queue, shutdown_event=stop_io, logger=self.logger)
-                self.uds_receivers.append(receiver)
+        self._configure_data_sources()
+
+    def _configure_data_sources(self):
+        """Instantiates data sources based on server configuration."""
+        acq_config = self.server_config.get("acquisition_methods", {})
+        self.logger.info(f"Configuring data sources: {acq_config}")
+
+        # UDS Data Source
+        uds_cfg = acq_config.get("uds", {})
+        if uds_cfg.get("enabled"):
+            for dp_name in uds_cfg.get("data_products", []):
+                source_cfg = {"dp_name": dp_name, "module_id": 0}  # Module ID is fixed for UDS
+                self.data_sources.append(UdsDataSource(source_cfg, self.logger, self.data_queue, self.stop_io))
+
+        # Filesystem Polling Data Source
+        poll_cfg = acq_config.get("filesystem_poll", {})
+        if poll_cfg.get("enabled"):
+            self.data_sources.append(PollWatcherDataSource(self, poll_cfg, self.logger, self.data_queue, self.stop_io))
+        
+        # Filesystem Pipe-based Data Source
+        pipe_cfg = acq_config.get("filesystem_pipe", {})
+        if pipe_cfg.get("enabled"):
+            self.data_sources.append(PipeWatcherDataSource(self, pipe_cfg, self.logger, self.data_queue, self.stop_io))
 
     async def run(self):
-        """Main entry point to start the monitoring and broadcasting task."""
+        """Main entry point: starts data sources and the processing loop."""
         self.logger.info("HpIoManager task starting.")
         self.valid.clear()
-        filesystem_watcher_task = None
-        processing_task = None
-        uds_watcher_task = None
-        loop = asyncio.get_running_loop()
+        
+        is_fs_mode = any(isinstance(s, (PollWatcherDataSource, PipeWatcherDataSource)) for s in self.data_sources)
+        if is_fs_mode:
+            if not await self._initialize_modules_from_fs():
+                 self.logger.warning("HpIoManager did not find any modules on filesystem at startup.")
 
+        if not self.data_sources and not self.simulate_daq:
+            self.logger.error("No data acquisition sources configured. HpIoManager cannot run.")
+            return
+
+        source_tasks = [asyncio.create_task(source.run()) for source in self.data_sources]
+        processing_task = asyncio.create_task(self._processing_loop())
+
+        await self._update_active_data_products()
+        self.valid.set()
+        
         try:
-            # In UDS simulation mode, the filesystem might not be used.
-            sim_mode = self.sim_cfg.get("simulation_mode")
-            is_uds_sim = self.simulate_daq and sim_mode == "uds"
-
-            # Only initialize from filesystem if not in a pure UDS simulation
-            if not is_uds_sim:
-                if not await self._initialize_modules_from_fs():
-                    self.logger.warning("HpIoManager did not find any modules on filesystem at startup.")
-
-                use_pipe_watcher = False
-                if self.modules:
-                    for module in self.modules.values():
-                        if module.run_path:
-                            pipe_path = module.run_path / self.read_status_pipe_name
-                            if pipe_path.exists() and stat.S_ISFIFO(os.stat(pipe_path).st_mode):
-                                self.logger.info(f"Found named pipe at {pipe_path}. Activating pipe-based watcher.")
-                                use_pipe_watcher = True
-                                break
-
-                if use_pipe_watcher:
-                    filesystem_watcher_task = asyncio.create_task(self.watch_status_pipe())
-                else:
-                    self.logger.info("No named pipe found. Using filesystem polling watcher.")
-                    filesystem_watcher_task = asyncio.create_task(self._file_watcher())
-
-            if self.uds_receivers:
-                uds_watcher_task = asyncio.create_task(self._run_uds_watchers())
-
-            await self._update_active_data_products()
-            self.valid.set()
-
-            processing_task = asyncio.create_task(self._processing_loop())
-
-            tasks_to_gather = [processing_task]
-            if filesystem_watcher_task:
-                tasks_to_gather.append(filesystem_watcher_task)
-            if uds_watcher_task:
-                tasks_to_gather.append(uds_watcher_task)
-            await asyncio.gather(*tasks_to_gather)
-
-        except Exception as err:
-            self.logger.error(f"HpIoManager task encountered a fatal exception: {err}", exc_info=True)
-            if filesystem_watcher_task: filesystem_watcher_task.cancel()
-            if processing_task: processing_task.cancel()
-            if uds_watcher_task: uds_watcher_task.cancel()
-            raise
+            await asyncio.gather(processing_task, *source_tasks)
+        except Exception as e:
+            self.logger.error(f"HpIoManager run error: {e}", exc_info=True)
         finally:
             self.valid.clear()
-            self.logger.info("Closing all open file and pipe handles...")
-
-            # Clean up pipe readers from the event loop
-            if self._pipe_readers_installed:
-                for fd in self.pipe_fds_to_close:
-                    loop.remove_reader(fd)
-                self._pipe_readers_installed = False
-
-            for fd in self.pipe_fds_to_close:
-                try:
-                    os.close(fd)
-                except Exception as e:
-                    self.logger.warning(f"Error closing pipe fd: {e}")
-
-            for module in self.modules.values():
-                for dp_config in module.dp_configs.values():
-                    if dp_config.f:
-                        await asyncio.to_thread(dp_config.f.close)
-
             self.logger.info("HpIoManager task exited.")
 
 
-    async def _initialize_modules_from_fs(self) -> bool:
-        """Initial discovery of modules and data products from the filesystem."""
-        if not await is_daq_active(self.simulate_daq, self.sim_cfg, retries=2, delay=0.5):
-            self.logger.warning("DAQ data flow not active, filesystem scan may be incomplete.")
-
-        module_dirs = await asyncio.to_thread(glob, str(self.data_dir / "module_*"))
-        all_module_ids = [int(os.path.basename(m).split('_')[1]) for m in module_dirs if os.path.isdir(m) and os.path.basename(m).split('_')[1].isdigit()]
-
-        if not all_module_ids: return False
-
-        for mid in all_module_ids:
-            if mid not in self.modules:
-                module = ModuleState(mid, self.data_dir, self.logger)
-                if await module.discover_and_initialize_from_fs():
-                    self.modules[mid] = module
-        return len(self.modules) > 0
-
-    async def _update_active_data_products(self):
-        """Collects all unique DP names from all modules and informs the task manager."""
-        active_dps_union = set()
-        for module in self.modules.values():
-            active_dps_union.update(module.dp_configs.keys())
-        await self.active_data_products_queue.put(active_dps_union)
-
-    async def _run_uds_watchers(self):
-        """Starts and manages all configured UDS receiver tasks."""
-        if not self.uds_receivers:
-            return
-        self.logger.info(f"Starting {len(self.uds_receivers)} UDS receiver tasks.")
-        try:
-            await asyncio.gather(*[receiver.run() for receiver in self.uds_receivers], return_exceptions=True)
-        except asyncio.CancelledError:
-            self.logger.info("UDS watcher task cancelled.")
-        finally:
-            self.logger.info("UDS watcher task finished.")
-
-    async def _file_watcher(self):
-        """Watches for file changes and puts them on the queue."""
-        if not await asyncio.to_thread(os.path.isdir, self.data_dir):
-            self.logger.warning(f"Data directory {self.data_dir} does not exist. Filesystem watcher will not start.")
-            return
-
-        MIN_UPDATE_MS = 5
-        update_interval_ms = max(int(self.update_interval_seconds * 1000), MIN_UPDATE_MS)
-        async for changes in awatch(self.data_dir, stop_event=self.stop_io, debounce=update_interval_ms,
-                                    recursive=True, force_polling=True, poll_delay_ms=update_interval_ms):
-            await self.change_queue.put(changes)
-
-    async def watch_status_pipe(self):
-        """
-        Watches for signals on a named pipe ('read_status_pipe') and finds the newest
-        .pff file for each data product to queue for processing.
-        """
-        self.logger.info("Starting pipe-based watcher.")
-        loop = asyncio.get_running_loop()
-        pipes_to_watch = {}
-
-        for mid, module in self.modules.items():
-            if module.run_path:
-                pipe_path = module.run_path / self.read_status_pipe_name
-                if pipe_path.exists() and stat.S_ISFIFO(os.stat(pipe_path).st_mode):
-                    try:
-                        fd = os.open(pipe_path, os.O_RDONLY | os.O_NONBLOCK)
-                        pipes_to_watch[fd] = module
-                        self.pipe_fds_to_close.append(fd)
-                    except Exception as e:
-                        self.logger.error(f"Failed to open pipe for reading on module {mid}: {e}")
-
-        if not pipes_to_watch:
-            self.logger.warning("No valid pipes found to watch.")
-            return
-
-        data_ready = asyncio.Event()
-
-        def _pipe_readable_callback():
-            data_ready.set()
-
-        for fd in pipes_to_watch.keys():
-            loop.add_reader(fd, _pipe_readable_callback)
-        self._pipe_readers_installed = True
-
-        try:
-            while not self.stop_io.is_set():
-                await asyncio.wait_for(data_ready.wait(), timeout=1.0)
-
-                # Drain all readable pipes
-                for fd in pipes_to_watch.keys():
-                    try:
-                        while os.read(fd, 1024):
-                            pass
-                    except BlockingIOError:
-                        continue  # Pipe is empty, continue to next fd
-
-                all_changes = set()
-                # For each module, find the latest .pff file for each data product.
-                for module in self.modules.values():
-                    if not module.run_path:
-                        continue
-
-                    # Get all pff files for the module
-                    all_pff_file_paths = await asyncio.to_thread(glob, str(module.run_path / '*.pff'))
-                    if not all_pff_file_paths:
-                        continue
-
-                    # Group files by data product, as sequence numbers are per-DP.
-                    pff_files_by_dp = defaultdict(list)
-                    for f_path in all_pff_file_paths:
-                        # filename = Path(f_path).name
-                        filename = f_path.split('/')[-1]
-                        dp_name = _parse_dp_name(filename)
-                        if dp_name:
-                            pff_files_by_dp[dp_name].append(filename)
-
-                    for dp_name, files in pff_files_by_dp.items():
-                        if not files:
-                            continue
-
-                        # Use max() with _parse_seqno as the key to efficiently find the
-                        # filename with the highest sequence number. The `or -1` handles
-                        # malformed filenames gracefully.
-                        newest_pff_file = max(files, key=lambda f: _parse_seqno(f) or -1)
-
-                        # Add the full path of the newest file to the change set.
-                        full_path = str(module.run_path / newest_pff_file)
-                        all_changes.add((2, full_path))  # (2, f) is a "modified" event
-
-                if all_changes:
-                    await self.change_queue.put(all_changes)
-
-                data_ready.clear()  # Reset for the next signal
-
-        except asyncio.TimeoutError:
-            pass  # It's okay to timeout, the loop will continue
-        except asyncio.CancelledError:
-            self.logger.info("Pipe watcher task cancelled.")
-        finally:
-            self.logger.info("Pipe watcher task exited.")
-            # Cleanup of readers and fds is handled in the main run() method's finally block.
-
     async def _processing_loop(self):
-        """Processes events from filesystem and upload queue."""
-        change_task = asyncio.create_task(self.change_queue.get())
-        upload_task = asyncio.create_task(self.upload_queue.get())
+        """
+        Processes PanoImages from the queue and periodically broadcasts data.
+        This loop uses a timed wait on the queue to ensure that broadcasts
+        happen regularly, even if no new data arrives, preserving the
+        original behavior.
+        """
+        self.logger.info("Starting main data processing loop.")
         while not self.stop_io.is_set():
             now = time.monotonic()
+            
+            # Calculate the wait time until the next client needs an update
             wait_times = [(rs.config['update_interval_seconds'] - (now - rs.last_update_t))
                           for rs in self.reader_states if rs.is_allocated]
             timeout = min(wait_times) if wait_times else self.update_interval_seconds
             timeout = max(0.01, timeout)
-
-            done, _ = await asyncio.wait(
-                {change_task, upload_task}, timeout=timeout, return_when=asyncio.FIRST_COMPLETED
-            )
-            if change_task in done:
-                await self._process_changes(change_task.result())
-                change_task = asyncio.create_task(self.change_queue.get())
-            if upload_task in done:
-                await self._handle_uploaded_image(upload_task.result())
-                upload_task = asyncio.create_task(self.upload_queue.get())
-
-            ready_readers, _, _ = self._get_ready_readers(now)
-            if ready_readers:
-                # self.logger.debug(f"Broadcasting data to {ready_readers=}")
-                self._broadcast_data(ready_readers, now)
-
-    async def _process_changes(self, changes: set):
-        """Handles file changes, discovering new modules/DPs as needed."""
-        for _, filepath_str in changes:
-            filepath = Path(filepath_str)
-            if not filepath.name.endswith('.pff'): continue
-
-            match = re.search(r'module_(\d+)', str(filepath))
-            if not match: continue
-            module_id = int(match.group(1))
-
-            dp_name = _parse_dp_name(filepath.name)
-            if not dp_name: continue
-
-            if module_id not in self.modules:
-                self.logger.info(f"Discovered new module via filesystem: {module_id}")
-                module = ModuleState(module_id, self.data_dir, self.logger)
-                if await module.discover_and_initialize_from_fs():
-                    self.modules[module_id] = module
-                    await self._update_active_data_products()
-                else:
-                    continue
-
-            module = self.modules[module_id]
-            if dp_name not in module.dp_configs:
-                if await module.add_dp_from_fs(dp_name):
-                    await self._update_active_data_products()
-                else:
-                    continue
-
+            
             try:
-                if module.run_path and module.run_path.samefile(filepath.parent):
-                    await self._handle_file_change(filepath, module, module.dp_configs[dp_name])
-            except FileNotFoundError:
-                # This can happen in a race condition where the directory is removed
-                # after being detected but before samefile() is called.
-                self.logger.warning(f"Path {filepath.parent} or {module.run_path} not found during check.")
-                continue
+                # Wait for data, but with a timeout
+                pano_image = await asyncio.wait_for(self.data_queue.get(), timeout=timeout)
+                await self._handle_received_image(pano_image)
+                self.data_queue.task_done()
+            except asyncio.TimeoutError:
+                # This is expected. It's our chance to do periodic work.
+                pass
+            except asyncio.CancelledError:
+                break
+            
+            # This broadcast check runs on every iteration, either after
+            # processing new data or after a timeout.
+            self._broadcast_if_ready()
+            
+        self.logger.info("Data processing loop finished.")
 
-    async def _handle_uploaded_image(self, pano_image: PanoImage):
-        """Processes a directly uploaded PanoImage, discovering modules/DPs as needed."""
+    async def enqueue_uploaded_image(self, pano_image: PanoImage):
+        """Public method for the UploadImages RPC to add an image to the queue."""
+        try:
+            self.data_queue.put_nowait(pano_image)
+        except asyncio.QueueFull:
+            self.logger.warning("Data queue is full. Dropping uploaded image.")
+
+    async def _handle_received_image(self, pano_image: PanoImage):
+        """Unified handler for any PanoImage, regardless of source."""
+        await self._discover_module_from_image(pano_image)
+        await self._cache_pano_image(pano_image)
+        self._broadcast_if_ready()
+
+    async def _discover_module_from_image(self, pano_image: PanoImage):
+        """Discovers a new module or data product from a received image."""
         module_id = pano_image.module_id
+        if module_id not in self.modules:
+            self.logger.info(f"Discovered new module {module_id} via data stream.")
+            self.modules[module_id] = ModuleState(module_id, self.data_dir, self.logger)
+        
+        module = self.modules[module_id]
         try:
             dp_name = get_dp_name_from_props(pano_image.type, list(pano_image.shape), pano_image.bytes_per_pixel)
+            if dp_name not in module.dp_configs:
+                module.add_dp_for_upload(dp_name)
+                await self._update_active_data_products()
         except ValueError as e:
-            self.logger.warning(f"Could not identify uploaded image for module {module_id}: {e}")
-            return
+            self.logger.warning(f"Could not identify data product from image for module {module_id}: {e}")
 
-        if module_id not in self.modules:
-            self.logger.info(f"Discovered new module via upload: {module_id}")
-            self.modules[module_id] = ModuleState(module_id, self.data_dir, self.logger)
-
-        module = self.modules[module_id]
-        if dp_name not in module.dp_configs:
-            module.add_dp_for_upload(dp_name)
-            await self._update_active_data_products()
-
+    async def _cache_pano_image(self, pano_image: PanoImage):
+        """Caches the received PanoImage."""
         is_ph = (pano_image.type == PanoImage.Type.PULSE_HEIGHT)
         cache_key = 'ph' if is_ph else 'movie'
-        self.latest_data_cache[module_id][cache_key] = pano_image
+        self.latest_data_cache[pano_image.module_id][cache_key] = pano_image
+    
+    def _broadcast_if_ready(self):
+        """Checks reader states and broadcasts data if they are ready."""
+        now = time.monotonic()
+        ready_readers = [rs for rs in self.reader_states if rs.is_allocated and (now - rs.last_update_t) >= rs.config['update_interval_seconds']]
+        if ready_readers:
+            self._broadcast_data(ready_readers, now)
 
-    async def _handle_file_change(self, filepath: Path, module: ModuleState, dp_config: DataProductConfig):
-        """
-        Handles a file change, managing file handles and fetching the latest frame.
-        This method is now responsible for opening/closing file handles to optimize _fetch_latest_frame.
-        """
-        # Check if the file has changed from the one we are currently tracking
-        curr_seqno = _parse_seqno(filepath.name)
-        if curr_seqno > dp_config.last_seqno or dp_config.f is None:
-            self.logger.debug(f"New {curr_seqno=} data file detected for {dp_config.name} in module {module.module_id}: {filepath}")
-            # Close the old file handle if it exists
-            if dp_config.f:
-                dp_config.f.close()
 
-            # Open the new file and cache the handle and path
-            try:
-                dp_config.f = open(filepath, 'rb')
-                dp_config.current_filepath = filepath
-                dp_config.last_known_filesize = 0  # Reset for the new file
-                dp_config.last_frame_idx = -1
-                dp_config.last_seqno = curr_seqno
-            except FileNotFoundError:
-                self.logger.warning(f"File {filepath} disappeared before it could be opened.")
-                dp_config.f = None
-                dp_config.current_filepath = None
-                dp_config.last_seqno = -1
-                return
-
-        # If we have a valid file handle, fetch the latest frame
-        if dp_config.f:
-            # self.logger.debug(f"File change detected for {dp_config.name} in module {module.module_id}: {filepath}")
-            header, img, frame_idx = await self._fetch_latest_frame(dp_config)
-            if header and img is not None:
-                # self.logger.debug(f"Received latest frame for {dp_config.name} in module {module.module_id}: ")
-                pano_image = PanoImage(
-                    type=dp_config.pano_image_type,
-                    header=ParseDict(header, Struct()),
-                    image_array=img,
-                    shape=dp_config.image_shape,
-                    bytes_per_pixel=dp_config.bytes_per_pixel,
-                    file=filepath.name,  # Use the original filepath name for the message
-                    frame_number=frame_idx,
-                    module_id=module.module_id,
-                )
-
-                cache_key = 'ph' if dp_config.is_ph else 'movie'
-                self.latest_data_cache[module.module_id][cache_key] = pano_image
-
-    async def _fetch_latest_frame(self, dp_config: DataProductConfig) -> Tuple[Optional[dict], Optional[bytes], int]:
-        """
-        Reads the last complete frame from a PFF file using a cached file handle.
-        """
+    async def discover_new_module(self, module_id: int) -> bool:
+        """Utility to discover and initialize a single new module."""
+        if module_id in self.modules: return True
+        self.logger.info(f"Discovering new module from filesystem: {module_id}")
+        module = ModuleState(module_id, self.data_dir, self.logger)
+        if await module.discover_and_initialize_from_fs():
+            self.modules[module_id] = module
+            await self._update_active_data_products()
+            return True
+        return False
+        
+    async def fetch_latest_frame_from_file(self, filepath: Path, dp_config: DataProductConfig) -> Tuple[Optional[dict], Optional[bytes], int]:
+        """Reads the last complete frame from a PFF file."""
         try:
-            # Get the current file size using the cached file descriptor
-            f = dp_config.f
-            current_size = os.fstat(f.fileno()).st_size
-
-            # If the file hasn't grown or has no data, ignore.
-            if current_size <= dp_config.last_known_filesize or dp_config.frame_size == 0:
-                return None, None, -1
-
-            nframes = current_size // dp_config.frame_size
-            # If the number of frames hasn't increased, ignore.
-            if nframes <= dp_config.last_frame_idx:
-                return None, None, -1
-
-            new_frame_idx = nframes - 1
-
-            def _blocking_read(file_handle, frame_idx):
-                """Blocking I/O operations to be run in a separate thread."""
-                file_handle.seek(frame_idx * dp_config.frame_size)
-                header_str = pff.read_json(file_handle)
-                img = pff.read_image(file_handle, dp_config.image_shape[0], dp_config.bytes_per_pixel)
-                return (json.loads(header_str), img) if header_str and img is not None else (None, None)
-
-            header, img = await asyncio.to_thread(_blocking_read, f, new_frame_idx)
-
-            if header and img is not None:
-                # Update state only after a successful read
-                dp_config.last_known_filesize = current_size
-                dp_config.last_frame_idx = new_frame_idx
-                return header, img, new_frame_idx
-
+            with open(filepath, 'rb') as f:
+                current_size = os.fstat(f.fileno()).st_size
+                if current_size < dp_config.bytes_per_image or dp_config.frame_size == 0:
+                    return None, None, -1
+                
+                nframes = current_size // dp_config.frame_size
+                if nframes == 0:
+                    return None, None, -1
+                
+                new_frame_idx = nframes - 1
+                f.seek(new_frame_idx * dp_config.frame_size)
+                header_str = pff.read_json(f)
+                img = pff.read_image(f, dp_config.image_shape[0], dp_config.bytes_per_pixel)
+                
+                return (json.loads(header_str), img, new_frame_idx) if header_str and img is not None else (None, None, -1)
+        except (IOError, ValueError, FileNotFoundError) as e:
+            self.logger.warning(f"Could not read latest frame from {filepath}: {e}")
             return None, None, -1
-        except (IOError, ValueError) as e:
-            self.logger.warning(f"Could not read latest frame from {dp_config.current_filepath}: {e}")
-            # Close the potentially corrupted file handle so it can be reopened on the next change
-            if dp_config.f:
-                await asyncio.to_thread(dp_config.f.close)
-                dp_config.f = None
-            return None, None, -1
+            
+    async def _update_active_data_products(self):
+        active_dps = set().union(*(m.dp_configs.keys() for m in self.modules.values()))
+        await self.active_data_products_queue.put(active_dps)
+    
+    async def _initialize_modules_from_fs(self) -> bool:
+        """Initial discovery of modules and data products from the filesystem."""
+        if not await is_daq_active(self.simulate_daq, self.server_config.get('simulate_daq_cfg'), retries=2, delay=0.5):
+            self.logger.warning("DAQ data flow not active, filesystem scan may be incomplete.")
+        
+        module_dirs = [p for p in self.data_dir.glob("module_*") if p.is_dir()]
+        all_module_ids = [int(p.name.split('_')[1]) for p in module_dirs if p.name.split('_')[1].isdigit()]
+        if not all_module_ids: return False
 
-    def _get_ready_readers(self, now: float):
-        """Identifies clients ready to receive data based on their update interval."""
-        ready_list = []
-        for rs in filter(lambda r: r.is_allocated, self.reader_states):
-            if rs.enqueue_timeouts < self.max_reader_enqueue_timeouts and \
-                    (now - rs.last_update_t) >= rs.config['update_interval_seconds']:
-                ready_list.append(rs)
-        return ready_list, 0, 0
-
+        for mid in all_module_ids:
+            await self.discover_new_module(mid)
+        return len(self.modules) > 0
+        
     def _broadcast_data(self, ready_readers, now):
-        """Broadcasts cached data to ready clients and clears the cache for that data."""
+        """Broadcasts cached data to ready clients."""
         for mid in list(self.latest_data_cache.keys()):
             data = self.latest_data_cache[mid]
-            # self.logger.debug(f"Broadcasting data for module {mid}: {data}")
-
             ph_image = data.get('ph')
             movie_image = data.get('movie')
 
-            # Broadcast pulse-height image if it exists
             if ph_image:
                 for rs in ready_readers:
-                    # Check if client wants this data type and module
-                    if rs.config['stream_pulse_height_data'] and \
-                            (not rs.config['module_ids'] or mid in rs.config['module_ids']):
+                    if rs.config['stream_pulse_height_data'] and (not rs.config['module_ids'] or mid in rs.config['module_ids']):
                         try:
-                            # self.logger.debug(f"Sending {ph_image=} to {rs.uid}")
                             rs.queue.put_nowait(ph_image)
-                            rs.enqueue_timeouts = 0  # Reset on successful send
+                            rs.enqueue_timeouts = 0
                         except asyncio.QueueFull:
                             rs.enqueue_timeouts += 1
-                            self.logger.warning(
-                                f"Reader queue full for client {rs.client_ip} (PH). Timeout count: {rs.enqueue_timeouts}")
-                # Clear the cache for this image after broadcasting
+                            if rs.enqueue_timeouts % 10 == 1: # Log less frequently
+                                self.logger.warning(f"Reader queue full for {rs.client_ip} (PH). Timeout count: {rs.enqueue_timeouts}")
                 self.latest_data_cache[mid]['ph'] = None
 
-            # Broadcast movie image if it exists
             if movie_image:
                 for rs in ready_readers:
-                    # Check if client wants this data type and module
-                    if rs.config['stream_movie_data'] and \
-                            (not rs.config['module_ids'] or mid in rs.config['module_ids']):
+                    if rs.config['stream_movie_data'] and (not rs.config['module_ids'] or mid in rs.config['module_ids']):
                         try:
-                            # self.logger.debug(f"Sending {movie_image=} to {rs.uid}")
                             rs.queue.put_nowait(movie_image)
-                            rs.enqueue_timeouts = 0  # Reset on successful send
+                            rs.enqueue_timeouts = 0
                         except asyncio.QueueFull:
                             rs.enqueue_timeouts += 1
-                            self.logger.warning(
-                                f"Reader queue full for client {rs.client_ip} (Movie). Timeout count: {rs.enqueue_timeouts}")
-                # Clear the cache for this image after broadcasting
+                            if rs.enqueue_timeouts % 10 == 1:
+                                self.logger.warning(f"Reader queue full for {rs.client_ip} (Movie). Timeout count: {rs.enqueue_timeouts}")
                 self.latest_data_cache[mid]['movie'] = None
 
-        # Update all ready readers' timestamps after the broadcast attempt
         for rs in ready_readers:
             rs.last_update_t = now
-
