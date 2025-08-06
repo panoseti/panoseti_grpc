@@ -10,7 +10,7 @@ import logging
 import os
 import errno
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from google.protobuf.json_format import ParseDict
 from google.protobuf.struct_pb2 import Struct
@@ -23,7 +23,6 @@ from panoseti_util import pff
 
 class BaseSimulationStrategy(abc.ABC):
     """Abstract base class for a simulation strategy."""
-
     def __init__(self, common_config: dict, strategy_config: dict, server_config: dict, logger: logging.Logger,
                  stop_event: asyncio.Event):
         self.logger = logger
@@ -32,41 +31,32 @@ class BaseSimulationStrategy(abc.ABC):
         self.strategy_config = strategy_config
         self.server_config = server_config
         self.sim_created_resources = []
-
         self.movie_frames: List[bytes] = []
         self.ph_frames: List[bytes] = []
 
     def _load_source_data(self):
-        """Loads all PFF frames from source files into memory. This is shared logic."""
+        """Loads all PFF frames from source files into memory."""
         self.logger.info("Loading source data frames into memory for simulation.")
         source_cfg = self.common_config['source_data']
         dp_cfgs = get_dp_config([self.common_config['movie_type'], self.common_config['ph_type']])
-
         try:
-            # Load movie frames
             with open(source_cfg['movie_pff_path'], "rb") as f:
                 dp_config = dp_cfgs[self.common_config['movie_type']]
                 frame_size, nframes, _, _ = pff.img_info(f, dp_config.bytes_per_image)
                 f.seek(0)
                 for _ in range(nframes):
                     self.movie_frames.append(f.read(frame_size))
-
-            # Load pulse-height frames
             with open(source_cfg['ph_pff_path'], "rb") as f:
                 dp_config = dp_cfgs[self.common_config['ph_type']]
                 frame_size, nframes, _, _ = pff.img_info(f, dp_config.bytes_per_image)
                 f.seek(0)
                 for _ in range(nframes):
                     self.ph_frames.append(f.read(frame_size))
-
             self.logger.info(f"Loaded {len(self.movie_frames)} movie and {len(self.ph_frames)} PH frames.")
         except FileNotFoundError as e:
             self.logger.error(f"Source PFF file not found: {e}. Cannot start simulation.")
-            self.movie_frames, self.ph_frames = [], []
         except Exception as e:
             self.logger.error(f"Error loading source data: {e}", exc_info=True)
-            self.movie_frames, self.ph_frames = [], []
-
 
     @abc.abstractmethod
     async def setup(self) -> bool:
@@ -84,17 +74,10 @@ class BaseSimulationStrategy(abc.ABC):
         pass
 
     async def run(self):
-        """Main simulation loop. This is shared logic."""
-        self.logger.info(f"Starting simulation with '{self.__class__.__name__}'.")
-        self._load_source_data()
-
+        """Main simulation loop. Assumes setup() and data loading have been completed."""
+        self.logger.info(f"Starting simulation data loop with {self.__class__.__name__}")
         if not self.movie_frames or not self.ph_frames:
-            self.logger.error("Source data not loaded, cannot run simulation.")
-            return
-
-        if not await self.setup():
-            self.logger.error("Simulation setup failed. Aborting run.")
-            await self.cleanup()
+            self.logger.error("Source data not loaded, cannot run simulation loop.")
             return
 
         fnum = 0
@@ -102,31 +85,26 @@ class BaseSimulationStrategy(abc.ABC):
             while not self.stop_event.is_set():
                 movie_frame = self.movie_frames[fnum % len(self.movie_frames)]
                 ph_frame = self.ph_frames[fnum % len(self.ph_frames)]
-
                 for mid in self.common_config['sim_module_ids']:
                     await self.send_frame(movie_frame, self.common_config['movie_type'], mid, fnum)
                     await self.send_frame(ph_frame, self.common_config['ph_type'], mid, fnum)
-
                 fnum += 1
                 await asyncio.sleep(self.common_config.get('update_interval_seconds', 0.1))
-
         except asyncio.CancelledError:
-            self.logger.info(f"Simulation strategy '{self.__class__.__name__}' cancelled.")
+            self.logger.info(f"Simulation data loop for '{self.__class__.__name__}' cancelled.")
         except Exception as e:
             self.logger.error(f"Error in simulation loop for '{self.__class__.__name__}': {e}", exc_info=True)
         finally:
-            await self.cleanup()
-            self.logger.info(f"Simulation strategy '{self.__class__.__name__}' finished.")
+            self.logger.info(f"Simulation data loop for '{self.__class__.__name__}' finished.")
 
 
 class FilesystemBaseStrategy(BaseSimulationStrategy):
-    """Base class for filesystem-based simulation strategies."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.pff_handles = {}
         self.module_states = {}
 
-    async def _common_setup(self) -> bool:
+    async def setup(self) -> bool:
         """Shared setup logic for creating directories and rollover state."""
         fs_cfg = self.common_config['filesystem_cfg']
         try:
@@ -154,30 +132,24 @@ class FilesystemBaseStrategy(BaseSimulationStrategy):
         base_path = Path(fs_cfg['sim_data_dir']) / fs_cfg['sim_run_dir_template'].format(module_id=mid)
         movie_path = base_path / f"sim.dp_{self.common_config['movie_type']}.module_{mid}.seqno_{state['seqno']}.pff"
         ph_path = base_path / f"sim.dp_{self.common_config['ph_type']}.module_{mid}.seqno_{state['seqno']}.pff"
-
         self.pff_handles[mid]['movie_f'] = open(movie_path, 'wb')
         self.pff_handles[mid]['ph_f'] = open(ph_path, 'wb')
         self.sim_created_resources.extend([str(movie_path), str(ph_path)])
         state['frames_written'] = 0
 
     async def _write_frame_to_file(self, frame_data: bytes, data_product_type: str, module_id: int):
-        """Shared logic to write a frame to a PFF file and handle rollover."""
         state = self.module_states[module_id]
         key = 'movie_f' if 'img' in data_product_type else 'ph_f'
-
-        # Increment frames_written only once per pair to count frames correctly
         if key == 'movie_f':
             if state['frames_written'] >= self.strategy_config.get('frames_per_pff', 1000):
                 state['seqno'] += 1
                 await self._rollover_pff_files(module_id)
             state['frames_written'] += 1
-
         handle = self.pff_handles[module_id][key]
         handle.write(frame_data)
         handle.flush()
 
-    async def _common_cleanup(self):
-        """Shared cleanup for closing file handles and removing resources."""
+    async def cleanup(self):
         for mid, handles in self.pff_handles.items():
             for handle in handles.values():
                 if not handle.closed:
@@ -190,20 +162,11 @@ class FilesystemBaseStrategy(BaseSimulationStrategy):
                 self.logger.warning(f"Failed to clean up sim resource {fpath}: {e}")
 
 class FilesystemPollStrategy(FilesystemBaseStrategy):
-    """Simulates DAQ by writing to files to be detected by polling."""
-    async def setup(self) -> bool:
-        self.logger.info("Setting up initial files for filesystem polling simulation.")
-        return await self._common_setup()
-
     async def send_frame(self, frame_data: bytes, data_product_type: str, module_id: int, frame_num: int):
         await self._write_frame_to_file(frame_data, data_product_type, module_id)
 
-    async def cleanup(self):
-        self.logger.info("Cleaning up filesystem polling simulation resources...")
-        await self._common_cleanup()
 
 class FilesystemPipeStrategy(FilesystemBaseStrategy):
-    """Simulates DAQ by writing to files and signaling via a named pipe."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.pipe_fds = {}
@@ -211,7 +174,7 @@ class FilesystemPipeStrategy(FilesystemBaseStrategy):
 
     async def setup(self) -> bool:
         self.logger.info("Setting up initial files and pipes for filesystem pipe simulation.")
-        if not await self._common_setup():
+        if not await super().setup():
             return False
         try:
             fs_cfg = self.common_config['filesystem_cfg']
@@ -233,17 +196,11 @@ class FilesystemPipeStrategy(FilesystemBaseStrategy):
             if module_id not in self.pipe_fds:
                 sim_run_dir = Path(fs_cfg['sim_data_dir']) / fs_cfg['sim_run_dir_template'].format(module_id=module_id)
                 pipe_path = sim_run_dir / self.read_status_pipe_name
-                # Open in non-blocking mode to avoid waiting for a reader
                 self.pipe_fds[module_id] = os.open(pipe_path, os.O_WRONLY | os.O_NONBLOCK)
-
-            # Pad dp_name to 10 bytes as per new spec
             msg = data_product_type.encode().ljust(10)
             os.write(self.pipe_fds[module_id], msg)
         except OSError as e:
-            # This can happen if the reader end of the pipe isn't open yet.
-            if e.errno == errno.ENXIO: 
-                # self.logger.debug(f"Pipe for module {module_id} not open for reading yet. Skipping signal.")
-                # The fd is invalid now, so remove it to force re-opening
+            if e.errno == errno.ENXIO:
                 if self.pipe_fds.get(module_id):
                     os.close(self.pipe_fds.pop(module_id))
             else:
@@ -252,8 +209,7 @@ class FilesystemPipeStrategy(FilesystemBaseStrategy):
             self.logger.warning(f"Error writing to pipe for module {module_id}: {e}")
 
     async def cleanup(self):
-        self.logger.info("Cleaning up filesystem pipe simulation resources...")
-        await self._common_cleanup()
+        await super().cleanup()
         for fd in self.pipe_fds.values():
             os.close(fd)
 
@@ -265,21 +221,26 @@ class UdsStrategy(BaseSimulationStrategy):
         super().__init__(*args, **kwargs)
         self._writers: Dict[str, asyncio.StreamWriter] = {}
 
-    async def setup(self) -> bool:
+    async def setup(self, num_retries=3) -> bool:
         self.logger.info("Connecting to UDS sockets for simulation.")
-        await asyncio.sleep(0.5) # Give time for the server to start and create sockets
-        for dp_name in self.strategy_config['data_products']:
-            socket_path = f"/tmp/hashpipe_grpc_{dp_name}.sock"
-            try:
-                _, writer = await asyncio.open_unix_connection(socket_path)
-                self._writers[dp_name] = writer
-                self.logger.info(f"UDS sim: Connected to {socket_path}")
-            except (ConnectionRefusedError, FileNotFoundError):
-                self.logger.error(f"UDS sim: Could not connect to {socket_path}. Is the server's UDS source running?")
-                return False
-            except Exception as e:
-                self.logger.error(f"UDS sim: Unexpected error connecting to {socket_path}: {e}")
-                return False
+        for i in range(num_retries):  # Retry up to 3 times
+            await asyncio.sleep(0.5)  # Give time for the server to start and create sockets
+            for dp_name in self.strategy_config['data_products']:
+                if dp_name in self._writers:
+                    self.logger.debug(f"UDS sim: Already connected to {dp_name}. Skipping.")
+                    continue
+                socket_path = f"/tmp/hashpipe_grpc_{dp_name}.sock"
+                try:
+                    _, writer = await asyncio.open_unix_connection(socket_path)
+                    self._writers[dp_name] = writer
+                    self.logger.info(f"UDS sim: Connected to {socket_path}")
+                except (ConnectionRefusedError, FileNotFoundError):
+                    self.logger.warning(f"UDS sim: Could not connect to {socket_path}. Is the server's UDS source running?")
+                except Exception as e:
+                    self.logger.error(f"UDS sim: Unexpected error connecting to {socket_path}: {e}")
+                    return False
+        if not self._writers:
+            return False
         return True
 
     async def send_frame(self, frame_data: bytes, data_product_type: str, module_id: int, frame_num: int):
@@ -396,73 +357,92 @@ class RpcStrategy(BaseSimulationStrategy):
 
 class SimulationManager:
     """Manages the lifecycle of a DAQ simulation task."""
-
     def __init__(self, server_cfg: dict, logger: logging.Logger):
         self.server_cfg = server_cfg
         self.logger = logger
         self.sim_task: Optional[asyncio.Task] = None
+        self.strategy: Optional[BaseSimulationStrategy] = None
         self._sim_stop_event = asyncio.Event()
 
-    async def start(self) -> bool:
-        await self.stop()
-        self._sim_stop_event.clear()
-
-        sim_cfg = self.server_cfg.get('simulate_daq_cfg')
-        if not sim_cfg:
-            self.logger.error("`simulate_daq_cfg` not found in server configuration.")
-            return False
-
-        mode = sim_cfg.get("simulation_mode")
-        self.logger.info(f"Attempting to start simulation in '{mode}' mode.")
-
+    def _get_strategy_class(self, mode: str):
         strategy_map = {
             "filesystem_poll": FilesystemPollStrategy,
             "filesystem_pipe": FilesystemPipeStrategy,
             "uds": UdsStrategy,
-            "rpc": RpcStrategy,
+            "rpc": RpcStrategy, 
         }
+        return strategy_map.get(mode)
 
-        if mode not in strategy_map:
-            self.logger.error(f"Unknown simulation mode: {mode}")
+    async def setup_environment(self) -> bool:
+        """Sets up the simulation environment (files, pipes) but does not start the data loop."""
+        sim_cfg = self.server_cfg.get('simulate_daq_cfg')
+        if not sim_cfg:
+            self.logger.error("`simulate_daq_cfg` not found in server configuration.")
+            return False
+        
+        mode = sim_cfg.get("simulation_mode")
+        StrategyClass = self._get_strategy_class(mode)
+        if not StrategyClass:
+            self.logger.error(f"Unknown or unsupported simulation mode: {mode}")
             return False
 
-        StrategyClass = strategy_map[mode]
+        self.logger.info(f"Setting up environment for '{mode}' simulation using {StrategyClass}.")
         strategy_config = sim_cfg.get('strategies', {}).get(mode, {})
-        strategy = StrategyClass(sim_cfg, strategy_config, self.server_cfg, self.logger, self._sim_stop_event)
+        self.strategy: Union[FilesystemPollStrategy, FilesystemPipeStrategy, UdsStrategy, RpcStrategy] \
+            = StrategyClass(sim_cfg, strategy_config, self.server_cfg, self.logger, self._sim_stop_event)
 
-        self.sim_task = asyncio.create_task(strategy.run())
-        await asyncio.sleep(0.2)  # Give the task a moment to start and potentially fail
+        self.strategy._load_source_data()
+        if not await self.strategy.setup():
+            self.logger.error("Simulation environment setup failed.")
+            return False
+        
+        return True
+
+    async def start_simulation_loop(self) -> bool:
+        """Starts the main data generation loop for the simulation."""
+        if not self.strategy:
+            self.logger.error("Simulation strategy not initialized. Cannot start loop.")
+            return False
+
+        self.logger.info(f"Attempting to start simulation loop in '{self.strategy.__class__.__name__}' mode.")
+        self._sim_stop_event.clear()
+        
+        self.sim_task = asyncio.create_task(self.strategy.run())
+        await asyncio.sleep(0.2) 
 
         if self.sim_task.done():
-            self.logger.error(f"Simulation task for mode '{mode}' exited immediately after starting.")
+            self.logger.error(f"Simulation task for mode '{self.strategy.__class__.__name__}' exited immediately.")
             try:
-                await self.sim_task # Await to raise any exceptions from startup
+                await self.sim_task 
             except Exception as e:
                 self.logger.error(f"Exception from failed simulation task: {e}", exc_info=True)
             self.sim_task = None
             return False
 
-        self.logger.info(f"Simulation in '{mode}' mode started successfully.")
+        self.logger.info(f"Simulation loop started successfully.")
         return True
 
-    async def stop(self):
+    async def stop_simulation_loop(self):
+        """Stops the data generation loop task."""
         if not self.sim_task or self.sim_task.done():
             return
-
-        self.logger.info("Stopping simulation task...")
+        self.logger.info("Stopping simulation loop...")
         self._sim_stop_event.set()
         try:
             await asyncio.wait_for(self.sim_task, timeout=2.0)
-            self.logger.info("Simulation task stopped gracefully.")
+            self.logger.info("Simulation loop stopped gracefully.")
         except asyncio.TimeoutError:
-            self.logger.warning("Simulation task did not stop gracefully. Cancelling.")
+            self.logger.warning("Simulation loop did not stop gracefully. Cancelling.")
             self.sim_task.cancel()
-        except Exception as e:
-            self.logger.error(f"Exception while stopping simulation task: {e}", exc_info=True)
         finally:
             self.sim_task = None
 
+    async def cleanup_environment(self):
+        """Cleans up any resources created by the simulation strategy."""
+        if self.strategy:
+            self.logger.info("Cleaning up simulation environment...")
+            await self.strategy.cleanup()
+            self.strategy = None
+
     def data_flow_valid(self) -> Optional[bool]:
-        if not self.sim_task:
-            return None
-        return not self.sim_task.done()
+        return self.sim_task and not self.sim_task.done()

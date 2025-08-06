@@ -39,21 +39,20 @@ class HpIoTaskManager:
         """Creates a new hp_io task. Stops any existing task first."""
         await self.stop()
 
-        # If in simulation mode, ensure the data_dir in the runtime config
-        # points to the simulation data directory defined in the main server config.
-        if hp_io_cfg.get('simulate_daq', False):
+        is_sim = hp_io_cfg.get('simulate_daq', False)
+        sim_setup_task = None
+        if is_sim:
+            # Setup the simulation environment before HpIoManager starts.
+            sim_setup_task = asyncio.create_task(self.simulation_manager.setup_environment())
+            # Override data_dir to point to the simulation directory.
             sim_cfg = self.server_cfg.get('simulate_daq_cfg', {})
-            # Navigate through the nested simulation config to find the data directory
-            fs_cfg = sim_cfg.get('filesystem_cfg', {})
-            sim_data_dir = fs_cfg.get('sim_data_dir')
+            sim_data_dir = sim_cfg.get('filesystem_cfg', {}).get('sim_data_dir')
             if sim_data_dir:
                 self.logger.info(f"Simulation mode detected. Overriding data_dir to '{sim_data_dir}'.")
                 hp_io_cfg['data_dir'] = sim_data_dir
-            else:
-                self.logger.warning("Simulation mode is on, but 'sim_data_dir' not found in config.")
-
+                # hp_io_cfg['module_ids'] = tuple(sim_cfg.get('sim_module_ids', []))
+        # Create the HpIoManager with the provided configuration
         self.hp_io_cfg = hp_io_cfg
-
         temp_server_cfg = self.server_cfg.copy()
         temp_server_cfg['hp_io_cfg'] = hp_io_cfg
         active_data_products_queue = asyncio.Queue()
@@ -66,31 +65,31 @@ class HpIoTaskManager:
             await asyncio.wait_for(self.hp_io_valid_event.wait(), timeout=5.0)
             self.active_data_products = await active_data_products_queue.get()
             self.logger.info(f"hp_io task initialized with active_data_products={self.active_data_products}")
+            if sim_setup_task and not await sim_setup_task:
+                self.logger.error("Failed to set up simulation environment. Aborting start.")
+                await self.simulation_manager.cleanup_environment()
+                await self.stop()
+                return False
         except asyncio.TimeoutError:
             self.logger.error("Timeout waiting for hp_io task to become valid.")
             await self.stop()
             return False
 
-        if hp_io_cfg.get('simulate_daq', False):
-            if not await self.simulation_manager.start():
-                self.logger.error("Failed to start simulation manager after IO manager was ready.")
+        if is_sim:
+            # Now that HpIoManager is running, start the simulation data flow.
+            if not await self.simulation_manager.start_simulation_loop():
+                self.logger.error("Failed to start simulation loop after IO manager was ready.")
                 await self.stop()
                 return False
 
-        # Final validation
-        acq_config = self.server_cfg.get("acquisition_methods", {})
-        is_fs_mode = acq_config.get("filesystem_poll", {}).get("enabled") or acq_config.get("filesystem_pipe", {}).get("enabled")
-        if is_fs_mode and not self.active_data_products and not acq_config.get("uds", {}).get("enabled"):
-            self.logger.warning("hp_io task validation: no active data products found in filesystem mode and UDS is disabled.")
         return self.is_valid(verbose=True)
 
     async def stop(self):
         """Stops the hp_io task and any associated simulation task gracefully."""
-        if self.simulation_manager.data_flow_valid():
-            await self.simulation_manager.stop()
+        # Stop the simulation data loop first
+        await self.simulation_manager.stop_simulation_loop()
 
-        if not self.hp_io_task: return
-        if not self.hp_io_task.done():
+        if self.hp_io_task and not self.hp_io_task.done():
             self.logger.info("Stopping hp_io task...")
             self.stop_event.set()
             try:
@@ -102,6 +101,9 @@ class HpIoTaskManager:
             except Exception as e:
                 self.logger.error(f"Exception while stopping hp_io task: {e}", exc_info=True)
         
+        # Clean up simulation resources after everything has stopped
+        await self.simulation_manager.cleanup_environment()
+
         self.hp_io_task = None
         self.hp_io_manager = None
         self.active_data_products = set()

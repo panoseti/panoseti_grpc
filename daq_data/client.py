@@ -505,7 +505,8 @@ class AioDaqDataClient:
         self,
         daq_config: Union[str, Path, Dict[str, Any]],
         network_config: Optional[Union[str, Path, Dict[str, Any]]],
-        log_level: int =logging.INFO
+        log_level: int =logging.INFO,
+        stop_event: Optional[asyncio.Event] = None
     ):
         """Initializes the DaqDataClient with DAQ and network configurations.
 
@@ -590,6 +591,7 @@ class AioDaqDataClient:
             self.daq_nodes[daq_host] = {'config': daq_node}
             self.daq_nodes[daq_host]['channel']: grpc.aio.Channel = None
             self.daq_nodes[daq_host]['stub']: daq_data_pb2_grpc.DaqDataStub = None
+        self._stop_event = stop_event
 
     async def __aenter__(self):
         """Establishes async gRPC channels to all configured DAQ nodes."""
@@ -787,6 +789,7 @@ class AioDaqDataClient:
 
         streams = [self.daq_nodes[host]['stub'].StreamImages(stream_images_request, wait_for_ready=wait_for_ready) for host in host_set]
         self.logger.info(f"Created {len(streams)} StreamImages RPCs to hosts: {host_set}")
+        self.logger.debug(f"stream_images_request={MessageToDict(stream_images_request, True, True)}")
 
         async def response_generator():
             # Create a queue to merge results from all streams
@@ -805,8 +808,11 @@ class AioDaqDataClient:
             try:
                 # Start a task for each stream to forward its data to the queue
                 finished_streams = 0
-                while finished_streams < len(streams):
-                    response = await queue.get()
+                while finished_streams < len(streams) and not (self._stop_event and self._stop_event.is_set()):
+                    try:
+                        response = await asyncio.wait_for(queue.get(), 1.0)
+                    except asyncio.TimeoutError:
+                        continue
                     if response is None:
                         finished_streams += 1
                         continue
@@ -816,6 +822,8 @@ class AioDaqDataClient:
                     else:
                         yield response
             finally:
+                if self._stop_event and self._stop_event.is_set():
+                    self.logger.debug("Stopping stream_images due to stop event.")
                 # Clean up tasks
                 for task in tasks:
                     task.cancel()

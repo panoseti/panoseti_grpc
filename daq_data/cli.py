@@ -201,7 +201,7 @@ async def run_demo_api(args):
     host = args.host
     module_ids = args.module_ids
     log_level = parse_log_level(args.log_level)
-    async with AioDaqDataClient(args.daq_config_path, args.net_config_path, log_level=log_level) as addc:
+    async with AioDaqDataClient(args.daq_config_path, args.net_config_path, log_level=log_level, stop_event=shutdown_event) as addc:
         if do_ping:
             await do_ping_fn(addc, host)
 
@@ -264,12 +264,6 @@ async def run_demo_api(args):
             await asyncio.gather(*plot_tasks)
 
 if __name__ == "__main__":
-    def signal_handler(signum, frame):
-        print(f"Signal {signum} received, exiting...")
-        sys.exit(0)
-
-    for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:
-        signal.signal(sig, signal_handler)
 
     parser = argparse.ArgumentParser()
     parser.add_argument(

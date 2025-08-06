@@ -186,21 +186,33 @@ class PipeWatcherDataSource(FilesystemDataSource):
         loop = asyncio.get_running_loop()
         pipes_to_watch: Dict[int, ModuleState] = {}
         
-        for mid, module in self.manager.modules.items():
-            if module.run_path:
-                pipe_path = module.run_path / self.manager.read_status_pipe_name
-                if await asyncio.to_thread(pipe_path.exists) and \
-                   stat.S_ISFIFO((await asyncio.to_thread(os.stat, pipe_path)).st_mode):
-                    try:
-                        fd = os.open(pipe_path, os.O_RDONLY | os.O_NONBLOCK)
-                        pipes_to_watch[fd] = module
-                        self.pipe_fds_to_close.append(fd)
-                    except Exception as e:
-                        self.logger.error(f"Failed to open pipe for module {mid}: {e}")
+        while not self.stop_event.is_set():
+            self.logger.debug(f"self.manager.modules[module_id]: {self.manager.modules}")
+            for mid, module in self.manager.modules.items():
+                if module.run_path:
+                    pipe_path = module.run_path / self.manager.read_status_pipe_name
+                    if await asyncio.to_thread(pipe_path.exists) and \
+                    stat.S_ISFIFO((await asyncio.to_thread(os.stat, pipe_path)).st_mode):
+                        try:
+                            fd = os.open(pipe_path, os.O_RDONLY | os.O_NONBLOCK)
+                            pipes_to_watch[fd] = module
+                            self.pipe_fds_to_close.append(fd)
+                            self.logger.debug(f"Found pipe at {pipe_path}")
+                        except Exception as e:
+                            self.logger.error(f"Failed to open pipe for module {mid}: {e}")
 
-        if not pipes_to_watch:
-            self.logger.warning("No valid pipes found to watch. Exiting pipe watcher.")
-            return
+            if not pipes_to_watch:
+                self.logger.warning("No valid pipes found to watch. Waiting for new pipes...")
+                # Run this code to discover new modules and pipes dynamically
+                await asyncio.sleep(1)
+                async for changes in awatch(self.manager.data_dir, stop_event=self.stop_event, recursive=True,
+                                            force_polling=True, poll_delay_ms=1000):
+                    for _, filepath_str in changes:
+                        await self._process_file_change(Path(filepath_str))
+                    if self.manager.modules:
+                        break
+            else:
+                break
 
         data_ready = asyncio.Event()
         def _pipe_readable_callback():

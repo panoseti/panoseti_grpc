@@ -4,7 +4,7 @@
     "unix_domain_socket": "unix:///tmp/daq_data.sock",
     "max_concurrent_rpcs": 100,
     "max_read_queue_size": 50,
-    "min_hp_io_update_interval_seconds": 0.01,
+    "min_hp_io_update_interval_seconds": 0.001,
     "max_client_update_interval_seconds": 60,
     "max_reader_enqueue_timeouts": 2,
     "max_reader_dequeue_timeouts": 3,
@@ -16,7 +16,7 @@
     
     "acquisition_methods": {
         "filesystem_poll": {
-            "enabled": true
+            "enabled": false
         },
         "filesystem_pipe": {
             "enabled": false
@@ -29,11 +29,11 @@
 
 
     "simulate_daq_cfg": {
-        "simulation_mode": "filesystem_poll",
+        "simulation_mode": "uds",
         "sim_module_ids": [224],
         "movie_type": "img16",
         "ph_type": "ph256",
-        "update_interval_seconds": 0.1,
+        "update_interval_seconds": 0.01,
 
         "source_data": {
             "real_module_id": 1,

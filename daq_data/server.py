@@ -75,11 +75,12 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
         async with self.client_manager.get_reader_access(context, self.task_manager) as reader_state:
             # Configure the reader's stream based on the request
+            hp_io_update_interval_seconds = self.task_manager.hp_io_cfg.get('update_interval_seconds', self.server_cfg['min_hp_io_update_interval_seconds'])
             reader_state.config.update({
                 "stream_movie_data": request.stream_movie_data,
                 "stream_pulse_height_data": request.stream_pulse_height_data,
                 "module_ids": list(request.module_ids),
-                "update_interval_seconds": max(request.update_interval_seconds, self.server_cfg['min_hp_io_update_interval_seconds'])
+                "update_interval_seconds": max(request.update_interval_seconds, hp_io_update_interval_seconds)
             })
             self.logger.info(f"Stream configured for ({reader_state.uid}) with interval {reader_state.config['update_interval_seconds']}s")
 
@@ -90,14 +91,15 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     interval = reader_state.config['update_interval_seconds']
                     
                     # Check if it's time to send an update to this client
-                    if (now - reader_state.last_update_t) >= interval:
+                    delta_t = now - reader_state.last_update_t
+                    if delta_t >= interval:
                         fresh_images = self._get_fresh_images_for_client(reader_state)
                         
                         if fresh_images:
                             for image in fresh_images:
                                 yield StreamImagesResponse(pano_image=image)
                             reader_state.last_update_t = now
-                    await asyncio.sleep(max(0.01, interval / 10))
+                    await asyncio.sleep(0, interval / 10)  # Sleep until the next update interval
                     reader_state.dequeue_timeouts = 0  # Reset on success
                 except asyncio.TimeoutError:
                     reader_state.dequeue_timeouts += 1
