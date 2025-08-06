@@ -24,12 +24,9 @@ class UdsReceiver:
 
         # Derive socket path from data product name
         self.socket_path = f"/tmp/hashpipe_grpc_{dp_name}.sock"
-
         # Get data product configuration
         self.dp_config = get_dp_config([dp_name])[dp_name]
-
         self.server: asyncio.AbstractServer = None
-        self._stop_event = asyncio.Event()
 
     async def run(self):
         """Starts the UDS server and listens for connections."""
@@ -46,7 +43,8 @@ class UdsReceiver:
         try:
             self.server = await asyncio.start_unix_server(self._handle_client, path=self.socket_path)
             self.logger.info(f"UDS server for {self.dp_name} is listening on {self.socket_path}")
-            await self._stop_event.wait()
+            await self._shutdown_event.wait()
+            self.logger.info(f"Stopping UDS receiver for {self.dp_name}.")
         except Exception as e:
             self.logger.error(f"UDS receiver for {self.dp_name} failed: {e}", exc_info=True)
         finally:
@@ -56,11 +54,6 @@ class UdsReceiver:
             if os.path.exists(self.socket_path):
                 os.unlink(self.socket_path)
             self.logger.info(f"UDS receiver for {self.dp_name} has stopped.")
-
-    async def stop(self):
-        """Signals the receiver to stop."""
-        self.logger.info(f"Stopping UDS receiver for {self.dp_name}.")
-        self._stop_event.set()
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         """Callback to handle a new client connection."""
@@ -120,7 +113,7 @@ class UdsReceiver:
                              f"{frame_size=} = ({header_size=}) + (bytes_per_image={self.dp_config.bytes_per_image}) + 1")
 
             # After determining the constant frame size, we can exactly read complete PFF frames of this data type.
-            while not self._stop_event.is_set() and not self._shutdown_event.is_set():
+            while not self._shutdown_event.is_set():
                 pff_frame_bytes = await reader.readexactly(frame_size)
                 header, img = await asyncio.to_thread(_blocking_pff_read, pff_frame_bytes)
                 if not header:

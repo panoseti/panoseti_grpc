@@ -348,12 +348,7 @@ class HpIoManager:
                 tasks_to_gather.append(filesystem_watcher_task)
             if uds_watcher_task:
                 tasks_to_gather.append(uds_watcher_task)
-
-            self.logger.debug(f"HpIoManager task will gather {tasks_to_gather}.")
-            try:
-                await asyncio.gather(*tasks_to_gather)
-            finally:
-                self.logger.debug(f"HpIoManager finished. {tasks_to_gather=}")
+            await asyncio.gather(*tasks_to_gather)
 
         except Exception as err:
             self.logger.error(f"HpIoManager task encountered a fatal exception: {err}", exc_info=True)
@@ -376,10 +371,6 @@ class HpIoManager:
                     os.close(fd)
                 except Exception as e:
                     self.logger.warning(f"Error closing pipe fd: {e}")
-
-            if self.uds_receivers:
-                self.logger.info("Stopping UDS receivers...")
-                await asyncio.gather(*[r.stop() for r in self.uds_receivers])
 
             for module in self.modules.values():
                 for dp_config in module.dp_configs.values():
