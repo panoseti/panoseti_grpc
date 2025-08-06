@@ -9,6 +9,12 @@ from pathlib import Path
 from daq_data.daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
 
 @dataclass
+class CachedPanoImage:
+    """Wraps a PanoImage with a unique, server-assigned frame ID."""
+    frame_id: int
+    pano_image: PanoImage
+
+@dataclass
 class ReaderState:
     """Holds the state for a single client streaming RPC."""
     is_allocated: bool = False
@@ -25,6 +31,10 @@ class ReaderState:
         "update_interval_seconds": 1.0,
         "module_ids": [],
     })
+
+    # State for the "freshest-only" delivery model
+    last_sent_movie_id: int = -1
+    last_sent_ph_id: int = -1
 
     # Counters for tracking health
     last_update_t: float = field(default_factory=time.monotonic)

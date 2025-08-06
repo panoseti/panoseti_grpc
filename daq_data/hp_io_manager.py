@@ -45,7 +45,7 @@ from watchfiles import awatch
 
 from .daq_data_pb2 import PanoImage
 from .resources import get_dp_config, get_dp_name_from_props, is_daq_active, _parse_dp_name, _parse_seqno
-from .state import ReaderState, DataProductConfig
+from .state import ReaderState, DataProductConfig, CachedPanoImage
 from .data_sources import UdsDataSource, PollWatcherDataSource, PipeWatcherDataSource
 from panoseti_util import pff
 
@@ -134,7 +134,6 @@ class HpIoManager:
         self.active_data_products_queue = active_data_products_queue
         self.logger = logger
         
-        # Core components of the new architecture
         self.data_queue = asyncio.Queue(maxsize=500)
         self.data_sources = []
 
@@ -145,8 +144,9 @@ class HpIoManager:
         self.simulate_daq = self.hp_io_cfg['simulate_daq']
         self.read_status_pipe_name = server_config['read_status_pipe_name']
         self.modules: Dict[int, ModuleState] = {}
-        self.latest_data_cache: Dict[int, Dict[str, PanoImage]] = defaultdict(lambda: {'ph': None, 'movie': None})
         self.module_id_re = re.compile(r'module_(\d+)')
+        self.latest_data_cache: Dict[int, Dict[str, CachedPanoImage]] = defaultdict(lambda: {'ph': None, 'movie': None})
+        self._frame_id_counter = 0
 
         self._configure_data_sources()
 
@@ -203,37 +203,34 @@ class HpIoManager:
 
     async def _processing_loop(self):
         """
-        Processes PanoImages from the queue and periodically broadcasts data.
-        This loop uses a timed wait on the queue to ensure that broadcasts
-        happen regularly, even if no new data arrives, preserving the
-        original behavior.
+        ** FIX: Assigns a unique frame_id to each incoming image before caching. **
         """
-        self.logger.info("Starting main data processing loop.")
+        self.logger.info("Starting freshness-aware processing loop.")
         while not self.stop_io.is_set():
-            now = time.monotonic()
-            
-            # Calculate the wait time until the next client needs an update
-            wait_times = [(rs.config['update_interval_seconds'] - (now - rs.last_update_t))
-                          for rs in self.reader_states if rs.is_allocated]
-            timeout = min(wait_times) if wait_times else self.update_interval_seconds
-            timeout = max(0.01, timeout)
-            
             try:
-                # Wait for data, but with a timeout
-                pano_image = await asyncio.wait_for(self.data_queue.get(), timeout=timeout)
-                await self._handle_received_image(pano_image)
+                pano_image = await self.data_queue.get()
+                
+                await self._discover_module_from_image(pano_image)
+                
+                # Assign a new ID and cache the wrapped image object
+                self._frame_id_counter += 1
+                cached_image = CachedPanoImage(
+                    frame_id=self._frame_id_counter,
+                    pano_image=pano_image
+                )
+                await self._cache_pano_image(cached_image)
+                
                 self.data_queue.task_done()
-            except asyncio.TimeoutError:
-                # This is expected. It's our chance to do periodic work.
-                pass
             except asyncio.CancelledError:
                 break
-            
-            # This broadcast check runs on every iteration, either after
-            # processing new data or after a timeout.
-            self._broadcast_if_ready()
-            
-        self.logger.info("Data processing loop finished.")
+        self.logger.info("Freshness-aware processing loop finished.")
+
+    async def _cache_pano_image(self, cached_image: CachedPanoImage):
+        """Caches the received CachedPanoImage, overwriting the previous one."""
+        pano_image = cached_image.pano_image
+        is_ph = (pano_image.type == PanoImage.Type.PULSE_HEIGHT)
+        cache_key = 'ph' if is_ph else 'movie'
+        self.latest_data_cache[pano_image.module_id][cache_key] = cached_image
 
     async def enqueue_uploaded_image(self, pano_image: PanoImage):
         """Public method for the UploadImages RPC to add an image to the queue."""
@@ -264,12 +261,6 @@ class HpIoManager:
         except ValueError as e:
             self.logger.warning(f"Could not identify data product from image for module {module_id}: {e}")
 
-    async def _cache_pano_image(self, pano_image: PanoImage):
-        """Caches the received PanoImage."""
-        is_ph = (pano_image.type == PanoImage.Type.PULSE_HEIGHT)
-        cache_key = 'ph' if is_ph else 'movie'
-        self.latest_data_cache[pano_image.module_id][cache_key] = pano_image
-    
     def _broadcast_if_ready(self):
         """Checks reader states and broadcasts data if they are ready."""
         now = time.monotonic()

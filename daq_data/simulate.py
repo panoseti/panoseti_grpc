@@ -313,15 +313,28 @@ class RpcStrategy(BaseSimulationStrategy):
         dp_configs = get_dp_config([data_product_type])
         dp = dp_configs[data_product_type]
 
-        # In a real scenario, this would be a more robust parse
-        # For simulation, we assume a static header
-        header = {"simulated": True, "frame": frame_num}
-        img = pff.read_image(BytesIO(frame_data), dp.image_shape[0], dp.bytes_per_pixel)#list(frame_data[frame_data.find(b'*') + 1:]) # Simplified parsing
+        frame_io = BytesIO(frame_data)
+        # parse the JSON header
+        header_str = pff.read_json(frame_io)
+        if not header_str:
+            self.logger.warning("Could not read JSON header from simulated frame data.")
+            return
+        header = json.loads(header_str)
+        
+        # Parse the image data
+        img_array = pff.read_image(frame_io, dp.image_shape[0], dp.bytes_per_pixel)
+        if img_array is None:
+            self.logger.warning("Could not read image data from simulated frame data.")
+            return
+
+        # star_char_idx = len(frame_data) - dp.bytes_per_image - 1
+        # header = json.load(BytesIO(frame_data[:star_char_idx]))
+        # img_array = pff.read_image(BytesIO(frame_data[star_char_idx:]), dp.image_shape[0], dp.bytes_per_pixel)
 
         pano_image = PanoImage(
             type=dp.pano_image_type,
             header=ParseDict(header, Struct()),
-            image_array=img,
+            image_array=img_array,
             shape=dp.image_shape,
             bytes_per_pixel=dp.bytes_per_pixel,
             file=f"rpc_sim_{data_product_type}.pff",
@@ -397,7 +410,7 @@ class SimulationManager:
         self.logger.info("Stopping simulation task...")
         self._sim_stop_event.set()
         try:
-            await asyncio.wait_for(self.sim_task, timeout=5.0)
+            await asyncio.wait_for(self.sim_task, timeout=2.0)
             self.logger.info("Simulation task stopped gracefully.")
         except asyncio.TimeoutError:
             self.logger.warning("Simulation task did not stop gracefully. Cancelling.")

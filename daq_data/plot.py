@@ -253,7 +253,11 @@ class PanoImagePreviewer:
             ax.tick_params(axis='both', which='major', labelsize=8, length=4, width=1)
 
         # Set window title for context
-        start = pff.parse_name(file)['start']
+        parsed_name = pff.parse_name(file)
+        if parsed_name and 'start' in parsed_name:
+            start = parsed_name['start']
+        else:
+            start = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
         if len(self.module_id_whitelist) > 0:
             plt_title = f"Obs data from {start}, module_ids={set(self.module_id_whitelist)} [filtered]"
         else:

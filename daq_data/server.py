@@ -15,7 +15,7 @@ import time
 import urllib.parse
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator, List, Dict, Optional
 import signal
 
 # gRPC imports
@@ -26,12 +26,14 @@ from google.protobuf.empty_pb2 import Empty
 
 # Protoc-generated imports
 from . import daq_data_pb2, daq_data_pb2_grpc
-from .daq_data_pb2 import InitHpIoResponse, StreamImagesResponse
+from .daq_data_pb2 import InitHpIoResponse, StreamImagesResponse, PanoImage
 
 # Package imports
 from .resources import make_rich_logger, CFG_DIR, is_daq_active
 from .testing import is_os_posix
 from .managers import ClientManager, HpIoTaskManager
+from .state import ReaderState, CachedPanoImage
+from .hp_io_manager import HpIoManager
 
 
 class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
@@ -73,25 +75,29 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
         async with self.client_manager.get_reader_access(context, self.task_manager) as reader_state:
             # Configure the reader's stream based on the request
-            reader_state.config['stream_movie_data'] = request.stream_movie_data
-            reader_state.config['stream_pulse_height_data'] = request.stream_pulse_height_data
-            reader_state.config['module_ids'] = list(request.module_ids)
-
-            # Set update interval, respecting server limits
-            req_interval = request.update_interval_seconds
-            hp_io_interval = self.task_manager.hp_io_cfg.get('update_interval_seconds', 1.0)
-            reader_state.config['update_interval_seconds'] = max(req_interval, hp_io_interval)
-            self.logger.info( f"Stream configured for ({reader_state.uid}) from '{peer}' with interval {reader_state.config['update_interval_seconds']}s")
+            reader_state.config.update({
+                "stream_movie_data": request.stream_movie_data,
+                "stream_pulse_height_data": request.stream_pulse_height_data,
+                "module_ids": list(request.module_ids),
+                "update_interval_seconds": max(request.update_interval_seconds, self.server_cfg['min_hp_io_update_interval_seconds'])
+            })
+            self.logger.info(f"Stream configured for ({reader_state.uid}) with interval {reader_state.config['update_interval_seconds']}s")
 
             # Main streaming loop
             while not any([context.cancelled(), reader_state.cancel_reader_event.is_set(), reader_state.shutdown_event.is_set()]):
                 try:
-                    # Wait for an image from the HpIoManager's broadcast
-                    pano_image = await asyncio.wait_for(reader_state.queue.get(), timeout=self.server_cfg['reader_timeout'])
-                    if pano_image == "shutdown":
-                        self.logger.debug(f"Client ({reader_state.uid}) from '{peer}' received shutdown signal in queue. Ending stream.")
-                        break
-                    yield StreamImagesResponse(pano_image=pano_image)
+                    now = time.monotonic()
+                    interval = reader_state.config['update_interval_seconds']
+                    
+                    # Check if it's time to send an update to this client
+                    if (now - reader_state.last_update_t) >= interval:
+                        fresh_images = self._get_fresh_images_for_client(reader_state)
+                        
+                        if fresh_images:
+                            for image in fresh_images:
+                                yield StreamImagesResponse(pano_image=image)
+                            reader_state.last_update_t = now
+                    await asyncio.sleep(max(0.01, interval / 10))
                     reader_state.dequeue_timeouts = 0  # Reset on success
                 except asyncio.TimeoutError:
                     reader_state.dequeue_timeouts += 1
@@ -111,6 +117,37 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 elif reader_state.cancel_reader_event.is_set():
                     await context.abort(grpc.StatusCode.CANCELLED, f"cancel_reader_event set for ({reader_state.uid}) from '{peer}'."
                                                                    f"A writer has likely forced a reconfiguration of hp_io")
+
+    def _get_fresh_images_for_client(self, rs: ReaderState) -> List[PanoImage]:
+        """
+        ** FIX: Checks the cache for images that are newer than what the client has already seen. **
+        """
+        images_to_send = []
+        if not self.task_manager.hp_io_manager:
+            return images_to_send
+            
+        cache = self.task_manager.hp_io_manager.latest_data_cache
+        subscribed_mids = set(rs.config['module_ids'])
+
+        for mid, data in cache.items():
+            if subscribed_mids and mid not in subscribed_mids:
+                continue
+
+            # Check for fresh movie data
+            if rs.config['stream_movie_data']:
+                cached_movie: CachedPanoImage = data.get('movie')
+                if cached_movie and cached_movie.frame_id > rs.last_sent_movie_id:
+                    images_to_send.append(cached_movie.pano_image)
+                    rs.last_sent_movie_id = cached_movie.frame_id
+            
+            # Check for fresh pulse-height data
+            if rs.config['stream_pulse_height_data']:
+                cached_ph: CachedPanoImage = data.get('ph')
+                if cached_ph and cached_ph.frame_id > rs.last_sent_ph_id:
+                    images_to_send.append(cached_ph.pano_image)
+                    rs.last_sent_ph_id = cached_ph.frame_id
+        
+        return images_to_send
 
     async def InitHpIo(self, request, context) -> InitHpIoResponse:
         """Initialize or re-initialize the hp_io task. [writer]"""
@@ -184,7 +221,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     try:
                         # Use non-blocking put to avoid holding up the RPC if the system is overloaded.
                         # self.logger.debug(f"Received image from {peer}.")
-                        self.task_manager.upload_queue.put_nowait(request.pano_image)
+                        self.task_manager.hp_io_manager.data_queue.put_nowait(request.pano_image)
                         image_count += 1
                     except asyncio.QueueFull:
                         self.logger.error(f"Upload queue is full. Aborting stream for client ({uid}) from '{peer}'.")

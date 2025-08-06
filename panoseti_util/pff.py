@@ -79,7 +79,7 @@ def write_image_2D(f, img, img_size, bytes_per_pixel):
 # a=b,a=b...a=b.ext
 # into a dictionary of a=>b
 #
-def parse_name(name):
+def parse_name(name: str) -> dict[str, str]:
     d = {}
     n = name.rfind('.')
     if n<0:
