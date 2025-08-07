@@ -45,15 +45,16 @@ hp_io_config_simulate_path = "daq_data/config/hp_io_config_simulate.json"
 class DaqDataClient:
     """A synchronous gRPC client for the PANOSETI DaqData service.
 
-    This client provides methods to interact with one or more DAQ nodes,
-    including pinging for health checks, initializing the data flow from the
-    observatory's data directory (`hp_io`), and streaming real-time image data.
+    This client provides blocking methods to interact with one or more DAQ nodes,
+    including pinging for health checks, initializing the data flow, and streaming
+    image data. It is ideal for scripting and simple, sequential operations.
 
     It is designed to be used as a context manager, which automatically handles
     the setup and teardown of gRPC connections:
 
     with DaqDataClient(...) as client:
-        client.ping(host)
+        if client.ping("localhost"):
+            client.init_hp_io(...)
     """
     GRPC_PORT = 50051
 
@@ -66,22 +67,12 @@ class DaqDataClient:
         """Initializes the DaqDataClient with DAQ and network configurations.
 
         Args:
-            daq_config: The DAQ system configuration. Can be a path to a
-                `daq_config.json` file or a pre-loaded dictionary. This
-                configuration must contain a 'daq_nodes' key with a list of DAQ
-                node objects.
-            network_config: The network configuration for port forwarding. Can be
-                a path to a `network_config.json` file or a pre-loaded
-                dictionary. If provided, it maps DAQ node IPs to real host IPs.
+            daq_config (Union[str, Path, Dict]): Path to a daq_config.json file
+                or a pre-loaded dictionary. Must contain a 'daq_nodes' key.
+            network_config (Optional[Union[str, Path, Dict]]): Path to a
+                network_config.json file or a dictionary for port forwarding.
                 Can be None if no port forwarding is needed.
-            log_level: The logging verbosity level for the client's logger
-                (e.g., `logging.INFO`, `logging.DEBUG`).
-
-        Raises:
-            FileNotFoundError: If a path provided for `daq_config` or
-                `network_config` does not exist.
-            ValueError: If `daq_config` or `network_config` is invalid,
-                malformed, or missing required keys like 'daq_nodes'.
+            log_level (int): The logging verbosity level (e.g., logging.INFO).
         """
         self.logger = make_rich_logger("daq_data.client", level=log_level)
 
@@ -306,31 +297,27 @@ class DaqDataClient:
         wait_for_ready=False,
         parse_pano_images=True,
     ) ->  Generator[dict[str, Any], Any, Any]:
-        """
-        Establishes a real-time stream of PANOSETI image data from one or more DAQ nodes.
+        """Establishes a real-time stream of PANOSETI image data.
 
-        This method sends a `StreamImagesRequest` to the specified hosts and returns an
-        infinite generator that yields image data as it arrives from the servers.
+        This method sends a `StreamImagesRequest` and returns a generator that
+        yields image data as it arrives from the servers. This is a blocking call
+        that will run indefinitely.
 
         Args:
             hosts (Union[List[str], str]): The DAQ host(s) to stream from.
-            stream_movie_data (bool): Set to True to request movie-mode images.
-            stream_pulse_height_data (bool): Set to True to request pulse-height images.
-            update_interval_seconds (float): The requested minimum time interval in seconds
-                between consecutive image frames sent by the server.
-            module_ids (Tuple[int], optional): A tuple of integer module IDs to subscribe to.
-                If empty, the server will stream data from all active modules. Defaults to ().
-            parse_pano_images (bool, optional): If True, the raw protobuf message is parsed
-                into a Python dictionary. If False, the raw `StreamImagesResponse` protobuf
-                object is returned. Defaults to True.
-            wait_for_ready (bool, optional): If True, waits for the server to be ready before
+            stream_movie_data (bool): If True, request movie-mode images.
+            stream_pulse_height_data (bool): If True, request pulse-height images.
+            update_interval_seconds (float): The requested server-side update interval.
+            module_ids (Tuple[int], optional): A tuple of module IDs to subscribe to.
+                If empty, streams data from all active modules. Defaults to ().
+            parse_pano_images (bool, optional): If True, parses the raw protobuf message
+                into a Python dictionary. Defaults to True.
+            wait_for_ready (bool, optional): If True, waits for the server to be ready
+                before attempting to stream. Defaults to False.
 
         Returns:
-            Generator[Dict[str, Any], Any, Any]: An infinite generator that yields either
-                parsed image data dictionaries or raw protobuf responses.
-
-        Raises:
-            grpc.RpcError: If the stream is interrupted or the connection fails.
+            Generator[Dict[str, Any], None, None]: A generator that yields either
+            parsed image data dictionaries or raw protobuf responses.
         """
         host_set = self.validate_daq_hosts(hosts)
 
@@ -392,28 +379,19 @@ class DaqDataClient:
         return self.init_hp_io(hosts, hp_io_config, timeout=timeout)
 
     def init_hp_io(self, hosts: Union[List[str], str], hp_io_cfg: dict, timeout=10.0) -> bool:
-        """
-        Initializes or reconfigures the `hp_io` thread on the DaqData server.
+        """Initializes or reconfigures the HpIoManager task on the server.
 
-        The `hp_io` thread is responsible for monitoring a specified run directory for new
-        data files and broadcasting them to `StreamImages` clients. This RPC call is required
-        to start the data flow before clients can connect via `stream_images`.
+        This is a prerequisite for streaming data. It tells the server which
+        directory to monitor for data or whether to start a simulation.
 
         Args:
             hosts (Union[List[str], str]): One or more DAQ hosts to initialize.
-            hp_io_cfg (dict): A configuration dictionary defining initialization parameters.
-                It should contain the following keys from your `hp_io_config.json`:
-                - `update_interval_seconds` (float): The directory polling interval.
-                - `force` (bool): If True, forces reconfiguration even if other clients are
-                  connected, disconnecting them in the process.
-                - `simulate_daq` (bool): If True, streams archived data instead of monitoring a
-                  live directory. Overrides `data_dir`.
-                - `module_ids` (list[int]): A whitelist of module IDs to track. If empty, all
-                  active modules are tracked.
-            timeout (float, optional): The timeout in seconds for the RPC call. Defaults to 5.0.
+            hp_io_cfg (dict): A configuration dictionary containing parameters like
+                'data_dir', 'simulate_daq', 'force', etc.
+            timeout (float, optional): Timeout in seconds for the RPC call. Defaults to 10.0.
 
         Returns:
-            bool: True if the `InitHpIo` RPC succeeds on all specified hosts, False otherwise.
+            bool: True if the InitHpIo RPC succeeds on all specified hosts.
         """
         host_set = self.validate_daq_hosts(hosts)
 
@@ -461,12 +439,16 @@ class DaqDataClient:
             return False
 
     def upload_images(self, hosts: Union[List[str], str], image_iterator: Generator[PanoImage, None, None]):
-        """
-        Uploads a stream of PanoImage objects to the server.
+        """Uploads a stream of PanoImage protobuf objects to the server.
+
+        This allows a client to act as a data source, injecting images directly
+        into the server's processing queue. This is primarily used by the 'rpc'
+        simulation strategy.
 
         Args:
             hosts (Union[List[str], str]): The DAQ host(s) to upload to.
-            image_iterator (Generator): A generator that yields PanoImage protobuf objects.
+            image_iterator (Generator[PanoImage, None, None]): A generator that yields
+                PanoImage protobuf objects.
         """
         host_set = self.validate_daq_hosts(hosts)
 
@@ -489,15 +471,16 @@ class AioDaqDataClient:
     """An asynchronous gRPC client for the PANOSETI DaqData service.
 
     Built on `grpc.aio`, this client provides non-blocking methods to interact
-    with DAQ nodes, including pinging for health checks, initializing the data
-    flow (`hp_io`), and streaming real-time image data.
+    with DAQ nodes. It is designed for use within an `asyncio` event loop and
+    is ideal for building responsive applications and concurrent tasks.
 
-    It is designed for use within an `asyncio` event loop and as an
-    asynchronous context manager, which automatically handles the setup and
-    teardown of gRPC connections:
+    It supports a `stop_event` for graceful shutdown of streams and should be
+    used as an async context manager:
 
     async with AioDaqDataClient(...) as client:
-        await client.ping(host)
+        status = await client.ping("localhost")
+        if status:
+            await client.init_hp_io(...)
     """
     GRPC_PORT = 50051
 
@@ -505,28 +488,19 @@ class AioDaqDataClient:
         self,
         daq_config: Union[str, Path, Dict[str, Any]],
         network_config: Optional[Union[str, Path, Dict[str, Any]]],
-        log_level: int =logging.INFO,
-        stop_event: Optional[asyncio.Event] = None
+        stop_event: Optional[asyncio.Event] = None,
+        log_level: int = logging.INFO,
     ):
-        """Initializes the DaqDataClient with DAQ and network configurations.
+        """Initializes the AioDaqDataClient.
 
         Args:
-            daq_config: The DAQ system configuration. Can be a path to a
-                `daq_config.json` file or a pre-loaded dictionary. This
-                configuration must contain a 'daq_nodes' key with a list of DAQ
-                node objects.
-            network_config: The network configuration for port forwarding. Can be
-                a path to a `network_config.json` file or a pre-loaded
-                dictionary. If provided, it maps DAQ node IPs to real host IPs.
-                Can be None if no port forwarding is needed.
-            log_level: The logging verbosity level for the client's logger
-                (e.g., `logging.INFO`, `logging.DEBUG`).
-
-        Raises:
-            FileNotFoundError: If a path provided for `daq_config` or
-                `network_config` does not exist.
-            ValueError: If `daq_config` or `network_config` is invalid,
-                malformed, or missing required keys like 'daq_nodes'.
+            daq_config (Union[str, Path, Dict]): Path to a daq_config.json file
+                or a pre-loaded dictionary. Must contain a 'daq_nodes' key.
+            network_config (Optional[Union[str, Path, Dict]]): Path to a
+                network_config.json file or a dictionary for port forwarding.
+            stop_event (Optional[asyncio.Event]): An event to signal graceful
+                shutdown of long-running streams.
+            log_level (int): The logging verbosity level (e.g., logging.INFO).
         """
         self.logger = make_rich_logger("daq_data.client", level=log_level)
 
@@ -755,27 +729,26 @@ class AioDaqDataClient:
             wait_for_ready=False,
             parse_pano_images=True,
     ) -> AsyncIterator[dict[str, Any]]:
-        """
-        Establishes an asynchronous, real-time stream of PANOSETI image data.
+        """Establishes an asynchronous, real-time stream of PANOSETI image data.
+
+        Returns an async generator that yields image data as it arrives. The stream
+        will gracefully terminate if the client's `stop_event` is set.
 
         Args:
             hosts (Union[List[str], str]): The DAQ host(s) to stream from.
-            stream_movie_data (bool): Set to True to request movie-mode images.
-            stream_pulse_height_data (bool): Set to True to request pulse-height images.
-            update_interval_seconds (float): The requested minimum time interval in seconds
-                between consecutive image frames sent by the server.
-            module_ids (Tuple[int], optional): A tuple of integer module IDs to subscribe to.
-                If empty, the server will stream data from all active modules. Defaults to ().
-            parse_pano_images (bool, optional): If True, the raw protobuf message is parsed
-                into a Python dictionary. If False, the raw `StreamImagesResponse` protobuf
-                object is returned. Defaults to True.
-            wait_for_ready (bool, optional): If True, waits for the server to be ready before
+            stream_movie_data (bool): If True, request movie-mode images.
+            stream_pulse_height_data (bool): If True, request pulse-height images.
+            update_interval_seconds (float): The requested server-side update interval.
+            module_ids (Tuple[int], optional): A tuple of module IDs to subscribe to.
+                Defaults to ().
+            parse_pano_images (bool, optional): If True, parses the raw protobuf message
+                into a Python dictionary. Defaults to True.
+            wait_for_ready (bool, optional): If True, waits for the server to be ready.
+                Defaults to False.
 
         Returns:
-            AsyncGenerator: An asynchronous generator that yields parsed image data dictionaries
-                            or raw protobuf responses.
-        Raises:
-            grpc.RpcError: If the stream is interrupted or the connection fails.
+            AsyncGenerator[Dict[str, Any], None]: An async generator that yields
+            parsed image data dictionaries or raw protobuf responses.
         """
         host_set = await self.validate_daq_hosts(hosts)
 
@@ -855,24 +828,19 @@ class AioDaqDataClient:
 
 
     async def init_hp_io(self, hosts: Union[List[str], str], hp_io_cfg: dict, timeout=10.0) -> bool:
-        """
-        Initializes or reconfigures the `hp_io` thread on the DaqData server asynchronously.
+        """Asynchronously initializes or reconfigures the HpIoManager on the server.
+
+        This coroutine sends concurrent InitHpIo requests to all specified hosts
+        and waits for them to complete.
 
         Args:
             hosts (Union[List[str], str]): One or more DAQ hosts to initialize.
-            hp_io_cfg (dict): A configuration dictionary defining initialization parameters.
-                It should contain the following keys from your `hp_io_config.json`:
-                - `update_interval_seconds` (float): The directory polling interval.
-                - `force` (bool): If True, forces reconfiguration even if other clients are
-                  connected, disconnecting them in the process.
-                - `simulate_daq` (bool): If True, streams archived data instead of monitoring a
-                  live directory. Overrides `data_dir`.
-                - `module_ids` (list[int]): A whitelist of module IDs to track. If empty, all
-                  active modules are tracked.
-            timeout (float, optional): The timeout in seconds for the RPC call. Defaults to 10.0.
+            hp_io_cfg (dict): Configuration dictionary with parameters for the
+                server's HpIoManager.
+            timeout (float, optional): Timeout in seconds for each RPC call. Defaults to 10.0.
 
         Returns:
-            bool: True if the RPC succeeds on all specified hosts, False otherwise.
+            bool: True if the InitHpIo RPC succeeds on all specified hosts.
         """
         host_set = await self.validate_daq_hosts(hosts)
 
@@ -912,12 +880,15 @@ class AioDaqDataClient:
             return False
 
     async def upload_images(self, hosts: Union[List[str], str], image_iterator: AsyncGenerator[PanoImage, None]):
-        """
-        Asynchronously uploads a stream of PanoImage objects to the server.
+        """Asynchronously uploads a stream of PanoImage objects to the server.
+
+        This method is a coroutine that runs an upload stream to the specified
+        server(s). It is primarily used by the 'rpc' simulation strategy.
 
         Args:
             hosts (Union[List[str], str]): The DAQ host(s) to upload to.
-            image_iterator (AsyncGenerator): An async generator that yields PanoImage objects.
+            image_iterator (AsyncGenerator[PanoImage, None]): An async generator
+                that yields PanoImage protobuf objects to upload.
         """
         host_set = await self.validate_daq_hosts(hosts)
         async def request_generator(iterator):

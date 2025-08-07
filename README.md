@@ -307,12 +307,8 @@ It is built on [grpc.aio](https://grpc.github.io/grpc/python/grpc_asyncio.html) 
 
 The API methods mirror the synchronous client, but they are coroutines and must be called with `await`. The client should be used as an asynchronous context manager (`async with`).
 
-### Key Differences:
-
 - Asynchronous calls: All RPC methods (e.g., `ping`, `init_sim`, `stream_images`) are async and must be awaited.
-
 - Async context manager: The client must be entered using `async with`.
-
 - Async iteration: The `stream_images` method returns an `AsyncGenerator`, which must be iterated over with `async for`.
 
 ## Asynchronous Workflow Examples
@@ -366,73 +362,61 @@ if __name__ == "__main__":
         print("Stream stopped.")
 ```
 
-### Example: Robust Asynchronous Workflow
+### Client: Graceful Shutdown with `stop_event`
+
+The asynchronous client, `AioDaqDataClient`, supports a `stop_event` argument for gracefully terminating long-running streams like `stream_images`. This is needed for applications that need to clean up resources properly on a `SIGINT` (Ctrl+C) or `SIGTERM`.
+
+When a `stop_event` (an `asyncio.Event` object) is passed to the client's constructor, the `stream_images` method will monitor it. If the event is set, the client will immediately stop listening for new data, cancel the underlying gRPC stream, and allow the calling coroutine to exit cleanly.
 Building on the introductory example, here we demonstrate the best practice for using the `AioDaqDataClient` to ensure graceful shutdown and resource cleanup. By handling system signals like Ctrl+C (SIGINT), you can prevent unhandled exceptions and ensure that all network connections and files are closed properly.
-If we don't carefully handle signals, the `asyncio` event loop may terminate our resource clean-up tasks before they have a chance to run.
+If we don't carefully handle signals, the `asyncio` event loop may terminate our resource clean-up tasks before they have a chance to run, leading to hanging applications.
+
+### Example: Robust Asynchronous Workflow
+```python
+This example from `cli.py` shows how to set up and use the `stop_event` to handle a keyboard interrupt gracefully.[^8_6]
 
 ```python
 import asyncio
 import signal
-import logging
 from daq_data.client import AioDaqDataClient
-import grpc
 
 async def main():
-    # Graceful Shutdown Setup 
+    # 1. Create a shutdown event
     shutdown_event = asyncio.Event()
+
+    # 2. Define a signal handler to set the event
     def _signal_handler(*_):
-        logging.getLogger("daq_data.client").info(
-            "Shutdown signal received, closing client stream..."
-        )
+        print("\\nShutdown signal received, closing client stream...")
         shutdown_event.set()
 
+    # 3. Attach the handler to the asyncio event loop
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, _signal_handler)
 
-    # 0. Specify configuration file paths
-    daq_config_path = 'daq_data/config/daq_config_grpc_simulate.json'
-    network_config_path = 'daq_data/config/network_config_grpc_simulate.json'
-
-    # 1. Connect to all DAQ nodes asynchronously
-    try:
-        async with AioDaqDataClient(daq_config_path, network_config_path) as client:
-            # 2. Get valid hosts and initialize simulation
-            valid_hosts = await client.get_valid_daq_hosts()
-            if not valid_hosts:
-                raise RuntimeError("No valid DAQ hosts found.")
-            await client.init_sim(valid_hosts)
-            
-            # 3. Asynchronously stream data
-            pano_image_stream = client.stream_images(
-                hosts=valid_hosts,
+    # 4. Pass the event to the client constructor
+    async with AioDaqDataClient(
+        daq_config_path="path/to/daq_config.json",
+        net_config_path="path/to/net_config.json",
+        stop_event=shutdown_event
+    ) as client:
+        try:
+            # The stream will run until Ctrl+C is pressed
+            async for image in client.stream_images(
+                host="localhost",
                 stream_movie_data=True,
                 stream_pulse_height_data=True,
-                update_interval_seconds=1.0,
-            )
+                update_interval_seconds=1.0
+            ):
+                print(f"Received image for module {image['module_id']}")
 
-            # 4. Process the stream until the shutdown event is set
-            print("Starting async data stream. Press Ctrl+C to stop.")
-            async for pano_image in pano_image_stream:
-                if shutdown_event.is_set():
-                    break
-                # Your real-time visualization, analysis code here...
-                print(
-                    f"Image: Module {pano_image['module_id']}, "
-                    f"Type: {pano_image['type']}"
-                )
-
-    except (asyncio.CancelledError, grpc.aio.AioRpcError) as e:
-        logging.getLogger("daq_data.client").warning(f"Stream cancelled or gRPC error: {e}")
-    finally:
-        print("Stream processing finished.")
+        except asyncio.CancelledError:
+            print("Stream cancelled.")
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        # This is now just a fallback for immediate interrupts
-        print("\nClient stopped forcefully.")
+        print("Client stopped.")
 ```
 
 ## Using the DaqData Client CLI
@@ -530,15 +514,24 @@ See [daq_data.proto](protos/daq_data.proto) for the protobuf specification of th
 <table>
   <tr>
     <td style="text-align: center;">
-      <img src="https://github.com/panoseti/panoseti_grpc/raw/main/docs/DaqData_StreamImages_overview.png" alt="DaqData Architecture" width="500"/><br>
-      <em>Figure A. DaqData Architecture</em>
-    </td>
-    <td style="text-align: center;">
-      <img src="https://github.com/panoseti/panoseti_grpc/raw/main/docs/DaqData_StreamImages_hp-io.png" alt="DaqData StreamImages hp-io" width="300"/><br>
-      <em>Figure B. StreamImages RPC Flow</em>
+      <img src="https://github.com/panoseti/panoseti_grpc/raw/main/docs/DaqData_architecture.png" alt="DaqData Architecture" width="500"/><br>
+      <em>DaqData Architecture</em>
     </td>
   </tr>
 </table>
+
+## System Architecture
+The DaqData service is a high-performance gRPC server designed for distributing real-time streams of PANOSETI images collected by the production observing software. Its architecture is built to handle multiple data streams from either live DAQ hardware (Hashpipe) or a sophisticated simulation engine, providing a unified interface for clients.
+
+The system's data flow is designed for efficiency and modularity:
+
+- External Inputs: Data originates from either a live Hashpipe instance in a production environment or the Simulation Engine during testing. These inputs can write to the filesystem, signal updates via named pipes, or stream data directly over Unix Domain Sockets (UDS).
+
+- Data Ingestion Layer: A set of DataSource classes (`PollWatcherDataSource`, `PipeWatcherDataSource`, `UdsDataSource`) are responsible for monitoring these inputs. Each DataSource is tailored to a specific ingestion method, making the system extensible.
+
+- Server Core: The central `HpIoManager` orchestrates the data flow. It runs the active DataSources, consumes all incoming data from a central `asyncio.Queue`, and updates a Latest Data Cache. This cache holds the most recent frame for each data product, allowing for immediate, low-latency access for clients.
+
+- Client Interaction: Clients connect to the `DaqDataServicer` via gRPC. When a client calls the `StreamImage` RPC, the server reads directly from the Latest Data Cache to stream the most up-to-date images. This architecture decouples data ingestion from client servicing, ensuring that the system remains responsive and scalable.
 
 
 ## Core Remote Procedure Calls
@@ -615,7 +608,7 @@ See [daq_data.proto](protos/daq_data.proto) for the protobuf specification of th
 
 
 ## The `daq_data_server_config.json` File
-The `daq_data_server_config.json` file provides settings for the DaqData gRPC server, controlling everything from initial state and network listeners to resource limits and simulation behavior. These parameters are key to deploying and debugging the server effectively.
+This file configures the core behavior of the DaqData gRPC server.
 
 ```json
 {
@@ -624,89 +617,64 @@ The `daq_data_server_config.json` file provides settings for the DaqData gRPC se
     "unix_domain_socket": "unix:///tmp/daq_data.sock",
     "max_concurrent_rpcs": 100,
     "max_read_queue_size": 50,
-    "min_hp_io_update_interval_seconds": 0.01,
-    "max_client_update_interval_seconds": 60,
-    "max_reader_enqueue_timeouts": 2,
-    "max_reader_dequeue_timeouts": 3,
-    "reader_timeout": 5,
+    "min_hp_io_update_interval_seconds": 0.001,
     "shutdown_grace_period": 5,
-    "hp_io_stop_timeout": 5.0,
-    "valid_data_products": ["img8", "img16", "ph256", "ph1024"],
+    "read_status_pipe_name": "read_status_2",
+
+    "acquisition_methods": {
+        "filesystem_poll": { "enabled": false },
+        "filesystem_pipe": { "enabled": false },
+        "uds": {
+            "enabled": true,
+            "data_products": ["ph256", "img16"]
+        }
+    },
+
     "simulate_daq_cfg": {
-        "simulation_mode": "filesystem",
+        "simulation_mode": "uds",
+        "sim_module_ids": [224],
         "movie_type": "img16",
         "ph_type": "ph256",
-        "frames_per_pff": 1000,
-        "sim_module_ids": [224],
-        "real_module_id": 1,
-        "files": {
-            "data_dir": "daq_data/simulated_data_dir",
-            "real_run_dir": "obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd",
+        "update_interval_seconds": 0.01,
+        "source_data": {
+            "movie_pff_path": "path/to/movie.pff",
+            "ph_pff_path": "path/to/ph.pff"
+        },
+        "filesystem_cfg": {
+            "sim_data_dir": "daq_data/simulated_data_dir",
             "sim_run_dir_template": "module_{module_id}/obs_SIMULATE",
-            "movie_pff_template": "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_{module_id}.seqno_{seqno}.debug_TRUNCATED.pff",
-            "ph_pff_template": "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_{module_id}.seqno_{seqno}.debug_TRUNCATED.pff",
             "daq_active_file": "module_{module_id}.daq-active"
+        },
+        "strategies": {
+            "filesystem_poll": { "frames_per_pff": 1000 },
+            "filesystem_pipe": { "frames_per_pff": 1000 },
+            "uds": { "data_products": ["ph256", "img16"] },
+            "rpc": {}
         }
     }
 }
 ```
-### Server Configuration
-These fields control the server's core behavior, network listeners, and shutdown procedure.
-
-- `init_from_default`: (boolean) If true, the server will automatically start the hp_io task on launch using the configuration specified in default_hp_io_config_file. This is useful for development or dedicated servers that should always start in a known state.
-
-- `default_hp_io_config_file`: (string) The path to a default hp_io_config.json file, used when init_from_default is true.
-
-- `unix_domain_socket`: (string) Defines the path for a Unix Domain Socket (UDS) listener (e.g., `unix:///tmp/daq_data.sock`). UDS provides a high-performance, low-latency connection for local clients on the same machine, bypassing the network stack.
-
-- `shutdown_grace_period`: (integer) The number of seconds the server will wait for active RPCs to complete during a graceful shutdown before forcefully terminating them.
-
-### Resource and Client Management
-These parameters prevent the server from being overwhelmed by too many requests or misbehaving clients. They are primarily used by the `ClientManager`.
-
-- `max_concurrent_rpcs`: (integer) The maximum number of simultaneous client connections (readers) the server will accept. This acts as the pool size for ReaderState objects.
-
-- `max_read_queue_size`: (integer) The maximum number of PanoImage messages that can be buffered in the queue for each individual client. If a client's queue is full, the server may drop data for that client.
-
-- `max_reader_enqueue_timeouts`: (integer) The number of consecutive times the server can fail to add an image to a specific client's queue (because it's full) before that client is considered unresponsive.
-
-- `max_reader_dequeue_timeouts`: (integer) The number of times a StreamImages client can time out waiting for new data from the server's broadcast before the server automatically disconnects it.
-
-- `reader_timeout`: (integer) The time in seconds a StreamImages client's internal queue will wait for a new image before timing out. This interacts with max_reader_dequeue_timeouts to detect stalled clients.
-
-### `hp_io` Task Configuration
-These fields directly govern the behavior of the HpIoManager, which is responsible for monitoring the filesystem for new data.
-
-- `min_hp_io_update_interval_seconds`: (float) The absolute minimum update interval (in seconds) that the hp_io task can be configured to use. Any `InitHpIo` request with a shorter interval will be rejected.
-
-- `valid_data_products`: (list of strings) A list of all supported data product names (e.g., `img16`, `ph256`). This is used to validate and configure data product parsers.
-
-### Simulation Configuration (`simulate_daq_cfg`)
-This object contains all the parameters needed to run the server in simulation mode, where it generates a data stream from existing PFF files instead of a live observatory.
-
-- `simulation_mode`: (string) Determines the simulation method.
-
-  - `"filesystem"`: The simulator writes data to a temporary directory structure, and the HpIoManager monitors it just like a real run. This is the primary mode for testing the full server data path.
-
-  - `"rpc"`: The simulator uses an internal gRPC client to send data directly to the server's `UploadImages` RPC, bypassing the filesystem monitor. This is for testing the RPC data path directly.
-
-- `movie_type` / `ph_type`: (string) The names of the data products (e.g., `img16`, `ph256`) to use as the source for the simulated movie and pulse-height data streams.
-
-- `sim_module_ids`: (list of integers) A list of module IDs that the server will simulate.
-
-- `real_module_id`: (integer) The module ID from which the source data is read.
-
-- `files`: (object) An object containing path templates for creating the simulated run directory and files.
-
-  - `data_dir`: The root directory for the simulated data.
-
-  - `real_run_dir`: The path to the directory containing the real PFF files that will be used as the source for the simulation.
-
-  - `sim_run_dir_template`: A template string for creating the run directory for each simulated module.
-
-  - `movie_pff_template` / `ph_pff_template`: Template strings for the names of the PFF files that will be created in the simulation directory.
-
-  - `daq_active_file`: The template for the `*.daq-active` file, which signals that a simulated module is "online".
+* `init_from_default` (boolean): If `true`, the server automatically starts the `HpIoManager` on boot using the configuration from `default_hp_io_config_file`.
+* `default_hp_io_config_file` (string): Path to the default `hp_io_config.json` file to use if `init_from_default` is true.
+* `unix_domain_socket` (string): The path for the Unix Domain Socket (UDS) for efficient local inter-process communication. Format: `"unix:///path/to/socket.sock"`.
+* `max_concurrent_rpcs` (integer): The maximum number of simultaneous client connections the server will accept.
+* `max_read_queue_size` (integer): The buffer size for each client's outgoing data queue.
+* `min_hp_io_update_interval_seconds` (float): The minimum allowed value for the data polling interval, to prevent excessive CPU usage.
+* `shutdown_grace_period` (integer): The time in seconds the server will wait for active RPCs to finish during a graceful shutdown.
+* `read_status_pipe_name` (string): The filename for the named pipe used by the `filesystem_pipe` data source to receive signals from Hashpipe or the simulation.
+* **`acquisition_methods`** (object): This section enables or disables the different data ingestion methods. At least one must be enabled for the server to acquire data.
+    * `filesystem_poll` (object): Watches a directory for file changes. Less efficient but robust.
+    * `filesystem_pipe` (object): Listens to a named pipe for signals that a new file is ready. More efficient than polling.
+    * `uds` (object): Listens for data streamed directly over a Unix Domain Socket. This is the highest performance method, bypassing the filesystem for data transfer.
+        * `data_products` (array): A list of data products (e.g., `"ph256"`) to accept over UDS.
+* **`simulate_daq_cfg`** (object): This section configures the simulation engine, used when an `InitHpIo` request has `simulate_daq: true`.
+    * `simulation_mode` (string): The strategy the simulator will use to generate data. Must correspond to an enabled `acquisition_method`. Valid modes: `"filesystem_poll"`, `"filesystem_pipe"`, `"uds"`, `"rpc"`.
+    * `sim_module_ids` (array): A list of module IDs to simulate.
+    * `movie_type` / `ph_type` (string): The data product types to use for movie and pulse-height frames.
+    * `update_interval_seconds` (float): The interval at which the simulation generates and sends new frames.
+    * `source_data` (object): Paths to the `.pff` files containing the raw frames to be used for simulation.
+    * `filesystem_cfg` (object): Configuration for filesystem-based simulation strategies, including the data directory and file templates.
+    * `strategies` (object): Mode-specific configurations for each simulation strategy.
 
 
 

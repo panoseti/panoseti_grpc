@@ -201,7 +201,7 @@ async def run_demo_api(args):
     host = args.host
     module_ids = args.module_ids
     log_level = parse_log_level(args.log_level)
-    async with AioDaqDataClient(args.daq_config_path, args.net_config_path, log_level=log_level, stop_event=shutdown_event) as addc:
+    async with AioDaqDataClient(args.daq_config_path, args.net_config_path, stop_event=shutdown_event, log_level=log_level) as addc:
         if do_ping:
             await do_ping_fn(addc, host)
 
