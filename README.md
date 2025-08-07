@@ -4,15 +4,17 @@ Contains gRPC code for the PANOSETI project. See [here](https://github.com/panos
 # Environment Setup for gRPC Clients and Servers
 Install `miniconda` ([link](https://www.anaconda.com/docs/getting-started/miniconda/install)), then follow these steps:
 ```bash
-# 1. create the grpc-py39 conda environment
+# 0. Clone this repo and go to the repo root 
+git clone https://github.com/panoseti/panoseti_grpc.git
+cd panoseti_grpc
+
+# 1. Create the grpc-py39 conda environment
 conda create -n grpc-py39 python=3.9
 conda activate grpc-py39
 conda install -c conda-forge grpcio-tools
 
-# 2. install dependencies
-# option 1: build from source (recommended for now)
-git clone https://github.com/panoseti/panoseti_grpc.git
-cd panoseti_grpc
+# 2. Install package dependencies
+# option 1: (recommended for now)
 pip install -r requirements.txt
 
 # option 2: (in development)
@@ -32,7 +34,7 @@ See [client.py](daq_data/client.py) for the implementation and [daq_data_client_
 
 ## Developing Real-Time Visualizations
 
-1. Define a function or class for visualizing pulse-height and/or movie-mode data. In the example below, we have use the `PanoImagePreviewer` class for visualization ([code](daq_data/plot.py)).
+1. Define a function or class for visualizing pulse-height and/or movie-mode data. In the example below, we use `PanoImagePreviewer` for visualization ([code](daq_data/plot.py)).
 2. Implement an `update` method to modify the visualization given a new panoseti image. See [PanoImage Message Format](#panoimage-message-format) for details about the structure of each element yielded by `stream_images`.
 3. Follow the code patterns provided in [daq_data_client_demo.ipynb](daq_data_client_demo.ipynb) to stream images from the DAQ nodes to your visualization program.
 

@@ -99,7 +99,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                             for image in fresh_images:
                                 yield StreamImagesResponse(pano_image=image)
                             reader_state.last_update_t = now
-                    await asyncio.sleep(0, interval / 2)  # Sleep until the next update interval
+                    await asyncio.sleep(interval)  # Sleep until the next update interval
                     reader_state.dequeue_timeouts = 0  # Reset on success
                 except asyncio.TimeoutError:
                     reader_state.dequeue_timeouts += 1
