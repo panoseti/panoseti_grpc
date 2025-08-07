@@ -1,0 +1,25 @@
+# Use an official Python runtime as a parent image
+FROM python:3.9-slim
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Add the app directory to the PYTHONPATH
+ENV PYTHONPATH="/app"
+
+# Copy requirements first to leverage Docker layer caching
+COPY requirements.txt .
+
+# Install build dependencies, install python packages, and then remove the dependencies in a single layer
+RUN apt-get update && \
+    apt-get install -y gcc build-essential && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install pytest pytest-asyncio && \
+    apt-get purge -y --auto-remove gcc build-essential && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy the rest of the project code
+COPY . .
+
+# Set the command to run the tests
+CMD ["pytest", "-v", "tests/"]

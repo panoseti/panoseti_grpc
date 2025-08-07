@@ -1,0 +1,30 @@
+{
+    "head_node_data_dir": "",
+    "head_node_ip_addr": "localhost",
+    "daq_nodes": [
+        {
+            "ip_addr": "10.0.0.60",
+            "user_name": "",
+            "data_dir": "simulated_data_dir",
+            "module_ids": "0-127"
+        },
+        {
+            "ip_addr": "localhost",
+            "user_name": "",
+            "data_dir": "simulated_data_dir",
+            "module_ids": "128-255"
+        },
+        {
+            "ip_addr": "192.168.3.84",
+            "user_name": "",
+            "data_dir": "simulated_data_dir",
+            "module_ids": "128-255"
+        },
+        {
+            "ip_addr": "unix:///tmp/daq_data.sock",
+            "user_name": "local client",
+            "data_dir": "",
+            "module_ids": ""
+        }
+    ]
+}
