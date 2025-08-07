@@ -29,7 +29,7 @@
 
 
     "simulate_daq_cfg": {
-        "simulation_mode": "uds",
+        "simulation_mode": "rpc",
         "sim_module_ids": [224],
         "movie_type": "img16",
         "ph_type": "ph256",

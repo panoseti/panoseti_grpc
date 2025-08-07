@@ -367,13 +367,8 @@ if __name__ == "__main__":
 The asynchronous client, `AioDaqDataClient`, supports a `stop_event` argument for gracefully terminating long-running streams like `stream_images`. This is needed for applications that need to clean up resources properly on a `SIGINT` (Ctrl+C) or `SIGTERM`.
 
 When a `stop_event` (an `asyncio.Event` object) is passed to the client's constructor, the `stream_images` method will monitor it. If the event is set, the client will immediately stop listening for new data, cancel the underlying gRPC stream, and allow the calling coroutine to exit cleanly.
-Building on the introductory example, here we demonstrate the best practice for using the `AioDaqDataClient` to ensure graceful shutdown and resource cleanup. By handling system signals like Ctrl+C (SIGINT), you can prevent unhandled exceptions and ensure that all network connections and files are closed properly.
-If we don't carefully handle signals, the `asyncio` event loop may terminate our resource clean-up tasks before they have a chance to run, leading to hanging applications.
 
 ### Example: Robust Asynchronous Workflow
-```python
-This example from `cli.py` shows how to set up and use the `stop_event` to handle a keyboard interrupt gracefully.[^8_6]
-
 ```python
 import asyncio
 import signal
@@ -395,26 +390,31 @@ async def main():
 
     # 4. Pass the event to the client constructor
     async with AioDaqDataClient(
-        daq_config_path="path/to/daq_config.json",
-        net_config_path="path/to/net_config.json",
+        daq_config,
+        network_config,
         stop_event=shutdown_event
     ) as client:
         try:
             # The stream will run until Ctrl+C is pressed
-            async for image in client.stream_images(
-                host="localhost",
+            pano_image_stream = await client.stream_images(
+                hosts=[],
                 stream_movie_data=True,
                 stream_pulse_height_data=True,
-                update_interval_seconds=1.0
-            ):
-                print(f"Received image for module {image['module_id']}")
-
+                update_interval_seconds=1.0,
+            )
+            
+            # Iterate over the async generator
+            async for pano_image in pano_image_stream:
+                print(f"Received image for module {pano_image['module_id']}")
+            
         except asyncio.CancelledError:
             print("Stream cancelled.")
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        loop = asyncio.get_event_loop()
+        main_task = loop.create_task(main())
+        await main_task
     except KeyboardInterrupt:
         print("Client stopped.")
 ```
@@ -514,7 +514,7 @@ See [daq_data.proto](protos/daq_data.proto) for the protobuf specification of th
 <table>
   <tr>
     <td style="text-align: center;">
-      <img src="https://github.com/panoseti/panoseti_grpc/raw/main/docs/DaqData_architecture.png" alt="DaqData Architecture" width="500"/><br>
+      <img src="https://github.com/panoseti/panoseti_grpc/raw/main/docs/DaqData_architecture.png" alt="DaqData Architecture" width="750"/><br>
       <em>DaqData Architecture</em>
     </td>
   </tr>
