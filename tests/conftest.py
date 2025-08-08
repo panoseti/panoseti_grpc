@@ -7,6 +7,7 @@ from pathlib import Path
 import os
 import urllib.parse
 import uuid
+from typing import Optional, Tuple
 
 from daq_data.server import serve
 from daq_data.client import AioDaqDataClient, DaqDataClient
@@ -87,11 +88,11 @@ async def sim_server_process(request):
 
 
 
-
 @pytest_asyncio.fixture(scope="function")
-async def default_server_process(rpc_sim_server_config):
+async def default_server_process(uds_sim_server_config):
     """A non-parameterized fixture that runs a standard RPC simulation server."""
-    config = rpc_sim_server_config
+    assert os.name == 'posix', "Only supported on POSIX systems."
+    config = uds_sim_server_config
     # Use a unique socket path for each test invocation to prevent collisions
     uds_path_str = f"unix:///tmp/test_daq_data_{uuid.uuid4().hex}.sock"
     config["unix_domain_socket"] = uds_path_str
@@ -102,16 +103,18 @@ async def default_server_process(rpc_sim_server_config):
 
     try:
         # Wait for the server to be fully ready by pinging it
-        async with AioDaqDataClient({"daq_nodes": [{"ip_addr": uds_path_str}]}, network_config=None) as client:
+        daq_config = {"daq_nodes": [{"ip_addr": uds_path_str}]}
+        async with AioDaqDataClient(daq_config, network_config=None, stop_event=shutdown_event) as client:
             for _ in range(30):  # 3-second timeout
                 if uds_path.exists() and await client.ping(uds_path_str):
                     break
                 await asyncio.sleep(0.1)
             else:
                 pytest.fail("Default server did not become ready in time.", pytrace=False)
-
-        yield uds_path_str
-
+        yield {
+            "ip_addr": uds_path_str,
+            "stop_event": shutdown_event,
+        }
     finally:
         # Graceful shutdown sequence
         shutdown_event.set()
@@ -133,16 +136,22 @@ async def default_server_process(rpc_sim_server_config):
 @pytest_asyncio.fixture
 async def async_client(default_server_process):
     """Provides a connected AioDaqDataClient for API tests."""
-    daq_config = {"daq_nodes": [{"ip_addr": default_server_process}]}
-    async with AioDaqDataClient(daq_config, network_config=None) as client:
+
+    daq_config = {"daq_nodes": [{"ip_addr": default_server_process['ip_addr']}]}
+    async with AioDaqDataClient(
+            daq_config,
+            network_config=None,
+            log_level=logging.DEBUG,
+            stop_event=default_server_process['stop_event']
+    ) as client:
         yield client
 
 
 @pytest.fixture
 def sync_client(default_server_process):
     """Provides a connected DaqDataClient for API tests."""
-    daq_config = {"daq_nodes": [{"ip_addr": default_server_process}]}
-    with DaqDataClient(daq_config, network_config=None) as client:
+    daq_config = {"daq_nodes": [{"ip_addr": default_server_process['ip_addr']}]}
+    with DaqDataClient(daq_config, network_config=None, log_level=logging.DEBUG) as client:
         yield client
 
 

@@ -9,8 +9,15 @@ pytestmark = pytest.mark.asyncio
 
 async def test_async_ping(async_client):
     """Test the Ping RPC with the async client."""
-    host = list(async_client.daq_nodes.keys())[0]
-    assert await async_client.ping(host) is True
+    for host in async_client.get_valid_daq_hosts():
+        assert await async_client.ping(host) is True,  "Ping should work for a running server"
+
+async def test_async_initialization(async_client):
+    """Test the InitHpIo RPC in simulation mode with the async client."""
+    num_valid_hosts = len(async_client.get_valid_daq_hosts())
+    assert num_valid_hosts == 1, f"Exactly one DAQ node is expected. Got {num_valid_hosts=}"
+    success = await async_client.init_sim(hosts=None)
+    assert success is True, "init_sim should succeed"
 
 
 async def test_async_stream_images(async_client):
@@ -32,7 +39,7 @@ async def test_async_stream_images(async_client):
 async def test_async_stream_stops_with_event(default_server_process):
     """Verify that the stream can be gracefully shut down with a stop_event."""
     stop_event = asyncio.Event()
-    daq_config = {"daq_nodes": [{"ip_addr": default_server_process}]}
+    daq_config = {"daq_nodes": [{"ip_addr": default_server_process['ip_addr']}]}
     # The AioDaqDataClient's stop_event must be passed during initialization
     async with AioDaqDataClient(daq_config, network_config=None, stop_event=stop_event) as client:
         assert await client.init_sim(hosts=None)
@@ -53,9 +60,4 @@ async def test_async_stream_stops_with_event(default_server_process):
         await stopper_task
         assert images_received > 0
 
-
-async def test_async_initialization(async_client):
-    """Test the InitHpIo RPC in simulation mode with the async client."""
-    success = await async_client.init_sim(hosts=None)
-    assert success is True, "init_sim should succeed"
 

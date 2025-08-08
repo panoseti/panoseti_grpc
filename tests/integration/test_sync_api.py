@@ -5,12 +5,14 @@ from daq_data.client import DaqDataClient
 
 def test_sync_ping(sync_client):
     """Test the Ping RPC with the sync client."""
-    host = list(sync_client.daq_nodes.keys())[0]
-    assert sync_client.ping(host) is True, "Ping should work for a running server"
+    for host in sync_client.get_valid_daq_hosts():
+        assert sync_client.ping(host) is True, "Ping should work for a running server"
 
 
 def test_sync_initialization(sync_client):
     """Test the InitHpIo RPC in simulation mode with the sync client."""
+    num_valid_hosts = len(sync_client.get_valid_daq_hosts())
+    assert num_valid_hosts == 1, f"Exactly one DAQ node is expected. Got {num_valid_hosts=}"
     success = sync_client.init_sim(hosts=None)
     assert success is True, "init_sim should succeed"
 
