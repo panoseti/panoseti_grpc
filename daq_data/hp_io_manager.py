@@ -50,14 +50,15 @@ from panoseti_util import pff
 class HpIoManager:
     """Orchestrates data acquisition from multiple sources and broadcasts to clients."""
 
-    def __init__(self, server_config: Dict, reader_states: List[ReaderState], stop_io: asyncio.Event, valid: asyncio.Event,
+    def __init__(self, server_config: Dict, reader_states: List[ReaderState], stop_event: asyncio.Event, valid: asyncio.Event,
                  active_data_products_queue: asyncio.Queue, logger: logging.Logger):
         self.server_config = server_config
         self.reader_states = reader_states
-        self.stop_io = stop_io
+        self.stop_event = stop_event
         self.valid = valid
         self.active_data_products_queue = active_data_products_queue
         self.logger = logger
+        self.processing_loop_timeout = 0.75
         
         self.data_queue = asyncio.Queue(maxsize=500)
         self.data_sources = []
@@ -86,17 +87,17 @@ class HpIoManager:
         if uds_cfg.get("enabled"):
             for dp_name in uds_cfg.get("data_products", []):
                 source_cfg = {"dp_name": dp_name, "module_id": 0}  # Module ID is fixed for UDS
-                self.data_sources.append(UdsDataSource(source_cfg, self.logger, self.data_queue, self.stop_io))
+                self.data_sources.append(UdsDataSource(source_cfg, self.logger, self.data_queue, self.stop_event))
 
         # Filesystem Polling Data Source
         poll_cfg = acq_config.get("filesystem_poll", {})
         if poll_cfg.get("enabled"):
-            self.data_sources.append(PollWatcherDataSource(self, poll_cfg, self.logger, self.data_queue, self.stop_io))
+            self.data_sources.append(PollWatcherDataSource(self, poll_cfg, self.logger, self.data_queue, self.stop_event))
         
         # Filesystem Pipe-based Data Source
         pipe_cfg = acq_config.get("filesystem_pipe", {})
         if pipe_cfg.get("enabled"):
-            self.data_sources.append(PipeWatcherDataSource(self, pipe_cfg, self.logger, self.data_queue, self.stop_io))
+            self.data_sources.append(PipeWatcherDataSource(self, pipe_cfg, self.logger, self.data_queue, self.stop_event))
 
     async def run(self):
         """Main entry point: starts data sources and the processing loop."""
@@ -130,9 +131,9 @@ class HpIoManager:
     async def _processing_loop(self):
         """ Assigns a unique frame_id to each incoming image before caching.  """
         self.logger.info("Starting freshness-aware processing loop.")
-        while not self.stop_io.is_set():
+        while not self.stop_event.is_set():
             try:
-                pano_image = await self.data_queue.get()
+                pano_image = await asyncio.wait_for(self.data_queue.get(), timeout=self.processing_loop_timeout)
                 
                 await self._discover_module_from_image(pano_image)
                 
@@ -147,6 +148,8 @@ class HpIoManager:
                 self.data_queue.task_done()
             except asyncio.CancelledError:
                 break
+            except asyncio.TimeoutError:
+                continue
         self.logger.info("Freshness-aware processing loop finished.")
 
     async def _cache_pano_image(self, cached_image: CachedPanoImage):

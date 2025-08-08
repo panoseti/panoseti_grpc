@@ -23,6 +23,8 @@ from panoseti_util import pff
 
 class BaseSimulationStrategy(abc.ABC):
     """Abstract base class for a simulation strategy."""
+    MAX_FILESYSTEM_SIM_FRAMES = 1_000
+
     def __init__(self, common_config: dict, strategy_config: dict, server_config: dict, logger: logging.Logger,
                  stop_event: asyncio.Event):
         self.logger = logger
@@ -33,6 +35,20 @@ class BaseSimulationStrategy(abc.ABC):
         self.sim_created_resources = []
         self.movie_frames: List[bytes] = []
         self.ph_frames: List[bytes] = []
+
+        self.frame_limit = self.strategy_config.get('frame_limit', -1)
+        # Limit filesystem frame writing to preserve disk space
+        if isinstance(self, FilesystemBaseStrategy):
+            if not (0 <= self.frame_limit < self.MAX_FILESYSTEM_SIM_FRAMES):
+                self.logger.warning(f"Overwriting filesystem simulation from "
+                                    f"{self.frame_limit} to {self.MAX_FILESYSTEM_SIM_FRAMES} frames.")
+                self.frame_limit = self.MAX_FILESYSTEM_SIM_FRAMES
+            else:
+                self.logger.info(f"Filesystem simulation will limit to {self.frame_limit} frames.")
+        else:
+            # Don't limit streaming because it only uses constant space
+            if self.frame_limit < 0:
+                self.frame_limit = float('inf')
 
     def _load_source_data(self):
         """Loads all PFF frames from source files into memory."""
@@ -80,9 +96,12 @@ class BaseSimulationStrategy(abc.ABC):
             self.logger.error("Source data not loaded, cannot run simulation loop.")
             return
 
-        fnum = 0
         try:
+            fnum = 0
             while not self.stop_event.is_set():
+                if fnum >= self.frame_limit:
+                    self.logger.warning(f"Frame limit reached ({self.frame_limit}), stopping simulation.")
+                    break
                 movie_frame = self.movie_frames[fnum % len(self.movie_frames)]
                 ph_frame = self.ph_frames[fnum % len(self.ph_frames)]
                 for mid in self.common_config['sim_module_ids']:

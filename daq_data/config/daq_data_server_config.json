@@ -29,11 +29,11 @@
 
 
     "simulate_daq_cfg": {
-        "simulation_mode": "rpc",
+        "simulation_mode": "uds",
         "sim_module_ids": [224],
         "movie_type": "img16",
         "ph_type": "ph256",
-        "update_interval_seconds": 0.01,
+        "update_interval_seconds": 0.1,
 
         "source_data": {
             "real_module_id": 1,
@@ -49,10 +49,12 @@
 
         "strategies": {
             "filesystem_poll": {
-                "frames_per_pff": 1000
+                "frames_per_pff": 1000,
+                "frame_limit": -1
             },
             "filesystem_pipe": {
-                "frames_per_pff": 1000
+                "frames_per_pff": 1000,
+                "frame_limit": -1
             },
             "uds": {
                 "data_products": ["ph256", "img16"]

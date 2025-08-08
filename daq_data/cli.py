@@ -217,7 +217,7 @@ async def run_demo_api(args):
             await do_init_fn(addc, host, hp_io_cfg)
 
         if do_plot:
-            valid_daq_hosts = addc.get_valid_daq_hosts()
+            valid_daq_hosts = await addc.get_valid_daq_hosts()
             if host is not None and host not in valid_daq_hosts:
                 raise ValueError(f"Invalid host: {host}. Valid hosts: {valid_daq_hosts}")
 

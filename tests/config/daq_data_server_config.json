@@ -49,10 +49,12 @@
 
         "strategies": {
             "filesystem_poll": {
-                "frames_per_pff": 1000
+                "frames_per_pff": 1000,
+                "frame_limit": 10
             },
             "filesystem_pipe": {
-                "frames_per_pff": 1000
+                "frames_per_pff": 1000,
+                "frame_limit": 10
             },
             "uds": {
                 "data_products": ["ph256", "img16"]

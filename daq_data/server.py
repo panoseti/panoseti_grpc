@@ -243,20 +243,27 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             return Empty()
 
 
-async def serve(server_cfg):
+async def serve(server_cfg, shutdown_event=None, in_main_thread: bool = True):
     """Create and run the gRPC server."""
     logger = logging.getLogger("daq_data.server")
-    shutdown_event = asyncio.Event()
 
     # Define a signal handler to set the shutdown event
     def _signal_handler(*_):
         logger.info("Shutdown signal received, initiating graceful shutdown.")
         shutdown_event.set()
 
-    # Attach the signal handler to the running event loop
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, _signal_handler)
+    # Attach signal handlers only if running in the main thread
+    if in_main_thread:
+        shutdown_event = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, _signal_handler)
+            except RuntimeError as e:
+                logger.warning(f"Could not set signal handler for {sig}: {e}. "
+                               f"This is expected if not in the main thread.")
+    else:
+        assert shutdown_event is not None, "shutdown_event must be provided if not running in the main thread."
 
     server = grpc.aio.server()
     servicer = DaqDataServicer(server_cfg)

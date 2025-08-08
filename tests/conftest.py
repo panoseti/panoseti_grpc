@@ -46,6 +46,24 @@ def uds_sim_server_config(server_config_base):
     cfg['simulate_daq_cfg']['strategies'] = {"uds": {"data_products": dps}}
     return cfg
 
+@pytest.fixture(scope="session")
+def filesystem_pipe_sim_server_config(server_config_base):
+    cfg = server_config_base.copy()
+    cfg['simulate_daq_cfg']['simulation_mode'] = 'filesystem_pipe'
+    dps = ["img16", "ph256"]
+    cfg['acquisition_methods'] = {"filesystem_pipe": {"enabled": True}}
+    cfg['simulate_daq_cfg']['strategies'] = {"filesystem_pipe": {"frames_per_pff": 1000}}
+    return cfg
+
+@pytest.fixture(scope="session")
+def filesystem_poll_sim_server_config(server_config_base):
+    cfg = server_config_base.copy()
+    cfg['simulate_daq_cfg']['simulation_mode'] = 'filesystem_poll'
+    dps = ["img16", "ph256"]
+    cfg['acquisition_methods'] = {"filesystem_poll": {"enabled": True}}
+    cfg['simulate_daq_cfg']['strategies'] = {"filesystem_poll": {"frames_per_pff": 1000}}
+    return cfg
+
 
 @pytest_asyncio.fixture(scope="session")
 async def sim_server_process(request):

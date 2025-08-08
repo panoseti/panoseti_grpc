@@ -6,7 +6,13 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.mark.parametrize(
     'sim_server_process',
-    ['rpc_sim_server_config', 'uds_sim_server_config'],
+    # ['uds_sim_server_config'],
+    [
+        'rpc_sim_server_config',
+        'uds_sim_server_config',
+        'filesystem_pipe_sim_server_config',
+        'filesystem_poll_sim_server_config'
+    ],
     indirect=True
 )
 async def test_simulation_modes(sim_server_process):

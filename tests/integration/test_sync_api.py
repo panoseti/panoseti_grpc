@@ -13,12 +13,13 @@ def test_sync_initialization(sync_client):
     """Test the InitHpIo RPC in simulation mode with the sync client."""
     num_valid_hosts = len(sync_client.get_valid_daq_hosts())
     assert num_valid_hosts == 1, f"Exactly one DAQ node is expected. Got {num_valid_hosts=}"
-    success = sync_client.init_sim(hosts=None)
-    assert success is True, "init_sim should succeed"
+    assert sync_client.init_sim(hosts=None) is True, "init_sim should succeed"
 
 
 def test_sync_stream_images(sync_client):
     """Test the full synchronous data streaming workflow."""
+    num_valid_hosts = len(sync_client.get_valid_daq_hosts())
+    assert num_valid_hosts == 1, f"Exactly one DAQ node is expected. Got {num_valid_hosts=}"
     # 1. Initialize for simulation.
     assert sync_client.init_sim(hosts=None) is True
 

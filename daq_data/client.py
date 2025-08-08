@@ -146,7 +146,7 @@ class DaqDataClient:
             DaqDataClient: The instance of the client.
         """
         for daq_host, daq_node in self.daq_nodes.items():
-            if daq_host.endswith('.sock'):
+            if daq_host.startswith('unix:'):
                 grpc_connection_target = f"{daq_host}"
             else:
                 grpc_connection_target = f"{daq_host}:{self.GRPC_PORT}"
@@ -181,14 +181,16 @@ class DaqDataClient:
             return False # Re-raise the exception
         return True # Suppress expected exceptions
 
-    def get_valid_daq_hosts(self) -> Set[str]:
+    def get_valid_daq_hosts(self) -> List[str]:
         """
         Returns a set of valid DAQ hosts that responded successfully to a ping.
 
         Returns:
             Set[str]: A set of IP addresses or hostnames of responsive DAQ nodes.
         """
-        return self.valid_daq_hosts
+        for host in self.daq_nodes:
+            self.is_daq_host_valid(host)
+        return list(self.valid_daq_hosts)
 
     def get_daq_host_status(self) -> Dict[str, bool]:
         valid_status = {}
@@ -436,6 +438,7 @@ class DaqDataClient:
             bool: True if the host responds successfully within the timeout, False otherwise.
         """
         if host not in self.daq_nodes:
+            self.logger.debug(f"host={host} not found in daq_nodes. Valid hosts: {self.daq_nodes.keys()}")
             return False
         stub = self.daq_nodes[host]['stub']
         try:
@@ -576,7 +579,7 @@ class AioDaqDataClient:
     async def __aenter__(self):
         """Establishes async gRPC channels to all configured DAQ nodes."""
         for daq_host, daq_node in self.daq_nodes.items():
-            if daq_host.endswith('.sock'):
+            if daq_host.startswith('unix:'):
                 grpc_connection_target = f"{daq_host}"
             else:
                 grpc_connection_target = f"{daq_host}:{self.GRPC_PORT}"
@@ -618,14 +621,16 @@ class AioDaqDataClient:
             return False # Re-raise the exception
         return True # Suppress expected exceptions
 
-    def get_valid_daq_hosts(self) -> Set[str]:
+    async def get_valid_daq_hosts(self) -> List[str]:
         """
         Returns a set of valid DAQ hosts that responded successfully to a ping.
 
         Returns:
             Set[str]: A set of IP addresses or hostnames of responsive DAQ nodes.
         """
-        return self.valid_daq_hosts
+        for host in self.daq_nodes:
+            await self.is_daq_host_valid(host)
+        return list(self.valid_daq_hosts)
 
     async def get_daq_host_status(self) -> Dict[str, bool]:
         valid_status = {}
@@ -676,14 +681,14 @@ class AioDaqDataClient:
         elif isinstance(hosts, set) and len(hosts) > 0:
             host_set = set(hosts)
         elif hosts is None or len(hosts) == 0:
-            host_set = self.get_valid_daq_hosts()
+            host_set = await self.get_valid_daq_hosts()
         else:
             raise ValueError(f"hosts={repr(hosts)} must be a non-empty str, list of str, or None, got {type(hosts)}")
         for host in host_set:
             if not await self.is_daq_host_valid(host):
                 raise ConnectionError(
                     f"host={repr(host)} does not have a valid gRPC server channel. Valid daq_hosts: {self.valid_daq_hosts}")
-        valid_hosts = self.get_valid_daq_hosts()
+        valid_hosts = await self.get_valid_daq_hosts()
         if len(valid_hosts) == 0:
             raise ConnectionError("No valid daq hosts found")
         return list(host_set)
@@ -776,7 +781,6 @@ class AioDaqDataClient:
         self.logger.debug(f"stream_images_request={MessageToDict(stream_images_request, True, True)}")
 
         async def response_generator():
-            # Create a queue to merge results from all streams
             queue = asyncio.Queue()
 
             async def _forward_stream(stream):
@@ -784,31 +788,35 @@ class AioDaqDataClient:
                     async for response in stream:
                         await queue.put(response)
                 except grpc.aio.AioRpcError as e:
-                    self.logger.warning(f"Stream terminated with error: {e}")
+                    self.logger.warning(f"Stream terminated with error: {e.details()}")
+                    # FIX: Propagate the exception through the queue
+                    await queue.put(e)
                 finally:
-                    await queue.put(None)  # Sentinel to indicate stream closure
+                    await queue.put(None)  # Sentinel for stream closure
 
             tasks = [asyncio.create_task(_forward_stream(s)) for s in streams]
+
             try:
-                # Start a task for each stream to forward its data to the queue
                 finished_streams = 0
                 while finished_streams < len(streams) and not (self._stop_event and self._stop_event.is_set()):
                     try:
-                        response = await asyncio.wait_for(queue.get(), 1.0)
+                        item = await asyncio.wait_for(queue.get(), 1.0)
                     except asyncio.TimeoutError:
                         continue
-                    if response is None:
+
+                    if item is None:
                         finished_streams += 1
                         continue
 
+                    # FIX: Check for and re-raise the exception
+                    if isinstance(item, Exception):
+                        raise item
+
                     if parse_pano_images:
-                        yield parse_pano_image(response.pano_image)
+                        yield parse_pano_image(item.pano_image)
                     else:
-                        yield response
+                        yield item
             finally:
-                if self._stop_event and self._stop_event.is_set():
-                    self.logger.debug("Stopping stream_images due to stop event.")
-                # Clean up tasks
                 for task in tasks:
                     task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
@@ -859,11 +867,11 @@ class AioDaqDataClient:
             daq_node = self.daq_nodes[host]
             stub = daq_node['stub']
             init_hp_io_request = InitHpIoRequest(
-                data_dir=daq_node['config']['data_dir'],
+                data_dir=hp_io_cfg.get('data_dir', ''),
                 update_interval_seconds=hp_io_cfg['update_interval_seconds'],
                 simulate_daq=hp_io_cfg['simulate_daq'],
-                force=hp_io_cfg['force'],
-                module_ids=hp_io_cfg['module_ids'],
+                force=hp_io_cfg.get('force', False),
+                module_ids=hp_io_cfg.get('module_ids', []),
             )
 
             self.logger.info(f"Initializing hp_io on {host}...")
@@ -882,6 +890,7 @@ class AioDaqDataClient:
     async def ping(self, host: str, timeout=0.3) -> bool:
         """Pings a DAQ host asynchronously to check if its server is responsive."""
         if host not in self.daq_nodes:
+            self.logger.debug(f"host={host} not found in daq_nodes. Valid hosts: {self.daq_nodes.keys()}")
             return False
         stub = self.daq_nodes[host]['stub']
         try:
