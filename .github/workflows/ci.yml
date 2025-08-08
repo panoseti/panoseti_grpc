@@ -10,16 +10,16 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checks-out your repository
+      # Checks-out your repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # 2. Set up Docker Buildx
-      # This enables advanced features like multi-platform builds and cache management.
+      # Set up Docker Buildx
+      # enables advanced features like multi-platform builds and cache management.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 3. Build the Docker image with cache enabled
+      #Build the Docker image with cache enabled
       # This step builds the image and pushes the cache to the GitHub Actions cache.
       # The 'load: true' flag makes the image available to subsequent steps in the same job.
       - name: Build and cache Docker image
@@ -32,7 +32,7 @@ jobs:
           cache-from: type=gha # Pulls cache from GitHub Actions cache
           cache-to: type=gha,mode=max # Pushes cache to GitHub Actions cache
 
-      # 4. Run tests inside the now-cached Docker container
+      # Run tests inside the now-cached Docker container
       - name: Run Pytest in container
         run: docker run --rm panoseti-grpc-test:latest
 
