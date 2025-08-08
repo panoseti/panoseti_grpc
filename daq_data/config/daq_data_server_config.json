@@ -23,7 +23,8 @@
         },
         "uds": {
             "enabled": true,
-            "data_products": ["ph256", "img16"]
+            "data_products": ["ph256", "img16"],
+            "socket_path_template": "/tmp/hashpipe_grpc.module_{module_id}.dp_{dp_name}.sock"
         }
     },
 

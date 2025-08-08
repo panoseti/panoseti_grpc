@@ -364,7 +364,7 @@ class DaqDataClient:
                         yield stream_images_response
         return response_generator()
 
-    def init_sim(self, hosts: Optional[Union[List[str], str]], hp_io_sim_cfg_path=hp_io_config_simulate_path, timeout=10.0) -> bool:
+    def init_sim(self, hosts: Optional[Union[List[str], str]], hp_io_cfg: Optional[Dict] = None, timeout=10.0) -> bool:
         """
         A convenience method for initializing a simulated run using a JSON config file.
 
@@ -374,17 +374,21 @@ class DaqDataClient:
 
         Args:
             hosts (Union[List[str], str]): The hostname or IP address of the DAQ node.
-            hp_io_sim_cfg_path (str, optional): The path to the simulation config file.
-                Defaults to the path defined in `hp_io_config_simulate_path`.
+            hp_io_cfg (Dict, optional): The simulation config. Defaults to None.
             timeout (float, optional): The timeout in seconds for the RPC call. Defaults to 10.0.
 
         Returns:
             bool: True if the simulated initialization succeeded.
         """
-        with open(hp_io_sim_cfg_path, 'r') as f:
-            hp_io_config = json.load(f)
-            assert hp_io_config['simulate_daq'] is True, f"{hp_io_sim_cfg_path} used init_sim must have simulate_daq=True"
-        return self.init_hp_io(hosts, hp_io_config, timeout=timeout)
+        if hp_io_cfg is None:
+            with open(hp_io_config_simulate_path, 'rb') as f:
+                config_to_send = json.load(f)
+            config_to_send['simulate_daq'] = True
+        else:
+            config_to_send = hp_io_cfg
+        assert config_to_send['simulate_daq'] is True, f"{hp_io_cfg} for init_sim must have simulate_daq=True"
+        return self.init_hp_io(hosts, config_to_send, timeout)
+
 
     def init_hp_io(self, hosts: Optional[Union[List[str], str]], hp_io_cfg: dict, timeout=10.0) -> bool:
         """Initializes or reconfigures the HpIoManager task on the server.
@@ -822,7 +826,7 @@ class AioDaqDataClient:
                 await asyncio.gather(*tasks, return_exceptions=True)
         return response_generator()
 
-    async def init_sim(self, hosts: Union[List[str], str], hp_io_sim_cfg_path=hp_io_config_simulate_path,
+    async def init_sim(self, hosts: Union[List[str], str], hp_io_cfg: Optional[Dict]=None,
                        timeout=5.0) -> bool:
         """
         Asynchronously initializes a simulated run using a JSON config file.
@@ -833,17 +837,22 @@ class AioDaqDataClient:
 
         Args:
             hosts (Union[List[str], str]): The hostname or IP address of the DAQ node.
-            hp_io_sim_cfg_path (str, optional): The path to the simulation config file.
-                Defaults to the path defined in `hp_io_config_simulate_path`.
+            hp_io_cfg (dict, optional): The simulation config. Defaults to None.
             timeout (float, optional): The timeout in seconds for the RPC call. Defaults to 5.0.
 
         Returns:
             bool: True if the simulated initialization succeeded.
         """
-        with open(hp_io_sim_cfg_path, 'r') as f:
-            hp_io_config = json.load(f)
-        assert hp_io_config['simulate_daq'] is True, f"{hp_io_sim_cfg_path} for init_sim must have simulate_daq=True"
-        return await self.init_hp_io(hosts, hp_io_config, timeout=timeout)
+        # If no config is provided, create a minimal one to trigger simulation mode
+        # on the server, which will then use its own default settings.
+        if hp_io_cfg is None:
+            with open(hp_io_config_simulate_path, 'rb') as f:
+                config_to_send = json.load(f)
+            config_to_send['simulate_daq'] = True
+        else:
+            config_to_send = hp_io_cfg
+        assert config_to_send['simulate_daq'] is True, f"{hp_io_cfg} for init_sim must have simulate_daq=True"
+        return await self.init_hp_io(hosts, config_to_send, timeout)
 
 
     async def init_hp_io(self, hosts: Union[List[str], str], hp_io_cfg: dict, timeout=10.0) -> bool:

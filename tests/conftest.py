@@ -154,6 +154,77 @@ async def default_server_process(uds_sim_server_config):
                 pass
 
 
+@pytest_asyncio.fixture(scope="function")
+async def n_sim_servers_fixture_factory(server_config_base):
+    """
+    A pytest fixture factory that starts N simulation server instances.
+    Each server runs in its own task with a unique UDS path.
+    This factory yields a list of dictionaries, each containing the server's
+    details ('ip_addr', 'task', 'stop_event', 'module_id').
+    """
+    all_server_details = []
+
+    async def _factory(num_servers: int, uds_paths: Optional[list[str]] = None):
+        if uds_paths and len(uds_paths) != num_servers:
+            raise ValueError("The number of provided UDS paths must match num_servers.")
+
+        for i in range(num_servers):
+            config = copy.deepcopy(server_config_base)
+
+            # Assign a unique UDS path and module ID for each server
+            uds_path_str = uds_paths[i] if uds_paths else f"unix:///tmp/test_daq_data_{uuid.uuid4().hex}.sock"
+            module_id = 200 + i  # Unique module ID for each server instance
+
+            config["unix_domain_socket"] = uds_path_str
+            config['simulate_daq_cfg']['sim_module_ids'] = [module_id]
+            config['simulate_daq_cfg']['simulation_mode'] = 'uds'
+            config['acquisition_methods']['uds']['enabled'] = True
+
+            uds_path = Path(urllib.parse.urlparse(uds_path_str).path)
+            if uds_path.exists():
+                uds_path.unlink()  # Clean up previous runs
+
+            shutdown_event = asyncio.Event()
+            server_task = asyncio.create_task(serve(config, shutdown_event, in_main_thread=False))
+
+            # Wait for the server to be ready
+            async with AioDaqDataClient({"daq_nodes": [{"ip_addr": uds_path_str}]}, network_config=None) as client:
+                for _ in range(30):  # 3-second timeout
+                    if uds_path.exists() and await client.ping(uds_path_str):
+                        break
+                    await asyncio.sleep(0.1)
+                else:
+                    pytest.fail(f"Server {i} did not become ready in time.", pytrace=False)
+
+            server_details = {
+                "ip_addr": uds_path_str,
+                "task": server_task,
+                "stop_event": shutdown_event,
+                "path": uds_path,
+                "module_id": module_id,
+            }
+            all_server_details.append(server_details)
+
+        return all_server_details
+
+    yield _factory
+
+    # --- Cleanup ---
+    for details in all_server_details:
+        details['stop_event'].set()
+        try:
+            await asyncio.wait_for(details['task'], timeout=5.0)
+        except asyncio.TimeoutError:
+            details['task'].cancel()
+            await asyncio.gather(details['task'], return_exceptions=True)
+        finally:
+            if details['path'].exists():
+                try:
+                    os.unlink(details['path'])
+                except OSError:
+                    pass
+
+
 @pytest_asyncio.fixture
 async def async_client(default_server_process):
     """Provides a connected AioDaqDataClient for API tests."""

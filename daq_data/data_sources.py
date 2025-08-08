@@ -114,6 +114,96 @@ class UdsDataSource(BaseDataSource):
             await writer.wait_closed()
 
 
+# class UdsDataSource(BaseDataSource):
+#     """Acquires data from a Unix Domain Socket."""
+#
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         self.dp_name = self.config['dp_name']
+#         self.module_id = self.config['module_id']
+#
+#         # Construct the unique socket path from the template
+#         socket_path_template = self.config.get('socket_path_template')
+#         if not socket_path_template:
+#             raise ValueError("UdsDataSource requires a 'socket_path_template' in its configuration.")
+#
+#         self.socket_path = socket_path_template.format(
+#             module_id=self.module_id,
+#             dp_name=self.dp_name
+#         )
+#
+#         self.dp_config = get_dp_config([self.dp_name])[self.dp_name]
+#         self.server: Optional[asyncio.AbstractServer] = None
+#
+#     async def run(self):
+#         self.logger.info(f"Starting UDS receiver for module {self.module_id} on {self.socket_path}")
+#         if os.path.exists(self.socket_path):
+#             os.unlink(self.socket_path)
+#         try:
+#             self.server = await asyncio.start_unix_server(self._handle_client, path=self.socket_path)
+#             await self.stop_event.wait()
+#         except Exception as e:
+#             self.logger.error(f"UDS receiver for {self.socket_path} failed: {e}", exc_info=True)
+#         finally:
+#             if self.server:
+#                 self.server.close()
+#                 await self.server.wait_closed()
+#             if os.path.exists(self.socket_path):
+#                 try:
+#                     os.unlink(self.socket_path)
+#                 except OSError as e:
+#                     self.logger.warning(f"Could not unlink UDS socket {self.socket_path}: {e}")
+#             self.logger.info(f"UDS receiver for {self.socket_path} has stopped.")
+#
+#     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+#         """This logic is reverted to handle raw PFF frames."""
+#         self.logger.info(f"New connection on {self.dp_name} socket for module {self.module_id}.")
+#         frame_count = 0
+#         try:
+#             while not self.stop_event.is_set():
+#                 # Read the JSON header to determine its size
+#                 header_buf = BytesIO()
+#                 while True:
+#                     char = await reader.read(1)
+#                     if not char: raise asyncio.IncompleteReadError(b"Socket closed while reading header", None)
+#                     header_buf.write(char)
+#                     # A double newline signifies the end of the JSON header
+#                     if header_buf.getvalue().endswith(b'\n\n'):
+#                         break
+#                 header_buf.seek(0)
+#                 header_str = header_buf.read().decode().strip()
+#                 header = loads(header_str)
+#
+#                 # Read the image data
+#                 img_data_buf = await reader.readexactly(self.dp_config.bytes_per_image + 1)
+#                 if img_data_buf[0:1] != b'*':
+#                     self.logger.warning(f"Invalid image start character on {self.dp_name} stream.")
+#                     continue
+#
+#                 img_array = pff.read_image(BytesIO(img_data_buf), self.dp_config.image_shape[0],
+#                                            self.dp_config.bytes_per_pixel)
+#
+#                 pano_image = PanoImage(
+#                     type=self.dp_config.pano_image_type,
+#                     header=ParseDict(header, Struct()),
+#                     image_array=img_array,
+#                     shape=self.dp_config.image_shape,
+#                     bytes_per_pixel=self.dp_config.bytes_per_pixel,
+#                     file=f"uds_{self.dp_name}",
+#                     frame_number=frame_count,
+#                     module_id=self.module_id,
+#                 )
+#                 await self.data_queue.put(pano_image)
+#                 frame_count += 1
+#         except (asyncio.IncompleteReadError, ConnectionResetError):
+#             self.logger.info(f"Client disconnected from {self.socket_path}.")
+#         except asyncio.CancelledError:
+#             self.logger.info(f"Client handler for {self.socket_path} was cancelled.")
+#         finally:
+#             writer.close()
+#             await writer.wait_closed(
+
+
 class FilesystemDataSource(BaseDataSource):
     """Base class for filesystem-based data sources. Needs access to manager state."""
 

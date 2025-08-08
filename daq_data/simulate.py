@@ -283,6 +283,83 @@ class UdsStrategy(BaseSimulationStrategy):
                 writer.close()
                 await writer.wait_closed()
 
+# class UdsStrategy(BaseSimulationStrategy):
+#     """Simulates DAQ by writing PFF frames to Unix Domain Sockets."""
+#
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         # Nested dict: {module_id: {dp_name: writer}}
+#         self._writers: Dict[int, Dict[str, asyncio.StreamWriter]] = {}
+#
+#     async def setup(self, num_retries=5, retry_delay=0.5) -> bool:
+#         self.logger.info("Connecting to UDS sockets for simulation.")
+#         uds_cfg = self.server_config.get("acquisition_methods", {}).get("uds", {})
+#         socket_template = uds_cfg.get("socket_path_template")
+#         if not socket_template:
+#             self.logger.error("UDS simulation strategy requires 'socket_path_template'.")
+#             return False
+#
+#         module_ids = self.common_config.get('sim_module_ids', [])
+#         data_products = self.strategy_config.get('data_products', [])
+#
+#         for i in range(num_retries):
+#             all_connected = True
+#             for mid in module_ids:
+#                 if mid not in self._writers:
+#                     self._writers[mid] = {}
+#                 for dp_name in data_products:
+#                     if dp_name in self._writers.get(mid, {}):
+#                         continue  # Already connected
+#
+#                     socket_path = socket_template.format(module_id=mid, dp_name=dp_name)
+#                     try:
+#                         _, writer = await asyncio.open_unix_connection(socket_path)
+#                         self._writers[mid][dp_name] = writer
+#                         self.logger.info(f"UDS sim: Connected to {socket_path}")
+#                     except (ConnectionRefusedError, FileNotFoundError):
+#                         self.logger.warning(
+#                             f"UDS sim (attempt {i + 1}/{num_retries}): Could not connect to {socket_path}.")
+#                         all_connected = False
+#                         break
+#                     except Exception as e:
+#                         self.logger.error(f"UDS sim: Unexpected error connecting to {socket_path}: {e}")
+#                         return False
+#                 if not all_connected:
+#                     break
+#
+#             if all_connected:
+#                 self.logger.info("UDS simulation successfully connected to all target sockets.")
+#                 return True
+#
+#             await asyncio.sleep(retry_delay)
+#
+#         self.logger.error("UDS sim failed to connect to all sockets after multiple retries.")
+#         return False
+#
+#     async def send_frame(self, frame_data: bytes, data_product_type: str, module_id: int, frame_num: int):
+#         """Sends a raw PFF frame to the correct socket based on module_id and dp_name."""
+#         if module_id in self._writers and data_product_type in self._writers[module_id]:
+#             writer = self._writers[module_id][data_product_type]
+#             try:
+#                 if writer.is_closing():
+#                     self.logger.warning(f"UDS writer for {data_product_type} (module {module_id}) is closed.")
+#                     self.stop_event.set()
+#                     return
+#
+#                 writer.write(frame_data)
+#                 await writer.drain()
+#
+#             except (BrokenPipeError, ConnectionResetError) as e:
+#                 self.logger.warning(f"UDS sim connection lost for {data_product_type} (module {module_id}): {e}.")
+#                 self.stop_event.set()
+#
+#     async def cleanup(self):
+#         self.logger.info("Closing all UDS simulation connections...")
+#         for mid_writers in self._writers.values():
+#             for writer in mid_writers.values():
+#                 if writer and not writer.is_closing():
+#                     writer.close()
+#                     await writer.wait_closed()
 
 class RpcStrategy(BaseSimulationStrategy):
     """Simulates DAQ by sending data via the UploadImages RPC."""

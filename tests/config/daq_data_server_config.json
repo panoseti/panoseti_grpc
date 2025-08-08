@@ -4,7 +4,7 @@
     "unix_domain_socket": "unix:///tmp/daq_data.sock",
     "max_concurrent_rpcs": 100,
     "max_read_queue_size": 50,
-    "min_hp_io_update_interval_seconds": 0.1,
+    "min_hp_io_update_interval_seconds": 0.001,
     "max_client_update_interval_seconds": 60,
     "max_reader_enqueue_timeouts": 2,
     "max_reader_dequeue_timeouts": 3,
@@ -23,7 +23,8 @@
         },
         "uds": {
             "enabled": true,
-            "data_products": ["ph256", "img16"]
+            "data_products": ["ph256", "img16"],
+            "socket_path_template": "/tmp/hashpipe_grpc.module_{module_id}.dp_{dp_name}.sock"
         }
     },
 
