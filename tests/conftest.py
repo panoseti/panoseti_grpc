@@ -7,6 +7,7 @@ from pathlib import Path
 import os
 import urllib.parse
 import uuid
+import copy
 from typing import Optional, Tuple
 
 from daq_data.server import serve
@@ -30,7 +31,7 @@ def server_config_base():
 #Fixtures for Simulation Tests (Parameterized)
 @pytest.fixture(scope="session")
 def rpc_sim_server_config(server_config_base):
-    cfg = server_config_base.copy()
+    cfg = copy.deepcopy(server_config_base)
     cfg['simulate_daq_cfg']['simulation_mode'] = 'rpc'
     cfg['acquisition_methods'] = {"rpc": {"enabled": True}}
     cfg['simulate_daq_cfg']['strategies'] = {"rpc": {}}
@@ -39,7 +40,7 @@ def rpc_sim_server_config(server_config_base):
 
 @pytest.fixture(scope="session")
 def uds_sim_server_config(server_config_base):
-    cfg = server_config_base.copy()
+    cfg = copy.deepcopy(server_config_base)
     cfg['simulate_daq_cfg']['simulation_mode'] = 'uds'
     dps = ["img16", "ph256"]
     cfg['acquisition_methods'] = {"uds": {"enabled": True, "data_products": dps}}
@@ -48,7 +49,7 @@ def uds_sim_server_config(server_config_base):
 
 @pytest.fixture(scope="session")
 def filesystem_pipe_sim_server_config(server_config_base):
-    cfg = server_config_base.copy()
+    cfg = copy.deepcopy(server_config_base)
     cfg['simulate_daq_cfg']['simulation_mode'] = 'filesystem_pipe'
     dps = ["img16", "ph256"]
     cfg['acquisition_methods'] = {"filesystem_pipe": {"enabled": True}}
@@ -57,7 +58,7 @@ def filesystem_pipe_sim_server_config(server_config_base):
 
 @pytest.fixture(scope="session")
 def filesystem_poll_sim_server_config(server_config_base):
-    cfg = server_config_base.copy()
+    cfg = copy.deepcopy(server_config_base)
     cfg['simulate_daq_cfg']['simulation_mode'] = 'filesystem_poll'
     dps = ["img16", "ph256"]
     cfg['acquisition_methods'] = {"filesystem_poll": {"enabled": True}}
