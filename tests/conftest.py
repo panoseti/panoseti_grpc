@@ -1,76 +1,156 @@
 import pytest
+import pytest_asyncio
 import asyncio
 import json
 import logging
 from pathlib import Path
-import threading
+import os
+import urllib.parse
+import uuid
 
 from daq_data.server import serve
-from daq_data.client import AioDaqDataClient
+from daq_data.client import AioDaqDataClient, DaqDataClient
+from daq_data.daq_data_pb2 import PanoImage
+from google.protobuf.struct_pb2 import Struct
+from google.protobuf.json_format import ParseDict
 
 TEST_CFG_DIR = Path("tests/config")
+TEST_CFG_DIR.mkdir(exist_ok=True)
 
 
 @pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+def server_config_base():
+    """Provides a base server configuration dictionary."""
+    with open(TEST_CFG_DIR / "daq_data_server_config.json", "r") as f:
+        cfg = json.load(f)
+    return cfg
+
+
+#Fixtures for Simulation Tests (Parameterized)
+@pytest.fixture(scope="session")
+def rpc_sim_server_config(server_config_base):
+    cfg = server_config_base.copy()
+    cfg['simulate_daq_cfg']['simulation_mode'] = 'rpc'
+    cfg['acquisition_methods'] = {"rpc": {"enabled": True}}
+    cfg['simulate_daq_cfg']['strategies'] = {"rpc": {}}
+    return cfg
 
 
 @pytest.fixture(scope="session")
-def server_config():
-    """Load the server configuration for testing."""
-    config_path = TEST_CFG_DIR / "daq_data_server_config.json"
-    with open(config_path, "r") as f:
-        config = json.load(f)
-    # Use a unique socket for testing to avoid conflicts
-    config["unix_domain_socket"] = "unix:///tmp/test_daq_data.sock"
-    return config
+def uds_sim_server_config(server_config_base):
+    cfg = server_config_base.copy()
+    cfg['simulate_daq_cfg']['simulation_mode'] = 'uds'
+    dps = ["img16", "ph256"]
+    cfg['acquisition_methods'] = {"uds": {"enabled": True, "data_products": dps}}
+    cfg['simulate_daq_cfg']['strategies'] = {"uds": {"data_products": dps}}
+    return cfg
 
 
-@pytest.fixture(scope="session")
-async def server_and_client(server_config):
-    """
-    Starts the gRPC server in a background thread and yields an async client.
-    This fixture has a session scope, so the server runs once for all tests.
-    """
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger(__name__)
-
-    # Event to signal when the server is ready to accept connections
-    server_ready_event = asyncio.Event()
-    # Event to signal the server to shut down
+@pytest_asyncio.fixture(scope="session")
+async def sim_server_process(request):
+    """Parameterized fixture to start a server with a specific simulation config."""
+    config = request.getfixturevalue(request.param)
+    uds_path_str = config["unix_domain_socket"]
+    uds_path = Path(urllib.parse.urlparse(uds_path_str).path)
     shutdown_event = asyncio.Event()
 
-    async def run_server_with_event():
-        # This is a modified serve function that signals when it's ready
-        server_task = asyncio.create_task(serve(server_config, shutdown_event))
-        await asyncio.sleep(1)  # Give it a moment to start
-        server_ready_event.set()
-        await server_task
+    server_task = asyncio.create_task(serve(config, shutdown_event, in_main_thread=False))
 
-    server_thread = threading.Thread(
-        target=lambda: asyncio.run(run_server_with_event()),
-        daemon=True
-    )
-    server_thread.start()
+    # Wait for the server to be fully ready by pinging it
+    async with AioDaqDataClient({"daq_nodes": [{"ip_addr": uds_path_str}]}, network_config=None) as client:
+        for _ in range(30):
+            if uds_path.exists() and await client.ping(uds_path_str):
+                break
+            await asyncio.sleep(0.1)
+        else:
+            pytest.fail("Parameterized server did not become ready in time.", pytrace=False)
 
-    # Wait for the server to be ready
-    await server_ready_event.wait()
-    logger.info("Test server is running in background thread.")
+    yield uds_path_str
 
-    # Setup the client
-    daq_config = {"daq_nodes": [{"ip_addr": server_config["unix_domain_socket"]}]}
-    client = AioDaqDataClient(daq_config, network_config=None)
-
-    async with client as active_client:
-        yield active_client  # Provide the client to the tests
-
-    # Teardown: stop the server
-    logger.info("Tests finished, shutting down server.")
+    # Graceful shutdown sequence
     shutdown_event.set()
-    server_thread.join(timeout=5)
-    logger.info("Test server shut down.")
+    try:
+        # Wait for the server task to finish, which it should upon the event being set.
+        # This allows the 'serve' function to complete its cleanup.
+        await asyncio.wait_for(server_task, timeout=5.0)
+    except asyncio.TimeoutError:
+        # If the server hangs, then cancel the task as a fallback.
+        server_task.cancel()
+        await asyncio.gather(server_task, return_exceptions=True)
+    finally:
+        # Ensure the Unix Domain Socket file is always removed.
+        if uds_path.exists():
+            try:
+                os.unlink(uds_path)
+            except OSError:
+                pass
 
+
+
+
+@pytest_asyncio.fixture(scope="function")
+async def default_server_process(rpc_sim_server_config):
+    """A non-parameterized fixture that runs a standard RPC simulation server."""
+    config = rpc_sim_server_config
+    # Use a unique socket path for each test invocation to prevent collisions
+    uds_path_str = f"unix:///tmp/test_daq_data_{uuid.uuid4().hex}.sock"
+    config["unix_domain_socket"] = uds_path_str
+    uds_path = Path(urllib.parse.urlparse(uds_path_str).path)
+
+    shutdown_event = asyncio.Event()
+    server_task = asyncio.create_task(serve(config, shutdown_event, in_main_thread=False))
+
+    try:
+        # Wait for the server to be fully ready by pinging it
+        async with AioDaqDataClient({"daq_nodes": [{"ip_addr": uds_path_str}]}, network_config=None) as client:
+            for _ in range(30):  # 3-second timeout
+                if uds_path.exists() and await client.ping(uds_path_str):
+                    break
+                await asyncio.sleep(0.1)
+            else:
+                pytest.fail("Default server did not become ready in time.", pytrace=False)
+
+        yield uds_path_str
+
+    finally:
+        # Graceful shutdown sequence
+        shutdown_event.set()
+        try:
+            # Wait for the server task to finish, which it should upon the event being set
+            await asyncio.wait_for(server_task, timeout=5.0)
+        except asyncio.TimeoutError:
+            server_task.cancel()
+            await asyncio.gather(server_task, return_exceptions=True)
+
+        # Ensure the socket file is removed
+        if uds_path.exists():
+            try:
+                os.unlink(uds_path)
+            except OSError:
+                pass
+
+
+@pytest_asyncio.fixture
+async def async_client(default_server_process):
+    """Provides a connected AioDaqDataClient for API tests."""
+    daq_config = {"daq_nodes": [{"ip_addr": default_server_process}]}
+    async with AioDaqDataClient(daq_config, network_config=None) as client:
+        yield client
+
+
+@pytest.fixture
+def sync_client(default_server_process):
+    """Provides a connected DaqDataClient for API tests."""
+    daq_config = {"daq_nodes": [{"ip_addr": default_server_process}]}
+    with DaqDataClient(daq_config, network_config=None) as client:
+        yield client
+
+
+@pytest.fixture
+def sample_pano_image():
+    header_dict = {"test_field": "test_value"}
+    return PanoImage(
+        type=PanoImage.Type.MOVIE, header=ParseDict(header_dict, Struct()),
+        image_array=[i for i in range(256)], shape=[16, 16],
+        bytes_per_pixel=1, file="test_upload.pff", module_id=101,
+    )
