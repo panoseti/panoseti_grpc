@@ -62,7 +62,7 @@ class HpIoTaskManager:
         self.hp_io_task = asyncio.create_task(self.hp_io_manager.run())
         
         try:
-            await asyncio.wait_for(self.hp_io_valid_event.wait(), timeout=5.0)
+            await asyncio.wait_for(self.hp_io_valid_event.wait(), timeout=10.0)
             self.active_data_products = await active_data_products_queue.get()
             self.logger.info(f"hp_io task initialized with active_data_products={self.active_data_products}")
             if sim_setup_task and not await sim_setup_task:

@@ -82,45 +82,38 @@ class HpIoManager:
         acq_config = self.server_config.get("acquisition_methods", {})
         self.logger.info(f"Configuring data sources: {acq_config}")
 
-        # # UDS Data Source
+        # UDS Data Source
         uds_cfg = acq_config.get("uds", {})
         if uds_cfg.get("enabled"):
-            for dp_name in uds_cfg.get("data_products", []):
-                source_cfg = {"dp_name": dp_name, "module_id": 0}  # Module ID is fixed for UDS
-                self.data_sources.append(UdsDataSource(source_cfg, self.logger, self.data_queue, self.stop_event))
+            self.logger.info("Configuring UDS data sources.")
+            socket_template = uds_cfg.get("socket_path_template")
+            if not socket_template:
+                self.logger.error("UDS is enabled, but 'socket_path_template' is not defined in server config.")
+            else:
+                module_ids_to_serve = []
+                if self.simulate_daq:
+                    sim_cfg = self.server_config.get('simulate_daq_cfg', {})
+                    module_ids_to_serve = sim_cfg.get('sim_module_ids', [])
+                    self.logger.info(f"UDS in simulation mode. Will serve module IDs: {module_ids_to_serve}")
+                else:
+                    self.logger.warning(
+                        "UDS source is configured for a real run, but module ID discovery is not yet implemented for this mode.")
 
-        # UDS Data Source
-        # uds_cfg = acq_config.get("uds", {})
-        # if uds_cfg.get("enabled"):
-        #     self.logger.info("Configuring UDS data sources.")
-        #     socket_template = uds_cfg.get("socket_path_template")
-        #     if not socket_template:
-        #         self.logger.error("UDS is enabled, but 'socket_path_template' is not defined in server config.")
-        #     else:
-        #         module_ids_to_serve = []
-        #         if self.simulate_daq:
-        #             sim_cfg = self.server_config.get('simulate_daq_cfg', {})
-        #             module_ids_to_serve = sim_cfg.get('sim_module_ids', [])
-        #             self.logger.info(f"UDS in simulation mode. Will serve module IDs: {module_ids_to_serve}")
-        #         else:
-        #             self.logger.warning(
-        #                 "UDS source is configured for a real run, but module ID discovery is not yet implemented for this mode.")
-        #
-        #         data_products = uds_cfg.get("data_products", [])
-        #         if not module_ids_to_serve:
-        #             self.logger.warning("No module IDs configured for UDS. No UDS sources will be started.")
-        #
-        #         for mid in module_ids_to_serve:
-        #             for dp_name in data_products:
-        #                 source_cfg = {
-        #                     "dp_name": dp_name,
-        #                     "module_id": mid,
-        #                     "socket_path_template": socket_template,
-        #                 }
-        #                 self.logger.info(f"Creating UDS source for module {mid}, data product {dp_name}")
-        #                 self.data_sources.append(
-        #                     UdsDataSource(source_cfg, self.logger, self.data_queue, self.stop_event)
-        #                 )
+                data_products = uds_cfg.get("data_products", [])
+                if not module_ids_to_serve:
+                    self.logger.warning("No module IDs configured for UDS. No UDS sources will be started.")
+
+                for mid in module_ids_to_serve:
+                    for dp_name in data_products:
+                        source_cfg = {
+                            "dp_name": dp_name,
+                            "module_id": mid,
+                            "socket_path_template": socket_template,
+                        }
+                        self.logger.info(f"Creating UDS source for module {mid}, data product {dp_name}")
+                        self.data_sources.append(
+                            UdsDataSource(source_cfg, self.logger, self.data_queue, self.stop_event)
+                        )
 
         # Filesystem Polling Data Source
         poll_cfg = acq_config.get("filesystem_poll", {})
@@ -136,11 +129,12 @@ class HpIoManager:
         """Main entry point: starts data sources and the processing loop."""
         self.logger.info("HpIoManager task starting.")
         self.valid.clear()
-        
+
+        # Filesystem modes need to scan for modules first.
         is_fs_mode = any(isinstance(s, (PollWatcherDataSource, PipeWatcherDataSource)) for s in self.data_sources)
         if is_fs_mode:
             if not await self._initialize_modules_from_fs():
-                 self.logger.warning("HpIoManager did not find any modules on filesystem at startup.")
+                self.logger.warning("HpIoManager did not find any modules on filesystem at startup.")
 
         if not self.data_sources and not self.simulate_daq:
             self.logger.error("No data acquisition sources configured. HpIoManager cannot run.")
@@ -149,9 +143,22 @@ class HpIoManager:
         source_tasks = [asyncio.create_task(source.run()) for source in self.data_sources]
         processing_task = asyncio.create_task(self._processing_loop())
 
+        # Wait for all data sources to signal they are ready.
+        if source_tasks:
+            try:
+                all_sources_ready = asyncio.gather(*(s.ready_event.wait() for s in self.data_sources))
+                await asyncio.wait_for(all_sources_ready, timeout=10.0)
+                self.logger.info("All data sources have reported ready.")
+            except asyncio.TimeoutError:
+                self.logger.error("Timeout waiting for all data sources to become ready. HpIoManager will not be valid.")
+                for task in source_tasks + [processing_task]:
+                    if not task.done():
+                        task.cancel()
+                return  # Exit without setting self.valid
+
         await self._update_active_data_products()
-        self.valid.set()
-        
+        self.valid.set()  # Now, 'valid' means the full data pipeline is up.
+
         try:
             await asyncio.gather(processing_task, *source_tasks)
         except Exception as e:
