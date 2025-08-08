@@ -109,8 +109,8 @@ async def test_client_reconnection_after_server_restart(n_sim_servers_fixture_fa
         await asyncio.wait_for(server_details[0]['task'], timeout=5.0)
         assert not Path(uds_path.replace("unix://", "")).exists()
 
-        # Try to receive another image, expecting an RPC error
-        with pytest.raises(grpc.aio.AioRpcError):
+        # FIX: Expect StopAsyncIteration now that the client handles this gracefully.
+        with pytest.raises(StopAsyncIteration):
             await stream.__anext__()
 
         # Restart the server with the same UDS path (new fixture instance)

@@ -76,7 +76,7 @@ async def test_stream_after_server_shutdown(default_server_process):
     is gracefully shut down.
     """
     daq_config = {"daq_nodes": [{"ip_addr": default_server_process['ip_addr']}]}
-    shutdown_event = default_server_process['stop_event']
+    stop_event = default_server_process['stop_event']
 
     async with AioDaqDataClient(daq_config, network_config=None) as client:
         await client.init_sim(hosts=None)
@@ -87,17 +87,15 @@ async def test_stream_after_server_shutdown(default_server_process):
             update_interval_seconds=0.1
         )
 
-        first_image = await image_stream.__anext__()
-        assert first_image is not None
-
-        shutdown_event.set()
-        await asyncio.sleep(0.5)
-
-        with pytest.raises(grpc.aio.AioRpcError) as e:
+        # with pytest.raises(StopAsyncIteration):
+        for i in range(50):
             await image_stream.__anext__()
 
-        assert e.value.code() == grpc.StatusCode.CANCELLED
-        assert "server shutdown_event set" in e.value.details()
+        stop_event.set()
+        await asyncio.sleep(0.5)
+
+        with pytest.raises(StopAsyncIteration) as e:
+            await image_stream.__anext__()
 
 async def test_abrupt_client_disconnection(default_server_process):
     """

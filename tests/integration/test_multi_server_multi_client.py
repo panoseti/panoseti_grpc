@@ -360,16 +360,31 @@ async def test_uds_partial_server_failure_tolerance(n_sim_servers_fixture_factor
         stopped["stop_event"].set()
         await asyncio.wait_for(stopped["task"], timeout=5.0)
 
-        # Continue reading; ensure we still see the remaining modules
-        remaining = expected_modules - {stopped["module_id"]}
+        # Drain the stream to clear any buffered frames from the stopped server.
+        # This loop consumes items until we've received a few frames from each of the
+        # *remaining* live servers, which gives us high confidence the buffer is cleared.
+        remaining_modules = {d["module_id"] for d in details if d["module_id"] != stopped["module_id"]}
+        drain_counts = {mid: 0 for mid in remaining_modules}
+
+        for _ in range(100):  # Safety break
+            try:
+                img = await stream.__anext__()
+                if img["module_id"] in drain_counts:
+                    drain_counts[img["module_id"]] += 1
+                # Stop draining once we've seen 3 frames from each remaining server.
+                if all(c >= 3 for c in drain_counts.values()):
+                    break
+            except (StopAsyncIteration, grpc.aio.AioRpcError):
+                break
+
+        # Now, collect the frames we actually want to test.
         seen_after = set()
-        count = 0
-        while count < (num_servers - 1) * 10:
+        for _ in range((num_servers - 1) * 5):
             try:
                 img = await stream.__anext__()
                 seen_after.add(img["module_id"])
-            except grpc.aio.AioRpcError:
+            except (StopAsyncIteration, grpc.aio.AioRpcError):
                 break
-            count += 1
+
         assert stopped["module_id"] not in seen_after
-        assert seen_after.issubset(remaining)
+        assert seen_after.issubset(remaining_modules)

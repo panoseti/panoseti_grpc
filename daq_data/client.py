@@ -745,34 +745,13 @@ class AioDaqDataClient:
             stream_movie_data: bool,
             stream_pulse_height_data: bool,
             update_interval_seconds: float,
-            module_ids: Union[Tuple[int], Tuple[()]]=(),
+            module_ids: Union[Tuple[int], Tuple[()]] = (),
             wait_for_ready=False,
             parse_pano_images=True,
     ) -> AsyncIterator[dict[str, Any]]:
-        """Establishes an asynchronous, real-time stream of PANOSETI image data.
-
-        Returns an async generator that yields image data as it arrives. The stream
-        will gracefully terminate if the client's `stop_event` is set.
-
-        Args:
-            hosts (Union[List[str], str]): The DAQ host(s) to stream from.
-            stream_movie_data (bool): If True, request movie-mode images.
-            stream_pulse_height_data (bool): If True, request pulse-height images.
-            update_interval_seconds (float): The requested server-side update interval.
-            module_ids (Tuple[int], optional): A tuple of module IDs to subscribe to.
-                Defaults to ().
-            parse_pano_images (bool, optional): If True, parses the raw protobuf message
-                into a Python dictionary. Defaults to True.
-            wait_for_ready (bool, optional): If True, waits for the server to be ready.
-                Defaults to False.
-
-        Returns:
-            AsyncGenerator[Dict[str, Any], None]: An async generator that yields
-            parsed image data dictionaries or raw protobuf responses.
-        """
+        """Establishes an asynchronous, real-time stream of PANOSETI image data."""
         valid_hosts = await self.validate_daq_hosts(hosts)
 
-        # Create the request message
         stream_images_request = StreamImagesRequest(
             stream_movie_data=stream_movie_data,
             stream_pulse_height_data=stream_pulse_height_data,
@@ -780,31 +759,39 @@ class AioDaqDataClient:
             module_ids=module_ids,
         )
 
-        streams = [self.daq_nodes[host]['stub'].StreamImages(stream_images_request, wait_for_ready=wait_for_ready) for host in valid_hosts]
+        streams = [self.daq_nodes[host]['stub'].StreamImages(stream_images_request, wait_for_ready=wait_for_ready) for
+                   host in valid_hosts]
         self.logger.info(f"Created {len(streams)} StreamImages RPCs to hosts: {valid_hosts}")
-        self.logger.debug(f"stream_images_request={MessageToDict(stream_images_request, True, True)}")
 
         async def response_generator():
             queue = asyncio.Queue()
 
-            async def _forward_stream(stream):
+            async def _forward_stream(stream, host_id):
                 try:
                     async for response in stream:
                         await queue.put(response)
                 except grpc.aio.AioRpcError as e:
-                    self.logger.warning(f"Stream terminated with error: {e.details()}")
-                    # FIX: Propagate the exception through the queue
-                    await queue.put(e)
+                    # FIX: Differentiate between recoverable and critical errors.
+                    # Swallow expected disconnection errors, but propagate others.
+                    if e.code() in (grpc.StatusCode.CANCELLED, grpc.StatusCode.UNAVAILABLE):
+                        self.logger.warning(
+                            f"Stream from host '{host_id}' terminated with an expected disconnection: {e.details()}")
+                        await queue.put(None)  # Signal clean shutdown of this sub-stream
+                    else:
+                        self.logger.error(f"Stream from host '{host_id}' failed with a critical error: {e.details()}")
+                        await queue.put(e)  # Propagate the critical error
                 finally:
-                    await queue.put(None)  # Sentinel for stream closure
+                    # Ensure a sentinel is placed if the stream ends without error.
+                    if 'e' not in locals():
+                        await queue.put(None)
 
-            tasks = [asyncio.create_task(_forward_stream(s)) for s in streams]
+            tasks = [asyncio.create_task(_forward_stream(s, h)) for s, h in zip(streams, valid_hosts)]
 
             try:
                 finished_streams = 0
                 while finished_streams < len(streams) and not (self._stop_event and self._stop_event.is_set()):
                     try:
-                        item = await asyncio.wait_for(queue.get(), 1.0)
+                        item = await asyncio.wait_for(queue.get(), timeout=1.0)
                     except asyncio.TimeoutError:
                         continue
 
@@ -812,7 +799,7 @@ class AioDaqDataClient:
                         finished_streams += 1
                         continue
 
-                    # FIX: Check for and re-raise the exception
+                    # Check for and re-raise propagated exceptions
                     if isinstance(item, Exception):
                         raise item
 
@@ -822,8 +809,10 @@ class AioDaqDataClient:
                         yield item
             finally:
                 for task in tasks:
-                    task.cancel()
+                    if not task.done():
+                        task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
+
         return response_generator()
 
     async def init_sim(self, hosts: Union[List[str], str], hp_io_cfg: Optional[Dict]=None,
