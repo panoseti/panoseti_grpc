@@ -16,10 +16,10 @@
     
     "acquisition_methods": {
         "filesystem_poll": {
-            "enabled": false
+            "enabled": true
         },
         "filesystem_pipe": {
-            "enabled": false
+            "enabled": true
         },
         "uds": {
             "enabled": true,

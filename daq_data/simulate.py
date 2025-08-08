@@ -425,20 +425,27 @@ class SimulationManager:
 
         self.logger.info(f"Attempting to start simulation loop in '{self.strategy.__class__.__name__}' mode.")
         self._sim_stop_event.clear()
-        
         self.sim_task = asyncio.create_task(self.strategy.run())
-        await asyncio.sleep(0.2) 
+
+        # Wait briefly to see if the task fails or finishes immediately.
+        await asyncio.sleep(0.2)
 
         if self.sim_task.done():
-            self.logger.error(f"Simulation task for mode '{self.strategy.__class__.__name__}' exited immediately.")
             try:
-                await self.sim_task 
+                # Check for an exception. If there isn't one, the task finished
+                # cleanly, which is a valid outcome for short-running simulations.
+                self.sim_task.result()
+                self.logger.info(
+                    f"Simulation task for mode '{self.strategy.__class__.__name__}' completed its run cleanly.")
             except Exception as e:
-                self.logger.error(f"Exception from failed simulation task: {e}", exc_info=True)
-            self.sim_task = None
-            return False
+                self.logger.error(
+                    f"Simulation task for mode '{self.strategy.__class__.__name__}' exited immediately with an error: {e}",
+                    exc_info=True
+                )
+                self.sim_task = None
+                return False
 
-        self.logger.info(f"Simulation loop started successfully.")
+        self.logger.info("Simulation loop started successfully.")
         return True
 
     async def stop_simulation_loop(self):

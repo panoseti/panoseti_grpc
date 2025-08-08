@@ -52,7 +52,7 @@ def filesystem_pipe_sim_server_config(server_config_base):
     cfg['simulate_daq_cfg']['simulation_mode'] = 'filesystem_pipe'
     dps = ["img16", "ph256"]
     cfg['acquisition_methods'] = {"filesystem_pipe": {"enabled": True}}
-    cfg['simulate_daq_cfg']['strategies'] = {"filesystem_pipe": {"frames_per_pff": 1000}}
+    cfg['simulate_daq_cfg']['strategies'] = {"filesystem_pipe": {"frames_per_pff": 1000, "frame_limit": 100}}
     return cfg
 
 @pytest.fixture(scope="session")
@@ -61,7 +61,7 @@ def filesystem_poll_sim_server_config(server_config_base):
     cfg['simulate_daq_cfg']['simulation_mode'] = 'filesystem_poll'
     dps = ["img16", "ph256"]
     cfg['acquisition_methods'] = {"filesystem_poll": {"enabled": True}}
-    cfg['simulate_daq_cfg']['strategies'] = {"filesystem_poll": {"frames_per_pff": 1000}}
+    cfg['simulate_daq_cfg']['strategies'] = {"filesystem_poll": {"frames_per_pff": 1000, "frame_limit": 100}}
     return cfg
 
 
@@ -111,6 +111,7 @@ async def default_server_process(uds_sim_server_config):
     """A non-parameterized fixture that runs a standard RPC simulation server."""
     assert os.name == 'posix', "Only supported on POSIX systems."
     config = uds_sim_server_config
+
     # Use a unique socket path for each test invocation to prevent collisions
     uds_path_str = f"unix:///tmp/test_daq_data_{uuid.uuid4().hex}.sock"
     config["unix_domain_socket"] = uds_path_str
@@ -121,7 +122,7 @@ async def default_server_process(uds_sim_server_config):
 
     try:
         # Wait for the server to be fully ready by pinging it
-        daq_config = {"daq_nodes": [{"ip_addr": uds_path_str}]}
+        daq_config = {"daq_nodes": [{"ip_addr": uds_path_str, "data_dir": "daq_data/simulated_data_dir"}]}
         async with AioDaqDataClient(daq_config, network_config=None, stop_event=shutdown_event) as client:
             for _ in range(30):  # 3-second timeout
                 if uds_path.exists() and await client.ping(uds_path_str):
@@ -131,6 +132,7 @@ async def default_server_process(uds_sim_server_config):
                 pytest.fail("Default server did not become ready in time.", pytrace=False)
         yield {
             "ip_addr": uds_path_str,
+            "data_dir": "daq_data/simulated_data_dir",
             "stop_event": shutdown_event,
         }
     finally:
@@ -155,7 +157,14 @@ async def default_server_process(uds_sim_server_config):
 async def async_client(default_server_process):
     """Provides a connected AioDaqDataClient for API tests."""
 
-    daq_config = {"daq_nodes": [{"ip_addr": default_server_process['ip_addr']}]}
+    daq_config = {
+        "daq_nodes": [
+            {
+                "ip_addr": default_server_process['ip_addr'],
+                "data_dir": default_server_process['data_dir']
+            }
+        ]
+    }
     async with AioDaqDataClient(
             daq_config,
             network_config=None,
@@ -168,7 +177,14 @@ async def async_client(default_server_process):
 @pytest.fixture
 def sync_client(default_server_process):
     """Provides a connected DaqDataClient for API tests."""
-    daq_config = {"daq_nodes": [{"ip_addr": default_server_process['ip_addr']}]}
+    daq_config = {
+        "daq_nodes": [
+            {
+                "ip_addr": default_server_process['ip_addr'],
+                "data_dir": default_server_process['data_dir']
+            }
+        ]
+    }
     with DaqDataClient(daq_config, network_config=None, log_level=logging.DEBUG) as client:
         yield client
 

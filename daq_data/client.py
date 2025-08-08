@@ -218,7 +218,7 @@ class DaqDataClient:
         self.valid_daq_hosts.add(host)
         return True
 
-    def validate_daq_hosts(self, hosts: Union[List[str], str]) -> List[str]:
+    def validate_daq_hosts(self, hosts: Optional[Union[List[str], str]]) -> List[str]:
         """
         Validates that a given list of hosts are active and reachable.
 
@@ -297,7 +297,7 @@ class DaqDataClient:
 
     def stream_images(
         self,
-        hosts: Union[List[str], str],
+        hosts: Optional[Union[List[str], str]],
         stream_movie_data: bool,
         stream_pulse_height_data: bool,
         update_interval_seconds: float,
@@ -364,7 +364,7 @@ class DaqDataClient:
                         yield stream_images_response
         return response_generator()
 
-    def init_sim(self, hosts: Union[List[str], str], hp_io_sim_cfg_path=hp_io_config_simulate_path, timeout=10.0) -> bool:
+    def init_sim(self, hosts: Optional[Union[List[str], str]], hp_io_sim_cfg_path=hp_io_config_simulate_path, timeout=10.0) -> bool:
         """
         A convenience method for initializing a simulated run using a JSON config file.
 
@@ -386,7 +386,7 @@ class DaqDataClient:
             assert hp_io_config['simulate_daq'] is True, f"{hp_io_sim_cfg_path} used init_sim must have simulate_daq=True"
         return self.init_hp_io(hosts, hp_io_config, timeout=timeout)
 
-    def init_hp_io(self, hosts: Union[List[str], str], hp_io_cfg: dict, timeout=10.0) -> bool:
+    def init_hp_io(self, hosts: Optional[Union[List[str], str]], hp_io_cfg: dict, timeout=10.0) -> bool:
         """Initializes or reconfigures the HpIoManager task on the server.
 
         This is a prerequisite for streaming data. It tells the server which
@@ -881,7 +881,7 @@ class AioDaqDataClient:
                 return init_hp_io_response.success
             except grpc.aio.AioRpcError as e:
                 self.logger.error(f"Failed to init {host}: {e}")
-                return False
+                raise e
 
         # Run all InitHpIo calls concurrently
         results = await asyncio.gather(*[_init_single_host(host) for host in valid_hosts])

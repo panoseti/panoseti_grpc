@@ -64,3 +64,32 @@ def test_parse_pano_image():
     assert parsed['image_array'].shape == (32, 32)
     assert parsed['image_array'].dtype == np.uint16
     assert 'pandas_unix_timestamp' in parsed['header']
+
+
+def test_parse_dp_name_with_malformed_input():
+    """Test extraction of data product name from invalid filenames."""
+    with pytest.raises(ValueError, match="Could not parse data product name"):
+        _parse_dp_name("a_filename_without_dp_field.pff")
+    with pytest.raises(ValueError, match="Could not parse data product name"):
+        _parse_dp_name("invalid.txt")
+
+
+def test_parse_seqno_with_malformed_input():
+    """Test extraction of sequence number from a filename without one."""
+    # A filename without a seqno field should default to 0
+    assert _parse_seqno("start.dp_img16.module_1.pff") == 0
+
+
+def test_get_dp_name_from_props_with_invalid_combinations():
+    """Test derivation of data product name with invalid property combinations."""
+    # Test with an unsupported shape
+    with pytest.raises(ValueError, match="Unknown data product"):
+        get_dp_name_from_props(PanoImage.Type.MOVIE, [24, 24], 2)
+
+    # Test with an unsupported bytes-per-pixel value
+    with pytest.raises(ValueError, match="Unknown data product"):
+        get_dp_name_from_props(PanoImage.Type.MOVIE, [32, 32], 4)
+
+    # Test pulse-height with 1 byte-per-pixel (invalid)
+    with pytest.raises(ValueError, match="Unknown data product"):
+        get_dp_name_from_props(PanoImage.Type.PULSE_HEIGHT, [32, 32], 1)

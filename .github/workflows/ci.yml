@@ -1,0 +1,28 @@
+name: PANOSETI gRPC CI
+
+# This workflow runs on any push to the main branch
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2. Build the Docker image from Dockerfile.test
+      - name: Build test container
+        run: docker build -t panoseti-grpc-test:latest -f Dockerfile.test .
+
+      # 3. Run the tests inside the Docker container
+      # The CMD instruction in your Dockerfile.test is `pytest`, so this command
+      # will execute the test suite.
+      - name: Run Pytest in container
+        run: docker run --rm panoseti-grpc-test:latest
