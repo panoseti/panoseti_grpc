@@ -46,7 +46,7 @@ from ublox_control_pb2 import CaptureUbloxRequest, InitF9tResponse, InitF9tReque
 
 
 ## our code
-from ublox_control_resources import *
+from resources import *
 
 # Gracefully cancel active RPCs before exiting
 active_calls = []

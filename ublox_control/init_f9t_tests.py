@@ -10,7 +10,8 @@ Each function must have type Callable[..., Tuple[bool, str]] as the example belo
         else:
             return False, f"{n} is odd"
 """
-from ublox_control_resources import *
+import inspect
+from resources import *
 from pyubx2.ubxhelpers import cfgkey2name
 
 from pyubx2 import POLL, UBX_PAYLOADS_POLL
@@ -43,14 +44,15 @@ def is_os_posix():
     else:
         return False, f"{os.name} is not supported yet"
 
-def poll_nav_messages(send_queue) -> Tuple[bool, str]:
+async def poll_nav_messages(send_queue) -> Tuple[bool, str]:
+    """Async version to poll NAV messages."""
     count = 0
     test_msg = ""
     for nam in UBX_PAYLOADS_POLL:
         if nam[0:4] == "NAV-":
             test_msg += f"Polling {nam} message type..."
             msg = UBXMessage("NAV", nam, POLL)
-            send_queue.put(msg)
+            await send_queue.put(msg)  # Use await for asyncio.Queue
             count += 1
     return True, f"sent {count} messages: " + test_msg
 

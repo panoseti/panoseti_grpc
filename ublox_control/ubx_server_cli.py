@@ -17,7 +17,7 @@ import datetime
 import argparse
 
 
-from ublox_control_resources import *
+from resources import *
 
 packet_data_dir = 'data'
 

@@ -8,6 +8,7 @@ from typing import List, Callable, Tuple, Any
 from contextlib import contextmanager
 from pathlib import Path
 import redis
+import inspect
 
 from rich import print
 # from rich.markup import escape
@@ -77,14 +78,12 @@ def get_f9t_redis_key(chip_name, chip_uid, prot_msg):
 
 """ Testing utils """
 
-def run_all_tests(
-        test_fn_list: List[Callable[..., Tuple[bool, str]]],
-        args_list: List[List[...]],
+async def run_all_tests(
+    test_fn_list: List[Callable[..., Tuple[bool, str]]],
+    args_list: List[List[...]],
 ) -> Tuple[bool, type(ublox_control_pb2.TestCase.TestResult)]:
     """
-    Runs each test function in [test_functions].
-    To ensure correct behavior new test functions have type Callable[..., Tuple[bool, str]] to ensure correct behavior.
-    Returns enum init_status and a list of test_results.
+    Runs each test function in [test_functions], now supporting async functions.
     """
     assert len(test_fn_list) == len(args_list), "test_fn_list must have the same length as args_list"
     def get_test_name(test_fn):
@@ -93,7 +92,11 @@ def run_all_tests(
     all_pass = True
     test_results = []
     for test_fn, args in zip(test_fn_list, args_list):
-        test_result, message = test_fn(*args)
+        if inspect.iscoroutinefunction(test_fn):
+            test_result, message = await test_fn(*args)
+        else:
+            test_result, message = test_fn(*args)
+
         all_pass &= test_result
         test_result = ublox_control_pb2.TestCase(
             name=get_test_name(test_fn),
