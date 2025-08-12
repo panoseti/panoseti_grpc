@@ -26,7 +26,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./tests/daq_dataDockerfile.test
+          file: ./tests/daq_data/Dockerfile.test
           load: true # Makes the image available for the next step
           tags: panoseti-grpc-test-daq-data:latest
           cache-from: type=gha # Pulls cache from GitHub Actions cache
