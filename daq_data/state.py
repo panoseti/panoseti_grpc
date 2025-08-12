@@ -91,8 +91,8 @@ class ModuleState:
     def __init__(self, module_id: int, data_dir: Path, logger: logging.Logger):
         self.module_id = module_id
         self.data_dir = data_dir
+        self.run_path: Optional[Path] = None
         self.logger = logger
-        self.run_path: Path
         self.dp_configs: Dict[str, DataProductState] = {}
 
     async def discover_and_initialize_from_fs(self, timeout: float = 2.0) -> bool:
@@ -105,7 +105,7 @@ class ModuleState:
              return False
         
         self.logger.debug(f"Searching for active run in: {module_path}")
-        run_paths = [p for p in await asyncio.to_thread(list, module_path.glob("obs_*")) if p.is_dir()]
+        run_paths = [p for p in list(await asyncio.to_thread(module_path.glob, "obs_*")) if p.is_dir()]
         
         if not run_paths:
             self.logger.warning(f'No run directory found for module {self.module_id} in {module_path}')
@@ -162,8 +162,10 @@ class ModuleState:
                 continue
             
             latest_file = max(files, key=lambda p: os.path.getmtime(p))
+            curr_size = 0
             try:
-                if await asyncio.to_thread(os.path.getsize, latest_file) >= dp_config.bytes_per_image:
+                curr_size = await asyncio.to_thread(os.path.getsize, latest_file)
+                if curr_size >= dp_config.bytes_per_image:
                     with open(latest_file, 'rb') as f:
                         dp_config.frame_size = pff.img_frame_size(f, dp_config.bytes_per_image)
                     dp_config.current_filepath = latest_file
@@ -173,6 +175,7 @@ class ModuleState:
             except (FileNotFoundError, ValueError, Exception) as e:
                 self.logger.warning(f"Failed to initialize {dp_config.name} for module {self.module_id}: {e}")
                 return False
+            self.logger.warning(f"File {latest_file} has size {curr_size} which is too small to be a valid {dp_config.name} frame.")
             await asyncio.sleep(0.25)
 
         self.logger.warning(f"Timeout initializing data product {dp_config.name} for module {self.module_id}")

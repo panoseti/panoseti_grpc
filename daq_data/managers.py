@@ -41,11 +41,11 @@ class HpIoTaskManager:
 
         is_sim = hp_io_cfg.get('simulate_daq', False)
         sim_setup_task = None
+        sim_cfg = self.server_cfg.get('simulate_daq_cfg', {})
         if is_sim:
             # Setup the simulation environment before HpIoManager starts.
             sim_setup_task = asyncio.create_task(self.simulation_manager.setup_environment())
             # Override data_dir to point to the simulation directory.
-            sim_cfg = self.server_cfg.get('simulate_daq_cfg', {})
             sim_data_dir = sim_cfg.get('filesystem_cfg', {}).get('sim_data_dir')
             if sim_data_dir:
                 self.logger.info(f"Simulation mode detected. Overriding data_dir to '{sim_data_dir}'.")
@@ -60,28 +60,38 @@ class HpIoTaskManager:
         self.hp_io_manager = HpIoManager(temp_server_cfg, self.reader_states, self.stop_event,
                                          self.hp_io_valid_event, active_data_products_queue, self.logger)
         self.hp_io_task = asyncio.create_task(self.hp_io_manager.run())
-        
         try:
+            if sim_setup_task and 'filesystem' in sim_cfg.get("simulation_mode", ""):
+                # Filesystem simulations need to be started BEFORE hp_io
+                if not await sim_setup_task:
+                    self.logger.critical("Failed to set up filesystem simulation environment. Aborting start.")
+                    await self.simulation_manager.cleanup_environment()
+                    await self.stop()
+                    return False
+                if not await self.simulation_manager.start_simulation_loop():
+                    self.logger.error("Failed to start filesystem simulation loop after IO manager was ready.")
+                    await self.stop()
+                    return False
+
             await asyncio.wait_for(self.hp_io_valid_event.wait(), timeout=10.0)
             self.active_data_products = await active_data_products_queue.get()
             self.logger.info(f"hp_io task initialized with active_data_products={self.active_data_products}")
-            if sim_setup_task and not await sim_setup_task:
-                self.logger.error("Failed to set up simulation environment. Aborting start.")
-                await self.simulation_manager.cleanup_environment()
-                await self.stop()
-                return False
+
+            if sim_setup_task and 'filesystem' not in sim_cfg.get("simulation_mode", ""):
+                # Unix-domain simulations need to be started AFTER hp_io
+                if not await sim_setup_task:
+                    self.logger.critical("Failed to set up UDS simulation environment. Aborting start.")
+                    await self.simulation_manager.cleanup_environment()
+                    await self.stop()
+                    return False
+                if not await self.simulation_manager.start_simulation_loop():
+                    self.logger.error("Failed to start UDS simulation loop after IO manager was ready.")
+                    await self.stop()
+                    return False
         except asyncio.TimeoutError:
             self.logger.error("Timeout waiting for hp_io task to become valid.")
             await self.stop()
             return False
-
-        if is_sim:
-            # Now that HpIoManager is running, start the simulation data flow.
-            if not await self.simulation_manager.start_simulation_loop():
-                self.logger.error("Failed to start simulation loop after IO manager was ready.")
-                await self.stop()
-                return False
-
         return self.is_valid(verbose=True)
 
     async def stop(self):

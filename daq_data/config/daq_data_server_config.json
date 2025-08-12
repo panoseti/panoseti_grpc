@@ -16,7 +16,7 @@
     
     "acquisition_methods": {
         "filesystem_poll": {
-            "enabled": false
+            "enabled": true
         },
         "filesystem_pipe": {
             "enabled": false
@@ -34,7 +34,6 @@
         "sim_module_ids": [224],
         "movie_type": "img16",
         "ph_type": "ph256",
-        "update_interval_seconds": 0.1,
 
         "source_data": {
             "real_module_id": 1,
@@ -50,11 +49,11 @@
 
         "strategies": {
             "filesystem_poll": {
-                "frames_per_pff": 1000,
+                "frames_per_pff": 100,
                 "frame_limit": -1
             },
             "filesystem_pipe": {
-                "frames_per_pff": 1000,
+                "frames_per_pff": 100,
                 "frame_limit": -1
             },
             "uds": {

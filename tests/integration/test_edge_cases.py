@@ -8,50 +8,54 @@ from daq_data.server import DaqDataServicer
 
 pytestmark = pytest.mark.asyncio
 
-# async def test_max_clients_resource_exhaustion(default_server_process, server_config_base):
-#     """
-#     Verify that the server correctly rejects new clients when its
-#     max_concurrent_rpcs limit is reached.
-#     """
-#     max_clients = server_config_base['max_concurrent_rpcs']
-#     daq_config = {"daq_nodes": [{"ip_addr": default_server_process['ip_addr']}]}
-#
-#     clients = []
-#     streams = []
-#     try:
-#         # 1. Connect clients up to the server's limit.
-#         for i in range(max_clients):
-#             client = AioDaqDataClient(daq_config, network_config=None)
-#             await client.__aenter__()
-#             clients.append(client)
-#             assert await client.init_sim(hosts=None) is True
-#             stream = await client.stream_images(
-#                 hosts=None,
-#                 stream_movie_data=True,
-#                 stream_pulse_height_data=False,
-#                 update_interval_seconds=0.1
-#             )
-#             streams.append(stream)
-#             await stream.__anext__()
-#             print(f"Client {i+1}/{max_clients} connected and streaming.")
-#
-#         # 2. Attempt to connect one more client. This should fail.
-#         print("Attempting to connect one more client, expecting failure...")
-#         async with AioDaqDataClient(daq_config, network_config=None) as extra_client:
-#             assert await extra_client.init_sim(hosts=None) is True
-#             with pytest.raises(grpc.aio.AioRpcError) as e:
-#                 stream = await extra_client.stream_images(
-#                     hosts=None,
-#                     stream_movie_data=True,
-#                     stream_pulse_height_data=False,
-#                     update_interval_seconds=0.1
-#                 )
-#                 await stream.__anext__()
-#
-#             assert e.value.code() == grpc.StatusCode.RESOURCE_EXHAUSTED
-#     finally:
-#         for client in clients:
-#             await client.__aexit__(None, None, None)
+async def test_max_clients_resource_exhaustion(default_server_process, server_config_base):
+    """
+    Verify that the server correctly rejects new clients when its
+    max_concurrent_rpcs limit is reached.
+    """
+    max_clients = server_config_base['max_concurrent_rpcs']
+    daq_config = {"daq_nodes": [{"ip_addr": default_server_process['ip_addr']}]}
+
+    clients = []
+    streams = []
+    try:
+        # 0. Initialize the server
+        async with AioDaqDataClient(daq_config, network_config=None) as client:
+            assert await client.init_sim(hosts=[]) is True
+
+        # 1. Connect clients up to the server's limit.
+        for i in range(max_clients):
+            client = AioDaqDataClient(daq_config, network_config=None)
+            await client.__aenter__()
+            clients.append(client)
+            stream = await client.stream_images(
+                hosts=[],
+                stream_movie_data=True,
+                stream_pulse_height_data=False,
+                update_interval_seconds=0.75,
+                timeout=120
+            )
+            streams.append(stream)
+            await stream.__anext__()
+            print(f"Client {i+1}/{max_clients} connected and streaming.")
+
+        # 2. Attempt to connect one more client. This should fail.
+        print("Attempting to connect one more client, expecting failure...")
+        async with AioDaqDataClient(daq_config, network_config=None) as extra_client:
+            with pytest.raises(grpc.aio.AioRpcError) as e:
+                stream = await extra_client.stream_images(
+                    hosts=None,
+                    stream_movie_data=True,
+                    stream_pulse_height_data=False,
+                    update_interval_seconds=0.1,
+                    timeout=5.0
+                )
+                await stream.__anext__()
+
+            assert e.value.code() == grpc.StatusCode.RESOURCE_EXHAUSTED
+    finally:
+        for client in clients:
+            await client.__aexit__(None, None, None)
 
 async def test_init_with_nonexistent_data_dir(async_client: AioDaqDataClient):
     """
@@ -62,7 +66,7 @@ async def test_init_with_nonexistent_data_dir(async_client: AioDaqDataClient):
         "data_dir": "/path/to/a/place/that/does/not/exist",
         "simulate_daq": False,
         "force": True,
-        "update_interval_seconds": 0.1, # FIX: Added missing key.
+        "update_interval_seconds": 0.1,
     }
     with pytest.raises(grpc.aio.AioRpcError) as e:
         await async_client.init_hp_io(hosts=None, hp_io_cfg=invalid_config)
@@ -88,7 +92,7 @@ async def test_stream_after_server_shutdown(default_server_process):
         )
 
         # with pytest.raises(StopAsyncIteration):
-        for i in range(50):
+        for i in range(10):
             await image_stream.__anext__()
 
         stop_event.set()

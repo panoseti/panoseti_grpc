@@ -128,7 +128,7 @@ class UdsDataSource(BaseDataSource):
             await writer.wait_closed()
 
 
-class FilesystemDataSource(BaseDataSource):
+class FilesystemDataSource(BaseDataSource, abc.ABC):
     """Base class for filesystem-based data sources. Needs access to manager state."""
 
     def __init__(self, manager, *args, **kwargs):
@@ -181,6 +181,7 @@ class PollWatcherDataSource(FilesystemDataSource):
             return
 
         self.logger.info("Starting filesystem polling watcher.")
+        self.ready_event.set()
         update_ms = int(self.manager.update_interval_seconds * 1000)
         async for changes in awatch(data_dir, stop_event=self.stop_event, recursive=True,
                                     force_polling=True, poll_delay_ms=update_ms):
@@ -199,7 +200,8 @@ class PipeWatcherDataSource(FilesystemDataSource):
         self.logger.info("Starting pipe-based watcher.")
         loop = asyncio.get_running_loop()
         pipes_to_watch: Dict[int, ModuleState] = {}
-        
+        self.ready_event.set()
+
         while not self.stop_event.is_set():
             self.logger.debug(f"self.manager.modules[module_id]: {self.manager.modules}")
             for mid, module in self.manager.modules.items():
