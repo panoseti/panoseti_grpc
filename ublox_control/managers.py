@@ -10,9 +10,12 @@ from google.protobuf.json_format import MessageToDict, ParseDict
 from pyubx2 import UBXReader, UBX_PROTOCOL
 from serial import Serial
 
-import ublox_control_pb2
-from init_f9t_tests import is_os_posix, check_client_f9t_cfg_keys, poll_nav_messages, run_all_tests
-from resources import F9T_BAUDRATE
+from ublox_control import (
+    ublox_control_pb2,
+    ublox_control_pb2_grpc,
+)
+from ublox_control.init_f9t_tests import is_os_posix, check_client_f9t_cfg_keys, poll_nav_messages
+from ublox_control.resources import F9T_BAUDRATE, run_all_tests
 
 
 class F9tIoManager:
@@ -212,7 +215,12 @@ class F9tManager:
 
     async def initialize_f9t(self, request, context):
         """Handles the logic for the InitF9t RPC."""
-        client_f9t_cfg = MessageToDict(request.f9t_cfg)
+        client_f9t_cfg = MessageToDict(request.f9t_cfg, preserving_proto_field_name=True)
+        self.logger.info(
+            f"Received InitF9t transaction for device {client_f9t_cfg['device']}, "
+            f"timeout {client_f9t_cfg['timeout']}s, "
+            f"cfg_key_settings {client_f9t_cfg['cfg_key_settings']}"
+        )
 
         all_pass, test_results = await run_all_tests(
             test_fn_list=[is_os_posix, check_client_f9t_cfg_keys],

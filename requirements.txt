@@ -18,6 +18,7 @@ redis>=3.5.3
 snakeviz>=2.2.2
 
 # ublox control
+json5>=0.12.0
 pyserial>=3.5
 pyubx2>=1.2.43
 redis>=3.5.3

@@ -2,7 +2,8 @@
 Common functions for gRPC UbloxControl service.
 """
 import os
-import json
+import sys
+import json5
 import logging
 from typing import List, Callable, Tuple, Any
 from contextlib import contextmanager
@@ -21,24 +22,32 @@ from unittest import TestResult
 from serial import Serial
 from pyubx2 import UBXReader, UBX_PROTOCOL, UBXMessage, SET_LAYER_RAM, POLL_LAYER_RAM, TXN_COMMIT, TXN_NONE
 
-import ublox_control_pb2
+from ublox_control import (
+    ublox_control_pb2,
+    ublox_control_pb2_grpc,
+)
 
 # message enums
-from ublox_control_pb2 import TestCase, InitF9tResponse, CaptureUbloxRequest, CaptureUbloxResponse
+from ublox_control.ublox_control_pb2 import TestCase, InitF9tResponse, CaptureUbloxRequest, CaptureUbloxResponse
 
 
 
 """ Config globals"""
 F9T_BAUDRATE = 38400
 
-cfg_dir = Path('config')
+CFG_DIR = Path('ublox_control/config')
 ublox_control_config_file = 'ublox_control_config.json'
 # Configuration for metadata capture from the u-blox ZED-F9T timing chip
 # TODO: make this a separate config file and track with version control etc.
-default_f9t_cfg_file = "default_f9t_config.json"
+default_f9t_cfg_file = "f9t_config.json5"
 
-with open(cfg_dir/default_f9t_cfg_file) as f:
-    default_f9t_cfg = json.load(f)
+f9t_cfg_path = CFG_DIR / default_f9t_cfg_file
+try:
+    with open(f9t_cfg_path) as f:
+        default_f9t_cfg = json5.load(f)
+except FileNotFoundError:
+    print(f"could not find {os.path.abspath(f9t_cfg_path)}")
+    sys.exit(1)
 
 
 def make_rich_logger(name, level=logging.DEBUG):
@@ -80,7 +89,7 @@ def get_f9t_redis_key(chip_name, chip_uid, prot_msg):
 
 async def run_all_tests(
     test_fn_list: List[Callable[..., Tuple[bool, str]]],
-    args_list: List[List[...]],
+    args_list: List[List[Any]],
 ) -> Tuple[bool, type(ublox_control_pb2.TestCase.TestResult)]:
     """
     Runs each test function in [test_functions], now supporting async functions.

@@ -9,14 +9,18 @@ Requires the following to function correctly:
 """
 import asyncio
 import logging
+import signal
 import json
+from typing import Optional
 from pathlib import Path
 import grpc
 from grpc_reflection.v1alpha import reflection
-import ublox_control_pb2
-import ublox_control_pb2_grpc
-from managers import F9tManager, ClientManager, F9tIoManager
-from resources import make_rich_logger
+from ublox_control import (
+    ublox_control_pb2,
+    ublox_control_pb2_grpc,
+)
+from ublox_control.managers import F9tManager, ClientManager, F9tIoManager
+from ublox_control.resources import CFG_DIR, make_rich_logger
 
 
 class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
@@ -45,18 +49,34 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             async for response in self.f9t_manager.stream_data(request, context, reader_queue):
                 yield response
 
-async def serve():
+async def serve(server_cfg, shutdown_event=Optional[asyncio.Event], in_main_thread: bool = True):
     """Initializes managers and starts the async gRPC server."""
-    cfg_dir = Path('config')
-    with open(cfg_dir / "ublox_control_server_config.json", "r") as f:
-        server_cfg = json.load(f)
-
     logger = make_rich_logger(__name__, level=logging.DEBUG)
+
 
     # 1. Initialize Managers
     io_manager = F9tIoManager(logger)
     client_manager = ClientManager(logger, max_readers=server_cfg['max_workers'])
     f9t_manager = F9tManager(io_manager, client_manager, server_cfg, logger)
+
+    # Define a signal handler to set the shutdown event
+    async def _signal_handler(*_):
+        logger.info("Shutdown signal received, initiating graceful shutdown.")
+        await shutdown_event.set()
+
+    # Attach signal handlers only if running in the main thread
+    if in_main_thread:
+        shutdown_event = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, _signal_handler)
+            except RuntimeError as e:
+                logger.warning(f"Could not set signal handler for {sig}: {e}. "
+                               f"This is expected if not in the main thread.")
+    else:
+        assert shutdown_event is not None, "shutdown_event must be provided if not running in the main thread."
+
 
     # 2. Create and start async gRPC server
     server = grpc.aio.server()
@@ -86,6 +106,9 @@ async def serve():
 
 if __name__ == "__main__":
     try:
-        asyncio.run(serve())
+        with open(CFG_DIR / "ublox_control_server_config.json", "r") as f:
+                server_config = json.load(f)
+        # asyncio.run will wait for the serve() coroutine to complete
+        asyncio.run(serve(server_config))
     except KeyboardInterrupt:
         pass

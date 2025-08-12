@@ -11,10 +11,13 @@ Each function must have type Callable[..., Tuple[bool, str]] as the example belo
             return False, f"{n} is odd"
 """
 import inspect
-from resources import *
+import os
 from pyubx2.ubxhelpers import cfgkey2name
+from pyubx2 import POLL, UBX_PAYLOADS_POLL, UBX_PROTOCOL, UBXMessage, UBXReader
+from serial import Serial
+from typing import List, Callable, Tuple, Any, Dict
 
-from pyubx2 import POLL, UBX_PAYLOADS_POLL
+from ublox_control.resources import F9T_BAUDRATE
 
 
 def check_client_f9t_cfg_keys(required_f9t_cfg_keys: List[str], client_f9t_keys: List[str]) -> Tuple[bool, str]:
