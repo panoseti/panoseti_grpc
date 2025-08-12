@@ -16,7 +16,7 @@ from daq_data.daq_data_pb2 import PanoImage
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import ParseDict
 
-TEST_CFG_DIR = Path("tests/config")
+TEST_CFG_DIR = Path("tests/daq_data/config")
 TEST_CFG_DIR.mkdir(exist_ok=True)
 
 

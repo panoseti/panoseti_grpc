@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  build-and-test:
+  daq-data-build-and-test:
     runs-on: ubuntu-latest
     steps:
       # Checks-out repository
@@ -26,13 +26,13 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile.test
+          file: ./tests/daq_dataDockerfile.test
           load: true # Makes the image available for the next step
-          tags: panoseti-grpc-test:latest
+          tags: panoseti-grpc-test-daq-data:latest
           cache-from: type=gha # Pulls cache from GitHub Actions cache
           cache-to: type=gha,mode=max # Pushes cache to GitHub Actions cache
 
       # Run tests inside the now-cached Docker container
       - name: Run Pytest in container
-        run: docker run --rm panoseti-grpc-test:latest
+        run: docker run --rm panoseti-grpc-test-daq-data:latest
 
