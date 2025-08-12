@@ -304,7 +304,7 @@ class DaqDataClient:
         module_ids: Union[Tuple[int], Tuple[()]]=(),
         wait_for_ready=False,
         parse_pano_images=True,
-        timeout=float('inf')
+        timeout=36_000
     ) ->  Generator[dict[str, Any], Any, Any]:
         """Establishes a real-time stream of PANOSETI image data.
 
@@ -750,7 +750,7 @@ class AioDaqDataClient:
             module_ids: Union[Tuple[int], Tuple[()]] = (),
             wait_for_ready=False,
             parse_pano_images=True,
-            timeout=float('inf')
+            timeout=36_000
     ) -> AsyncIterator[dict[str, Any]]:
         """Establishes an asynchronous, real-time stream of PANOSETI image data.
 
