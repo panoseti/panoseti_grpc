@@ -2,7 +2,7 @@
     "init_from_default": false,
     "default_hp_io_config_file": "hp_io_config_simulate.json",
     "unix_domain_socket": "unix:///tmp/daq_data.sock",
-    "max_concurrent_rpcs": 100,
+    "max_concurrent_rpcs": 10,
     "max_read_queue_size": 50,
     "min_hp_io_update_interval_seconds": 0.001,
     "max_client_update_interval_seconds": 60,
