@@ -124,6 +124,7 @@ class HpIoManager:
         pipe_cfg = acq_config.get("filesystem_pipe", {})
         if pipe_cfg.get("enabled"):
             self.data_sources.append(PipeWatcherDataSource(self, pipe_cfg, self.logger, self.data_queue, self.stop_event))
+        self.logger.info(f"Configured {len(self.data_sources)} data sources: {self.data_sources}")
 
     async def run(self):
         """Main entry point: starts data sources and the processing loop."""
@@ -146,6 +147,7 @@ class HpIoManager:
         # Wait for all data sources to signal they are ready.
         if source_tasks:
             try:
+                self.logger.info("Waiting for all data sources to become ready.")
                 all_sources_ready = asyncio.gather(*(s.ready_event.wait() for s in self.data_sources))
                 await asyncio.wait_for(all_sources_ready, timeout=10.0)
                 self.logger.info("All data sources have reported ready.")
@@ -158,6 +160,7 @@ class HpIoManager:
 
         await self._update_active_data_products()
         self.valid.set()  # Now, 'valid' means the full data pipeline is up.
+        self.logger.info("HpIoManager task started and is valid .")
 
         try:
             await asyncio.gather(processing_task, *source_tasks)

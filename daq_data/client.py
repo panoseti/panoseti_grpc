@@ -304,6 +304,7 @@ class DaqDataClient:
         module_ids: Union[Tuple[int], Tuple[()]]=(),
         wait_for_ready=False,
         parse_pano_images=True,
+        timeout=36_000
     ) ->  Generator[dict[str, Any], Any, Any]:
         """Establishes a real-time stream of PANOSETI image data.
 
@@ -322,6 +323,7 @@ class DaqDataClient:
                 into a Python dictionary. Defaults to True.
             wait_for_ready (bool, optional): If True, waits for the server to be ready
                 before attempting to stream. Defaults to False.
+            timeout (float, optional): The timeout in seconds for the RPC call. Defaults to float('inf').
 
         Returns:
             Generator[Dict[str, Any], None, None]: A generator that yields either
@@ -344,7 +346,7 @@ class DaqDataClient:
         for host in valid_hosts:
             daq_node = self.daq_nodes[host]
             stub = daq_node['stub']
-            stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=wait_for_ready)
+            stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=wait_for_ready, timeout=timeout)
             streams.append(stream_images_responses)
             self.logger.info(f"Created StreamImages RPC to {host=}")
 
@@ -748,8 +750,31 @@ class AioDaqDataClient:
             module_ids: Union[Tuple[int], Tuple[()]] = (),
             wait_for_ready=False,
             parse_pano_images=True,
+            timeout=36_000
     ) -> AsyncIterator[dict[str, Any]]:
-        """Establishes an asynchronous, real-time stream of PANOSETI image data."""
+        """Establishes an asynchronous, real-time stream of PANOSETI image data.
+
+        This method sends a `StreamImagesRequest` and returns a generator that
+        yields image data as it arrives from the servers. This is a non-blocking call
+        that will run indefinitely or until timeout is reached.
+
+        Args:
+            hosts (Union[List[str], str]): The DAQ host(s) to stream from.
+            stream_movie_data (bool): If True, request movie-mode images.
+            stream_pulse_height_data (bool): If True, request pulse-height images.
+            update_interval_seconds (float): The requested server-side update interval.
+            module_ids (Tuple[int], optional): A tuple of module IDs to subscribe to.
+                If empty, streams data from all active modules. Defaults to ().
+            parse_pano_images (bool, optional): If True, parses the raw protobuf message
+                into a Python dictionary. Defaults to True.
+            wait_for_ready (bool, optional): If True, waits for the server to be ready
+                before attempting to stream. Defaults to False.
+            timeout (float, optional): The timeout in seconds for the RPC call. Defaults to float('inf').
+
+        Returns:
+            Generator[Dict[str, Any], None, None]: A generator that yields either
+            parsed image data dictionaries or raw protobuf responses.
+        """
         valid_hosts = await self.validate_daq_hosts(hosts)
 
         stream_images_request = StreamImagesRequest(
@@ -759,7 +784,7 @@ class AioDaqDataClient:
             module_ids=module_ids,
         )
 
-        streams = [self.daq_nodes[host]['stub'].StreamImages(stream_images_request, wait_for_ready=wait_for_ready) for
+        streams = [self.daq_nodes[host]['stub'].StreamImages(stream_images_request, wait_for_ready=wait_for_ready, timeout=timeout) for
                    host in valid_hosts]
         self.logger.info(f"Created {len(streams)} StreamImages RPCs to hosts: {valid_hosts}")
 
@@ -771,7 +796,6 @@ class AioDaqDataClient:
                     async for response in stream:
                         await queue.put(response)
                 except grpc.aio.AioRpcError as e:
-                    # FIX: Differentiate between recoverable and critical errors.
                     # Swallow expected disconnection errors, but propagate others.
                     if e.code() in (grpc.StatusCode.CANCELLED, grpc.StatusCode.UNAVAILABLE):
                         self.logger.warning(

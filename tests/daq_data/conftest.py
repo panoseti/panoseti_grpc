@@ -16,7 +16,7 @@ from daq_data.daq_data_pb2 import PanoImage
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import ParseDict
 
-TEST_CFG_DIR = Path("tests/config")
+TEST_CFG_DIR = Path("tests/daq_data/config")
 TEST_CFG_DIR.mkdir(exist_ok=True)
 
 
@@ -57,7 +57,7 @@ def filesystem_pipe_sim_server_config(server_config_base):
     cfg['simulate_daq_cfg']['simulation_mode'] = 'filesystem_pipe'
     dps = ["img16", "ph256"]
     cfg['acquisition_methods'] = {"filesystem_pipe": {"enabled": True}}
-    cfg['simulate_daq_cfg']['strategies'] = {"filesystem_pipe": {"frames_per_pff": 1000, "frame_limit": 100}}
+    cfg['simulate_daq_cfg']['strategies'] = {"filesystem_pipe": {"frames_per_pff": 100, "frame_limit": 1000}}
     return cfg
 
 @pytest.fixture(scope="session")
@@ -66,11 +66,11 @@ def filesystem_poll_sim_server_config(server_config_base):
     cfg['simulate_daq_cfg']['simulation_mode'] = 'filesystem_poll'
     dps = ["img16", "ph256"]
     cfg['acquisition_methods'] = {"filesystem_poll": {"enabled": True}}
-    cfg['simulate_daq_cfg']['strategies'] = {"filesystem_poll": {"frames_per_pff": 1000, "frame_limit": 100}}
+    cfg['simulate_daq_cfg']['strategies'] = {"filesystem_poll": {"frames_per_pff": 100, "frame_limit": 1000}}
     return cfg
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="function")
 async def sim_server_process(request):
     """Parameterized fixture to start a server with a specific simulation config."""
     config = request.getfixturevalue(request.param)
@@ -178,8 +178,8 @@ async def n_sim_servers_fixture_factory(server_config_base):
             config['simulate_daq_cfg']['sim_module_ids'] = [module_id]
             config['simulate_daq_cfg']['simulation_mode'] = 'uds'
             config['acquisition_methods']['uds']['enabled'] = True
-            config['acquisition_methods']['filesystem_poll']['enabled'] = False
-            config['acquisition_methods']['filesystem_pipe']['enabled'] = False
+            config['acquisition_methods']['filesystem_poll']['enabled'] = True
+            config['acquisition_methods']['filesystem_pipe']['enabled'] = True
             config['acquisition_methods']['uds'][
                 'socket_path_template'] = "/tmp/hashpipe_grpc.module_{module_id}.dp_{dp_name}.sock"
 

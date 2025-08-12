@@ -153,6 +153,7 @@ class FilesystemBaseStrategy(BaseSimulationStrategy):
         ph_path = base_path / f"sim.dp_{self.common_config['ph_type']}.module_{mid}.seqno_{state['seqno']}.pff"
         self.pff_handles[mid]['movie_f'] = open(movie_path, 'wb')
         self.pff_handles[mid]['ph_f'] = open(ph_path, 'wb')
+        # self.logger.info(f"Module {mid}: Created new movie and PH files: {movie_path}, {ph_path}")
         self.sim_created_resources.extend([str(movie_path), str(ph_path)])
         state['frames_written'] = 0
 
@@ -165,6 +166,7 @@ class FilesystemBaseStrategy(BaseSimulationStrategy):
                 await self._rollover_pff_files(module_id)
             state['frames_written'] += 1
         handle = self.pff_handles[module_id][key]
+        # self.logger.debug(f"Module {module_id}: Writing frame to {key} at seqno {state['seqno']}")
         handle.write(frame_data)
         handle.flush()
 
@@ -182,7 +184,9 @@ class FilesystemBaseStrategy(BaseSimulationStrategy):
 
 class FilesystemPollStrategy(FilesystemBaseStrategy):
     async def send_frame(self, frame_data: bytes, data_product_type: str, module_id: int, frame_num: int):
+        # self.logger.debug(f"Module {module_id}: ABOUT TO WRITE  frame {frame_num} to file.")
         await self._write_frame_to_file(frame_data, data_product_type, module_id)
+        # self.logger.debug(f"Module {module_id}: WROTE frame {frame_num} to file.")
 
 
 class FilesystemPipeStrategy(FilesystemBaseStrategy):
