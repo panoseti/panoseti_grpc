@@ -9,6 +9,8 @@ from ublox_control.resources import default_f9t_cfg
 from google.protobuf.json_format import ParseDict
 from google.protobuf.struct_pb2 import Struct
 
+TIMEOUT = 10.0
+
 
 @pytest.mark.asyncio
 async def test_initf9t_error_no_device(live_server):
@@ -31,7 +33,7 @@ async def test_initf9t_error_no_device(live_server):
         )
 
         with pytest.raises(grpc.aio.AioRpcError) as e:
-            await stub.InitF9t(request)
+            await stub.InitF9t(request, timeout=TIMEOUT)
 
         assert e.value.code() == grpc.StatusCode.INVALID_ARGUMENT
         assert "Device path not specified" in e.value.details()
@@ -58,7 +60,7 @@ async def test_initf9t_error_invalid_device(live_server):
         )
 
         with pytest.raises(grpc.aio.AioRpcError) as e:
-            await stub.InitF9t(request)
+            await stub.InitF9t(request, timeout=TIMEOUT)
 
         assert e.value.code() == grpc.StatusCode.UNAVAILABLE
         assert "Could not connect to device" in e.value.details()

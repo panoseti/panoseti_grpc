@@ -6,15 +6,15 @@ import asyncio
 import json
 import base64
 from pyubx2 import UBXReader
-
+from tests.ublox_control.conftest import TEST_DATA_DIR
 
 # This assumes you have run save_raw_ubx.py and have ubx_packets.jsonl
 @pytest.fixture(scope="module")
-def raw_ubx_packets():
+def raw_ubx_packets(ubx_packets_data_path):
     """Loads the captured raw UBX packet data."""
     packets = []
     try:
-        with open("ubx_packets.jsonl", "r") as f:
+        with open(ubx_packets_data_path, "r") as f:
             for line in f:
                 packets.append(json.loads(line))
     except FileNotFoundError:

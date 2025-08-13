@@ -9,10 +9,15 @@ import grpc
 from pathlib import Path
 from ublox_control.server import UbloxControlServicer, serve
 from ublox_control.resources import make_rich_logger
+from ublox_control import ublox_control_pb2_grpc
 
 TEST_CFG_DIR = Path("tests/config")
 TEST_CFG_DIR.mkdir(exist_ok=True, parents=True)
+TEST_DATA_DIR = Path("tests/data")
 
+@pytest.fixture(scope="session")
+def ubx_packets_data_path():
+    return TEST_DATA_DIR / "ubx_packets.jsonl"
 
 # Create a dummy server config for testing
 @pytest.fixture(scope="session")
