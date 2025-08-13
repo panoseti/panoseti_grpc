@@ -8,23 +8,6 @@ from google.protobuf.json_format import ParseDict
 from google.protobuf.struct_pb2 import Struct
 
 
-def get_f9t_chip_config():
-
-
-if 'f9t_chips' not in client_f9t_cfg:
-    await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Chip configuration not specified in config.")
-
-for chip_cfg in client_f9t_cfg.get('f9t_chips', []):
-    if chip_cfg.get('uid') == self.server_cfg.get('f9t_uid'):
-        self._chip_cfg = chip_cfg
-        break
-
-if not self._chip_cfg:
-    await context.abort(grpc.StatusCode.INVALID_ARGUMENT,
-                        f"No chip configuration found for the server's F9t chip with UID={self.server_cfg['f9t_uid']}.")
-
-
-
 async def run():
     logger = make_rich_logger("UbloxControlClient")
     async with grpc.aio.insecure_channel('localhost:50051') as channel:

@@ -107,8 +107,8 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             if not uid:
                 await self._close_serial()
                 await context.abort(grpc.StatusCode.INTERNAL, "Could not detect F9T UID.")
-            if uid != client_f9t_cfg.get("uid"):
-                self.logger.warning(f"Detected F9T UID {uid} does not match expected UID {client_f9t_cfg.get('uid')}.")
+            if uid != client_f9t_cfg.get("f9t_uid"):
+                self.logger.warning(f"Detected F9T UID {uid} does not match client UID {client_f9t_cfg.get('f9t_uid')}.")
 
             # 2. Get base configuration items
             cfg_entries = client_f9t_cfg.get("cfg_key_settings", [])
