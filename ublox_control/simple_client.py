@@ -32,11 +32,20 @@ async def run():
             except grpc.aio.AioRpcError as e:
                 logger.error(f"InitF9t failed: {e.details()}")
                 return -1
+            except asyncio.CancelledError:
+                logger.info("CaptureUblox stream cancelled.")
+                return -1
+            except KeyboardInterrupt:
+                logger.info("CaptureUblox stream interrupted.")
+                return -1
 
         # 2. Capture Ublox data
-        capture_request = ublox_control_pb2.CaptureUbloxRequest()
+        capture_request = ublox_control_pb2.CaptureUbloxRequest(
+            patterns=[".*"]
+        )
+        logger.info(f"Sending CaptureUblox request: {capture_request}")
         try:
-            async for response in stub.CaptureUblox(capture_request):
+            async for response in await stub.CaptureUblox(capture_request):
                 parsed_data = MessageToDict(
                     response,
                     always_print_fields_with_no_presence=True,
