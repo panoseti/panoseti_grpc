@@ -7,6 +7,7 @@ Requires the following to function correctly:
     2. A valid connection to a ZED-F9T u-blox chip.
     3. All Python packages specified in requirements.txt.
 """
+import os
 import asyncio
 import logging
 import signal
@@ -89,12 +90,20 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             always_print_fields_with_no_presence=True
         )
 
+        num_active_clients = len(self._client_queues)
+        if not request.force_init and num_active_clients > 0 and self._io_task and not self._io_task.done():
+            emsg = (f"Cannot initiate F9T while {num_active_clients} clients are connected. "
+                    f"Use force_init=True to force initialization and cancel all active clients.")
+            self.logger.warning(emsg)
+            await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
+
         device = client_f9t_cfg.get("device")
         if not device:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Device path not specified in config.")
 
         if not await self._open_serial(device, client_f9t_cfg.get("baud", 115200)):
-            await context.abort(grpc.StatusCode.UNAVAILABLE, f"Could not connect to device {device}.")
+            device_abs_path = os.path.abspath(device)
+            await context.abort(grpc.StatusCode.UNAVAILABLE, f"Could not connect to device {device_abs_path}.")
 
         try:
             # 0. Detect model
@@ -110,7 +119,9 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                 await self._close_serial()
                 await context.abort(grpc.StatusCode.INTERNAL, "Could not detect F9T UID.")
             if uid != client_f9t_cfg.get("f9t_uid"):
-                self.logger.warning(f"Detected F9T UID {uid} does not match client UID {client_f9t_cfg.get('f9t_uid')}.")
+                emsg = f"Detected F9T UID {uid} does not match client UID {client_f9t_cfg.get('f9t_uid')}."
+                self.logger.error(emsg)
+                await context.abort(grpc.StatusCode.INVALID_ARGUMENT, emsg)
             else:
                 self.logger.info(f"Detected F9T UID='{uid}' matches client UID.")
 
@@ -177,6 +188,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             return ublox_control_pb2.InitF9tResponse(
                 init_status=ublox_control_pb2.InitF9tResponse.InitStatus.SUCCESS,
                 message="F9T initialized, configured, and verified successfully.",
+                f9t_config=ParseDict(self._f9t_cfg, Struct()),
             )
 
         except Exception as e:

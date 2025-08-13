@@ -72,6 +72,10 @@ message CaptureUbloxRequest {
 message InitF9tRequest {
   // JSON-formatted configuration for an F9T
   google.protobuf.Struct f9t_config = 1;
+
+  // iff True: force F9T re-initialization and cancel any active streaming clients.
+  // use this to guarantee the initialization success
+  bool force_init = 2;
 }
 
 
@@ -94,5 +98,5 @@ message InitF9tResponse {
   // any message regarding the initialization operation
   string message = 2;
   // return the current active f9t config
-  google.protobuf.Struct f9t_cfg = 3;
+  google.protobuf.Struct f9t_config = 3;
 }

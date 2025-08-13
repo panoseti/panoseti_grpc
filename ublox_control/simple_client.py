@@ -21,7 +21,8 @@ async def run():
             f9t_config.update(f9t_chip)
 
             init_request = ublox_control_pb2.InitF9tRequest(
-                f9t_config = ParseDict(f9t_config, Struct())
+                f9t_config = ParseDict(f9t_config, Struct()),
+                force_init=True
             )
             # logger.info(f"Sending InitF9t request: {init_request}")
             try:
