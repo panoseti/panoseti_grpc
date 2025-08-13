@@ -275,7 +275,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                         yield ublox_control_pb2.CaptureUbloxResponse(
                             type=ublox_control_pb2.CaptureUbloxResponse.Type.DATA,
                             name=packet_name,
-                            parsed_data=ParseDict(MessageToDict(parsed_data), Struct()),
+                            parsed_data=parsed_data_struct,
                             payload=parsed_data.serialize(),
                             timestamp=timestamp
                         )
