@@ -6,7 +6,7 @@ import sys
 import json5
 import logging
 import datetime
-from typing import List, Callable, Tuple, Any
+from typing import List, Callable, Tuple, Any, Dict
 from contextlib import contextmanager
 from pathlib import Path
 import redis
@@ -292,3 +292,35 @@ def set_f9t_config(device, cfg=default_f9t_cfg):
             raw_data, parsed_data = ubr.read()
             if parsed_data is not None:
                 print('\t', parsed_data)
+
+
+def ubx_to_dict(msg: UBXMessage) -> Dict[str, Any]:
+    """
+    Converts the parsed attributes of a UBXMessage to a dictionary suitable for JSON.
+    It filters out internal attributes (starting with '_') and methods.
+    Byte strings are converted to human-readable format.
+    """
+    if not isinstance(msg, UBXMessage):
+        return {}
+
+    d = {}
+    # Iterate over public attributes
+    for attr in filter(lambda a: not a.startswith('_'), dir(msg)):
+        value = getattr(msg, attr)
+        # Exclude methods and other non-serializable types
+        if callable(value):
+            continue
+
+        # Convert bytes to a readable string format
+        if isinstance(value, bytes):
+            # Attempt to decode as UTF-8, fallback to hex representation
+            try:
+                d[attr] = value.decode('utf-8').strip('\x00')
+            except UnicodeDecodeError:
+                d[attr] = value.hex()
+        # Ensure other values are JSON-serializable
+        elif isinstance(value, (int, float, str, bool, list, dict, type(None))):
+            d[attr] = value
+        # Skip other types that can't be easily serialized
+
+    return d

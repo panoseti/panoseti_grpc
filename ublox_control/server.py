@@ -37,7 +37,7 @@ from ublox_control.initialize.conf_gnss import (
     DTYPE_BY_ID,
     get_f9t_unique_id
 )
-from ublox_control.resources import make_rich_logger, CFG_DIR
+from ublox_control.resources import make_rich_logger, CFG_DIR, ubx_to_dict
 
 
 class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
@@ -236,15 +236,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
         if not self.is_running():
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, "F9T is not initialized or I/O is not running.")
 
-        patterns = []
-        if request.patterns:
-            try:
-                patterns = [re.compile(p) for p in request.patterns]
-            except re.error as e:
-                await context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"Invalid regex pattern provided: {e}")
-                return
-        else:  # If no patterns are provided, match all packets
-            patterns = [re.compile(".*")]
+        patterns = [re.compile(p) for p in request.patterns] if request.patterns else [re.compile(".*")]
 
         q = asyncio.Queue(maxsize=self.server_cfg.get("max_read_queue_size", 200))
         self._client_queues.append(q)
@@ -256,11 +248,18 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                 self.logger.info(f"Broadcasting initial cache to {peer} for matching patterns.")
                 for packet_name, parsed_data in self._packet_cache.items():
                     if any(p.match(packet_name) for p in patterns):
+                        # unpack parsed UBXMessage class into a dictionary, then serialize
+                        parsed_data_dict = ubx_to_dict(parsed_data)
+                        parsed_data_struct = Struct()
+                        ParseDict(parsed_data_dict, parsed_data_struct)
+
+                        # get timestamp
                         timestamp = Timestamp()
                         timestamp.GetCurrentTime()
                         yield ublox_control_pb2.CaptureUbloxResponse(
                             type=ublox_control_pb2.CaptureUbloxResponse.Type.DATA,
                             name=packet_name,
+                            parsed_data=parsed_data_struct,
                             payload=parsed_data.serialize(),
                             timestamp=timestamp
                         )
