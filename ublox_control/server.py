@@ -84,18 +84,23 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
         from conf_gnss.py's main function for robust configuration and verification.
         """
         self.logger.info(f"New InitF9t RPC from {context.peer()}")
-        client_f9t_cfg = MessageToDict(
-            request.f9t_config,
-            preserving_proto_field_name=True,
-            always_print_fields_with_no_presence=True
-        )
-
         num_active_clients = len(self._client_queues)
         if not request.force_init and num_active_clients > 0 and self._io_task and not self._io_task.done():
             emsg = (f"Cannot initiate F9T while {num_active_clients} clients are connected. "
                     f"Use force_init=True to force initialization and cancel all active clients.")
             self.logger.warning(emsg)
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
+
+        # Stop any active io_task
+        await self.stop()
+        self._stop_event.clear()
+
+        # Start processing request
+        client_f9t_cfg = MessageToDict(
+            request.f9t_config,
+            preserving_proto_field_name=True,
+            always_print_fields_with_no_presence=True
+        )
 
         device = client_f9t_cfg.get("device")
         if not device:
