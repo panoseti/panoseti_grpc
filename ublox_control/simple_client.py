@@ -4,7 +4,7 @@ import grpc
 import copy
 from ublox_control import ublox_control_pb2, ublox_control_pb2_grpc
 from ublox_control.resources import make_rich_logger, default_f9t_cfg
-from google.protobuf.json_format import ParseDict
+from google.protobuf.json_format import ParseDict, MessageToDict
 from google.protobuf.struct_pb2 import Struct
 
 
@@ -37,10 +37,21 @@ async def run():
         capture_request = ublox_control_pb2.CaptureUbloxRequest()
         try:
             async for response in stub.CaptureUblox(capture_request):
-                logger.debug(f"Received data: {response.name}")
+                parsed_data = MessageToDict(
+                    response,
+                    always_print_fields_with_no_presence=True,
+                    preserving_proto_field_name=True,
+                )
+                logger.debug(f"Received data: {response.name}: {parsed_data}")
         except grpc.aio.AioRpcError as e:
             logger.error(f"CaptureUblox stream failed: {e.details()}")
             raise e
+        except asyncio.CancelledError:
+            logger.info("CaptureUblox stream cancelled.")
+            return -1
+        except KeyboardInterrupt:
+            logger.info("CaptureUblox stream interrupted.")
+            return -1
 
 
 if __name__ == '__main__':
