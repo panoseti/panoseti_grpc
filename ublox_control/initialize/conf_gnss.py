@@ -286,7 +286,7 @@ def poll_mon_ver(ser, timeout=2.5):
                 "hwVersion": getattr(parsed, "hwVersion", None),
                 "extensions": [v for k, v in parsed.__dict__.items() if k.startswith("extension")]
             }
-            confg_gnss_logger.info("MON-VER:", info)
+            confg_gnss_logger.info(f"MON-VER: {info}")
             return info
     raise RuntimeError("No MON-VER response")
 
@@ -530,7 +530,7 @@ def initial_probe(ser, verbose=False):
     # A couple of timepulse fields (if present)
     tp1 = poll_one_by_id(ser, 0x40050024, layer=0)  # CFG_TP_FREQ_TP1
     tp2 = poll_one_by_id(ser, 0x40050026, layer=0)  # CFG_TP_FREQ_TP2
-    confg_gnss_logger.debug("[VALGET] TP1 freq:", tp1.get(0x40050024), " TP2 freq:", tp2.get(0x40050026))
+    confg_gnss_logger.debug(f"[VALGET] TP1 freq: {tp1.get(0x40050024)}, TP2 freq: {tp2.get(0x40050026)}")
 
 def poll_one_by_id(ser, keyid: int, layer: int = 0, pos: int = 0, timeout=3.0):
     """
@@ -538,7 +538,7 @@ def poll_one_by_id(ser, keyid: int, layer: int = 0, pos: int = 0, timeout=3.0):
     """
     # Correct way: build CFG-VALGET with payload using the helper
     msg = UBXMessage.config_poll(layer=layer, position=pos, keys=[keyid])
-    confg_gnss_logger.info("TX:", msg, msg.serialize().hex())
+    confg_gnss_logger.info("TX: {msg} {msg.serialize().hex()}")
     ser.write(msg.serialize())
 
     rdr = UBXReader(ser, protfilter=2)
@@ -551,11 +551,12 @@ def poll_one_by_id(ser, keyid: int, layer: int = 0, pos: int = 0, timeout=3.0):
             continue
         if not parsed:
             continue
-        confg_gnss_logger.info("RX:", parsed.identity, getattr(parsed, "length", None))
+        confg_gnss_logger.info(f"RX: {parsed.identity} {getattr(parsed, 'length', None)}")
         if parsed.identity == "CFG-VALGET":
             out = {}
             _merge_cfg_results(out, parsed)
-            confg_gnss_logger.info("VALGET merged:", {hex(k): v for k, v in out.items()})
+            valget_merged = {hex(k): v for k, v in out.items()}
+            confg_gnss_logger.info(f"VALGET merged: {valget_merged}")
             return out
         elif parsed.identity == "ACK-NAK":
             raise RuntimeError("Device NAKed CFG-VALGET (bad payload or unsupported key).")
@@ -717,7 +718,7 @@ def main():
         ser.reset_output_buffer()
 
         model = detect_model(ser)
-        confg_gnss_logger.info("Detected:", model)
+        confg_gnss_logger.info(f"Detected: {model}")
 
         if model.startswith("ZED-F9T") and pos:
             if args.verbose:
@@ -734,7 +735,7 @@ def main():
                 db_by_id, db_by_name = load_regdesc_csv(register_csv)
                 describe_plan(cfg_items, db_by_id, db_by_name)
             except Exception as e:
-                confg_gnss_logger.warning(f"[WARN] Could not load descriptions from {register_csv}: {e}", file=sys.stderr)
+                confg_gnss_logger.warning(f"[WARN] Could not load descriptions from {register_csv}: {e}")
 
         if args.verbose or args.probe_only:
             initial_probe(ser, verbose=True)
@@ -750,7 +751,7 @@ def main():
         acks = send_cfg_valset_grouped(ser, cfg_items, set_layers_mask, verbose=args.verbose)
         confg_gnss_logger.info(f"ACKs per chunk: {acks}")
         if not all(acks):
-            confg_gnss_logger.warning("[WARN] One or more CFG-VALSET batches were NAKed.", file=sys.stderr)
+            confg_gnss_logger.warning("[WARN] One or more CFG-VALSET batches were NAKed.")
 
         # --- VERIFY (poll exactly the requested layer) ---
         key_ids = [it["id"] for it in cfg_items]

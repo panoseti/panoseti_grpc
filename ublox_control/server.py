@@ -169,6 +169,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
 
             # 6. Start the I/O reader loop
             if not self._io_task or self._io_task.done():
+                self._main_loop = asyncio.get_running_loop()
                 self._io_task = asyncio.create_task(self._reader_loop())
 
             return ublox_control_pb2.InitF9tResponse(
@@ -183,8 +184,11 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
 
     def _reader_loop_sync(self):
         """The synchronous part of the reader loop that runs in a separate thread."""
-        if not self._serial or not self._main_loop:
-            self.logger.error("Reader loop cannot start: serial port or main event loop is not available.")
+        if not self._main_loop:
+            self.logger.error("Reader loop cannot start: main event loop is not available.")
+            return
+        elif not self._serial:
+            self.logger.error("Reader loop cannot start: serial port is not available.")
             return
         ubr = UBXReader(self._serial, protfilter=UBX_PROTOCOL)
         self.logger.info("Starting reader loop.")
