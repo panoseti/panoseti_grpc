@@ -119,7 +119,8 @@ def get_f9t_redis_key(chip_name, chip_uid, prot_msg):
     # Verify the chip_uid is a 10-digit hex number
     chip_uid_emsg = f"chip_uid must be a 10-digit hex integer. Got {chip_uid=}"
     try:
-        assert len(chip_uid) == 10, chip_uid_emsg
+        if len(chip_uid) != 10:
+            raise ValueError(chip_uid_emsg)
         int(chip_uid, 16)   # verifies chip_uid is a valid hex integer
     except ValueError or AssertionError:
         raise ValueError(chip_uid_emsg)

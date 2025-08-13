@@ -8,6 +8,7 @@ Requires the following to function correctly:
     3. All Python packages specified in requirements.txt.
 """
 import os
+import stat
 import asyncio
 import logging
 import signal
@@ -102,9 +103,20 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             always_print_fields_with_no_presence=True
         )
 
+        # Validate the provided F9T device file
         device = client_f9t_cfg.get("device")
         if not device:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Device path not specified in config.")
+        if not isinstance(device, str):
+            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Device path must be a string.")
+
+        if not os.path.exists(device):
+            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"Device path {device} does not exist.")
+
+        device_file_mode = os.stat(device).st_mode
+        if not stat.S_ISCHR(device_file_mode):
+            await context.abort(grpc.StatusCode.INVALID_ARGUMENT,f"Device path {device} is not a character device as "
+                                                                 f"expected for a ZED-F9T device file.")
 
         if not await self._open_serial(device, client_f9t_cfg.get("baud", 115200)):
             device_abs_path = os.path.abspath(device)
@@ -319,7 +331,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
         await self._close_serial()
 
 
-async def serve(shutdown_event, in_main_thread=True):
+async def serve(_stop_event=None, in_main_thread=True):
     """Initializes and starts the async gRPC server."""
     logger = make_rich_logger(__name__, level=logging.DEBUG)
     try:
@@ -328,6 +340,9 @@ async def serve(shutdown_event, in_main_thread=True):
     except FileNotFoundError:
         logger.error("Server config file not found. Exiting.")
         return
+
+    if _stop_event is None:
+        _stop_event = asyncio.Event()
 
     server = grpc.aio.server()
     servicer = UbloxControlServicer(server_config, logger)
@@ -348,11 +363,11 @@ async def serve(shutdown_event, in_main_thread=True):
 
     def _signal_handler(*_):
         logger.info("Shutdown signal received.")
-        if not stop_event.is_set():
+        if not _stop_event.is_set():
             loop.create_task(shutdown())
 
     async def shutdown():
-        stop_event.set()
+        _stop_event.set()
         await servicer.stop()
         await server.stop(grace=server_config.get("shutdown_grace_period", 1.0))
         logger.info("Server shut down gracefully.")
@@ -365,7 +380,7 @@ async def serve(shutdown_event, in_main_thread=True):
     except asyncio.CancelledError:
         logger.info("Main serve task cancelled.")
     finally:
-        if not stop_event.is_set():
+        if not _stop_event.is_set():
             await shutdown()
 
 
