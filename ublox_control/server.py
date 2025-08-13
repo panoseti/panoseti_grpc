@@ -274,7 +274,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                     name=_packet_name,
                     parsed_data=parsed_data_struct,
                     payload=_parsed_data.serialize(),
-                    timestamp=timestamp
+                    pkt_unix_timestamp=timestamp
                 )
             # Broadcast initial cache state
             async with self._cache_lock:

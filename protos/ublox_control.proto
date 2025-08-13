@@ -38,7 +38,7 @@ message CaptureUbloxResponse {
   // dictionary of parsed data in the specified packet
   google.protobuf.Struct parsed_data = 3;
   // UTC timestamp when this message was received by the DAQ node
-  google.protobuf.Timestamp timestamp = 4;
+  google.protobuf.Timestamp pkt_unix_timestamp = 4;
   // optional message for errors and other details
   string message = 5;
   // Serialized UBXMessage

@@ -2,6 +2,7 @@ import asyncio
 import json
 import grpc
 import copy
+import signal
 from ublox_control import ublox_control_pb2, ublox_control_pb2_grpc
 from ublox_control.resources import make_rich_logger, default_f9t_cfg
 from google.protobuf.json_format import ParseDict, MessageToDict
@@ -9,6 +10,17 @@ from google.protobuf.struct_pb2 import Struct
 
 
 async def run():
+    loop = asyncio.get_running_loop()
+    stop_event = asyncio.Event()
+
+    def _signal_handler(*_):
+        logger.info("Shutdown signal received.")
+        if not stop_event.is_set():
+            stop_event.set()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, _signal_handler)
+
     logger = make_rich_logger("UbloxControlClient")
     async with grpc.aio.insecure_channel('localhost:50051') as channel:
         stub = ublox_control_pb2_grpc.UbloxControlStub(channel)
@@ -32,12 +44,6 @@ async def run():
             except grpc.aio.AioRpcError as e:
                 logger.error(f"InitF9t failed: {e.details()}")
                 return -1
-            except asyncio.CancelledError:
-                logger.info("CaptureUblox stream cancelled.")
-                return -1
-            except KeyboardInterrupt:
-                logger.info("CaptureUblox stream interrupted.")
-                return -1
 
         # 2. Capture Ublox data
         capture_request = ublox_control_pb2.CaptureUbloxRequest(
@@ -45,7 +51,10 @@ async def run():
         )
         logger.info(f"Sending CaptureUblox request: {capture_request}")
         try:
-            async for response in await stub.CaptureUblox(capture_request):
+            async for response in stub.CaptureUblox(capture_request):
+                if stop_event.is_set():
+                    logger.info("CaptureUblox stream cancelled.")
+                    return -1
                 parsed_data = MessageToDict(
                     response,
                     always_print_fields_with_no_presence=True,
@@ -55,13 +64,8 @@ async def run():
         except grpc.aio.AioRpcError as e:
             logger.error(f"CaptureUblox stream failed: {e.details()}")
             raise e
-        except asyncio.CancelledError:
-            logger.info("CaptureUblox stream cancelled.")
-            return -1
-        except KeyboardInterrupt:
-            logger.info("CaptureUblox stream interrupted.")
-            return -1
 
 
 if __name__ == '__main__':
+
     asyncio.run(run())
