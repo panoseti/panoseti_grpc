@@ -16,12 +16,14 @@ import json
 from typing import Dict, Any, Optional
 import copy
 
-import grpc
-from grpc_reflection.v1alpha import reflection
 from pyubx2 import UBXReader, UBX_PROTOCOL, UBXMessage, SET_LAYER_RAM, TXN_NONE
 from serial import Serial
+
+import grpc
+from grpc_reflection.v1alpha import reflection
 from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf.struct_pb2 import Struct
+from google.protobuf.timestamp_pb2 import Timestamp
 
 from ublox_control import ublox_control_pb2, ublox_control_pb2_grpc
 from ublox_control.initialize.conf_gnss import (
@@ -254,7 +256,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                 self.logger.info(f"Broadcasting initial cache to {peer} for matching patterns.")
                 for packet_name, parsed_data in self._packet_cache.items():
                     if any(p.match(packet_name) for p in patterns):
-                        timestamp = ublox_control_pb2.Timestamp()
+                        timestamp = Timestamp()
                         timestamp.GetCurrentTime()
                         yield ublox_control_pb2.CaptureUbloxResponse(
                             type=ublox_control_pb2.CaptureUbloxResponse.Type.DATA,
@@ -269,7 +271,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                     parsed_data = await asyncio.wait_for(q.get(), timeout=1.0)
                     packet_name = parsed_data.identity
                     if any(p.match(packet_name) for p in patterns):
-                        timestamp = ublox_control_pb2.Timestamp()
+                        timestamp = Timestamp()
                         timestamp.GetCurrentTime()
                         yield ublox_control_pb2.CaptureUbloxResponse(
                             type=ublox_control_pb2.CaptureUbloxResponse.Type.DATA,
