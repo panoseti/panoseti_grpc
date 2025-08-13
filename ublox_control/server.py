@@ -319,7 +319,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
         await self._close_serial()
 
 
-async def serve():
+async def serve(shutdown_event, in_main_thread=True):
     """Initializes and starts the async gRPC server."""
     logger = make_rich_logger(__name__, level=logging.DEBUG)
     try:
@@ -345,7 +345,6 @@ async def serve():
 
     # Set up signal handling for graceful shutdown
     loop = asyncio.get_running_loop()
-    stop_event = asyncio.Event()
 
     def _signal_handler(*_):
         logger.info("Shutdown signal received.")
@@ -372,6 +371,7 @@ async def serve():
 
 if __name__ == "__main__":
     try:
-        asyncio.run(serve())
+        stop_event = asyncio.Event()
+        asyncio.run(serve(stop_event, in_main_thread=True))
     except KeyboardInterrupt:
         pass
