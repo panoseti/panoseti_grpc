@@ -243,26 +243,28 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
         self.logger.info(f"Client from {peer} subscribed. Total clients: {len(self._client_queues)}")
 
         try:
+            def _create_capture_ublox_response(_packet_name, _parsed_data):
+                # unpack parsed UBXMessage class into a dictionary, then serialize
+                parsed_data_dict = ubx_to_dict(_parsed_data)
+                parsed_data_struct = Struct()
+                ParseDict(parsed_data_dict, parsed_data_struct)
+
+                # get timestamp
+                timestamp = Timestamp()
+                timestamp.GetCurrentTime()
+                return ublox_control_pb2.CaptureUbloxResponse(
+                    type=ublox_control_pb2.CaptureUbloxResponse.Type.DATA,
+                    name=_packet_name,
+                    parsed_data=parsed_data_struct,
+                    payload=_parsed_data.serialize(),
+                    timestamp=timestamp
+                )
             # Broadcast initial cache state
             async with self._cache_lock:
                 self.logger.info(f"Broadcasting initial cache to {peer} for matching patterns.")
                 for packet_name, parsed_data in self._packet_cache.items():
                     if any(p.match(packet_name) for p in patterns):
-                        # unpack parsed UBXMessage class into a dictionary, then serialize
-                        parsed_data_dict = ubx_to_dict(parsed_data)
-                        parsed_data_struct = Struct()
-                        ParseDict(parsed_data_dict, parsed_data_struct)
-
-                        # get timestamp
-                        timestamp = Timestamp()
-                        timestamp.GetCurrentTime()
-                        yield ublox_control_pb2.CaptureUbloxResponse(
-                            type=ublox_control_pb2.CaptureUbloxResponse.Type.DATA,
-                            name=packet_name,
-                            parsed_data=parsed_data_struct,
-                            payload=parsed_data.serialize(),
-                            timestamp=timestamp
-                        )
+                        yield _create_capture_ublox_response(packet_name, parsed_data)
 
             # Stream new packets
             while not context.cancelled() and self.is_running():
@@ -270,15 +272,8 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                     parsed_data = await asyncio.wait_for(q.get(), timeout=1.0)
                     packet_name = parsed_data.identity
                     if any(p.match(packet_name) for p in patterns):
-                        timestamp = Timestamp()
-                        timestamp.GetCurrentTime()
-                        yield ublox_control_pb2.CaptureUbloxResponse(
-                            type=ublox_control_pb2.CaptureUbloxResponse.Type.DATA,
-                            name=packet_name,
-                            parsed_data=parsed_data_struct,
-                            payload=parsed_data.serialize(),
-                            timestamp=timestamp
-                        )
+                        yield _create_capture_ublox_response(packet_name, parsed_data)
+
                 except asyncio.TimeoutError:
                     continue
         except grpc.aio.AioRpcError as e:
