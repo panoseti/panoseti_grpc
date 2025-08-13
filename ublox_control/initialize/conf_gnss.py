@@ -8,8 +8,8 @@ Description: Script to configure ZED F9P/T receivers from a JSON file. Heavy hel
 License: MIT License
 """
 
-
 import argparse, csv, inspect, pyubx2, re, serial, sys, time
+import logging
 import json5 as json
 from typing import List, Tuple
 from pyubx2 import (
@@ -29,6 +29,9 @@ except Exception:
     DTYPE_BY_ID = {}
 
 from pyubx2.ubxhelpers import cfgname2key, process_monver  # pretty parser for MON-VER
+from ublox_control.resources import make_rich_logger
+
+confg_gnss_logger = make_rich_logger("confg_gnss")
 
 UBX_EXC = (UBXStreamError, UBXMessageError, UBXTypeError, UBXParseError)
 
@@ -95,9 +98,9 @@ def _log_plan(cfg_items):
     """
     Prints out registers / info about them if you set verbose mode on
     """
-    print("Planned writes:")
+    confg_gnss_logger.debug("Planned writes:")
     for it in cfg_items:
-        print(f"  {it['name']:36s} id={hex(it['id'])} dtype={it['dtype']:>2s} value={_fmt_val(it['value'], it['dtype'])}")
+        confg_gnss_logger.debug(f"  {it['name']:36s} id={hex(it['id'])} dtype={it['dtype']:>2s} value={_fmt_val(it['value'], it['dtype'])}")
 
 def _await_ack(ser, timeout=3.0) -> bool:
     """
@@ -258,7 +261,7 @@ def _to_cfg_items(entries):
             elif dtype_char == 'R' and not isinstance(val, float):
                 val = float(val)
         except (ValueError, TypeError) as exc:
-            print(f"Warning: Could not coerce value for {name} to expected type {dtype}: {exc}", file=sys.stderr)
+            confg_gnss_logger.warning(f"Warning: Could not coerce value for {name} to expected type {dtype}: {exc}", file=sys.stderr)
 
         out.append({"name": name, "id": kid, "dtype": dtype, "value": val})
     return out
@@ -283,7 +286,7 @@ def poll_mon_ver(ser, timeout=2.5):
                 "hwVersion": getattr(parsed, "hwVersion", None),
                 "extensions": [v for k, v in parsed.__dict__.items() if k.startswith("extension")]
             }
-            print("MON-VER:", info)
+            confg_gnss_logger.info("MON-VER:", info)
             return info
     raise RuntimeError("No MON-VER response")
 
@@ -321,12 +324,10 @@ def send_cfg_valset_grouped(ser, cfg_items, layers_mask, verbose=False, sleep_af
             if transactional and n > 64:
                 tx = 1 if i == 0 else (3 if i + 64 >= n else 2)  # start/cont/commit
             msg = UBXMessage.config_set(layers=layers_mask, transaction=tx, cfgData=chunk)
-            if verbose:
-                print(f"[SET {tag}] chunk {i//64+1}/{(n+63)//64} tx={tx}, {len(chunk)} keys")
+            confg_gnss_logger.debug(f"[SET {tag}] chunk {i//64+1}/{(n+63)//64} tx={tx}, {len(chunk)} keys")
             ser.write(msg.serialize())
             ok = _await_ack(ser, timeout=2.5)
-            if verbose:
-                print(f"[SET {tag}] ACK={'OK' if ok else 'NAK'}")
+            confg_gnss_logger.debug(f"[SET {tag}] ACK={'OK' if ok else 'NAK'}")
             acks.append(ok)
         return acks
 
@@ -344,16 +345,14 @@ def send_cfg_valset_grouped(ser, cfg_items, layers_mask, verbose=False, sleep_af
     sig   = [it for it in cfg_items if it["name"].startswith("CFG_SIGNAL_")]
     other = _order_other([it for it in cfg_items if not it["name"].startswith("CFG_SIGNAL_")])
 
-    if verbose and sig:
-        print(f"[SET] Group CFG_SIGNAL_*: {len(sig)} keys (atomic)")
+    confg_gnss_logger.debug(f"[SET] Group CFG_SIGNAL_*: {len(sig)} keys (atomic)")
 
     # Send a chunk check for acknolwedgement back
     acks = _send_chunks([(it["id"], it["value"]) for it in sig], transactional=True, tag="SIGNAL")
     if sig and sleep_after_signal:
         time.sleep(sleep_after_signal)  # one short pause after GNSS reconfig
 
-    if verbose and other:
-        print(f"[SET] Group other CFG_*: {len(other)} keys (atomic)")
+    confg_gnss_logger.debug(f"[SET] Group other CFG_*: {len(other)} keys (atomic)")
 
     acks += _send_chunks([(it["id"], it["value"]) for it in other], transactional=True, tag="OTHER")
     return acks
@@ -487,7 +486,7 @@ def describe_plan(cfg_items, db_by_id, db_by_name):
     Print a doc line for every key we're about to write, including
     engineering units using CSV scale+unit.
     """
-    print("Descriptions for planned writes:")
+    confg_gnss_logger.info("Descriptions for planned writes:")
     for it in cfg_items:
         name = _norm_name(it["name"])
         kid  = it["id"]
@@ -495,7 +494,7 @@ def describe_plan(cfg_items, db_by_id, db_by_name):
         dtype = it.get("dtype","")
         entry = db_by_id.get(kid) or db_by_name.get(name)
         if not entry:
-            print(f"  {name:32s} id={hex(kid)} dtype={dtype:>2s}  value={val}  (no CSV description)")
+            confg_gnss_logger.info(f"  {name:32s} id={hex(kid)} dtype={dtype:>2s}  value={val}  (no CSV description)")
             continue
 
         eng_val, eng_unit = _fmt_eng(val, dtype, entry.get("scale",""), entry.get("unit",""))
@@ -509,7 +508,7 @@ def describe_plan(cfg_items, db_by_id, db_by_name):
             def_txt = f" (default {ev}{eu})"
 
         desc = entry.get("desc","")
-        print(f"  {name:32s} id={hex(kid)} dtype={entry.get('dtype',''):>2s} "
+        confg_gnss_logger.info(f"  {name:32s} id={hex(kid)} dtype={entry.get('dtype',''):>2s} "
               f"raw={val}  eng={eng_val}{eng_unit} -> {desc}{def_txt}")
 
 
@@ -521,19 +520,17 @@ def initial_probe(ser, verbose=False):
     info = poll_mon_ver(ser)
     if verbose:
         def _clean(b): return b.decode(errors="ignore").strip("\x00")
-        print(f"[MON-VER] model={_clean(info['extensions'][3])} prot={_clean(info['extensions'][2])} fw={_clean(info['extensions'][1])}")
+        confg_gnss_logger.info(f"[MON-VER] model={_clean(info['extensions'][3])} prot={_clean(info['extensions'][2])} fw={_clean(info['extensions'][1])}")
 
     # Prove VALGET flow using wildcards and a single key
     uart_default = poll_one_by_id(ser, 0x4052FFFF, layer=7)  # UART1 group defaults
     uart_ram     = poll_one_by_id(ser, 0x4052FFFF, layer=0)  # UART1 group RAM
-    if verbose:
-        print(f"[VALGET] UART1 DEFAULT keys={len(uart_default)} RAM keys={len(uart_ram)}")
+    confg_gnss_logger.debug(f"[VALGET] UART1 DEFAULT keys={len(uart_default)} RAM keys={len(uart_ram)}")
 
     # A couple of timepulse fields (if present)
     tp1 = poll_one_by_id(ser, 0x40050024, layer=0)  # CFG_TP_FREQ_TP1
     tp2 = poll_one_by_id(ser, 0x40050026, layer=0)  # CFG_TP_FREQ_TP2
-    if verbose:
-        print("[VALGET] TP1 freq:", tp1.get(0x40050024), " TP2 freq:", tp2.get(0x40050026))
+    confg_gnss_logger.debug("[VALGET] TP1 freq:", tp1.get(0x40050024), " TP2 freq:", tp2.get(0x40050026))
 
 def poll_one_by_id(ser, keyid: int, layer: int = 0, pos: int = 0, timeout=3.0):
     """
@@ -541,7 +538,7 @@ def poll_one_by_id(ser, keyid: int, layer: int = 0, pos: int = 0, timeout=3.0):
     """
     # Correct way: build CFG-VALGET with payload using the helper
     msg = UBXMessage.config_poll(layer=layer, position=pos, keys=[keyid])
-    print("TX:", msg, msg.serialize().hex())
+    confg_gnss_logger.info("TX:", msg, msg.serialize().hex())
     ser.write(msg.serialize())
 
     rdr = UBXReader(ser, protfilter=2)
@@ -554,11 +551,11 @@ def poll_one_by_id(ser, keyid: int, layer: int = 0, pos: int = 0, timeout=3.0):
             continue
         if not parsed:
             continue
-        print("RX:", parsed.identity, getattr(parsed, "length", None))
+        confg_gnss_logger.info("RX:", parsed.identity, getattr(parsed, "length", None))
         if parsed.identity == "CFG-VALGET":
             out = {}
             _merge_cfg_results(out, parsed)
-            print("VALGET merged:", {hex(k): v for k, v in out.items()})
+            confg_gnss_logger.info("VALGET merged:", {hex(k): v for k, v in out.items()})
             return out
         elif parsed.identity == "ACK-NAK":
             raise RuntimeError("Device NAKed CFG-VALGET (bad payload or unsupported key).")
@@ -720,11 +717,11 @@ def main():
         ser.reset_output_buffer()
 
         model = detect_model(ser)
-        print("Detected:", model)
+        confg_gnss_logger.info("Detected:", model)
 
         if model.startswith("ZED-F9T") and pos:
             if args.verbose:
-                print("Setting coordinate positions from JSON")
+                confg_gnss_logger.info("Setting coordinate positions from JSON")
             tmode_pairs = build_tmode_fixed_from_json(pos, pos.get("acc_m", 0.05))
             tmode_items = _to_cfg_items([{"key": k, "value": v} for k, v in tmode_pairs])
             cfg_items.extend(tmode_items)
@@ -737,7 +734,7 @@ def main():
                 db_by_id, db_by_name = load_regdesc_csv(register_csv)
                 describe_plan(cfg_items, db_by_id, db_by_name)
             except Exception as e:
-                print(f"[WARN] Could not load descriptions from {register_csv}: {e}", file=sys.stderr)
+                confg_gnss_logger.warning(f"[WARN] Could not load descriptions from {register_csv}: {e}", file=sys.stderr)
 
         if args.verbose or args.probe_only:
             initial_probe(ser, verbose=True)
@@ -751,9 +748,9 @@ def main():
 
         # Send (grouped) and verify
         acks = send_cfg_valset_grouped(ser, cfg_items, set_layers_mask, verbose=args.verbose)
-        print(f"ACKs per chunk: {acks}")
+        confg_gnss_logger.info(f"ACKs per chunk: {acks}")
         if not all(acks):
-            print("[WARN] One or more CFG-VALSET batches were NAKed.", file=sys.stderr)
+            confg_gnss_logger.warning("[WARN] One or more CFG-VALSET batches were NAKed.", file=sys.stderr)
 
         # --- VERIFY (poll exactly the requested layer) ---
         key_ids = [it["id"] for it in cfg_items]
@@ -770,14 +767,14 @@ def main():
 
         if not args.verbose:
             status = "OK" if ok else f"MISMATCH (wanted {want}, got {got})"
-            print(f"{it['name']:36s} : {status} [{verify_layer}]")
+            confg_gnss_logger.debug(f"{it['name']:36s} : {status} [{verify_layer}]")
         else:
             before_val = before_map.get(kid)
             line  = f"{it['name']:36s} : {'OK' if ok else 'MISMATCH'} [{verify_layer}]"
             line += f"  want={_fmt_val(want, dtype)}"
             line += f"  got={_fmt_val(got, dtype)}"
             line += f"  before={_fmt_val(before_val, dtype)}"
-            print(line)
+            confg_gnss_logger.info(line)
 
         if not ok:
             failures.append((it["name"], want, got))
@@ -785,7 +782,7 @@ def main():
     if failures:
         sys.exit(2)
     else:
-        print("All settings applied and verified.")
+        confg_gnss_logger.info("All settings applied and verified.")
     # Running this will lock configuration until a power cycle
     '''
     layers_to_lock = ["BBR"]  # add "RAM" to freeze this session too; avoid "FLASH" until final build

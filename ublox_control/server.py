@@ -49,13 +49,13 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
         self.server_cfg = server_cfg
         self.logger = logger
         self._f9t_cfg: Dict[str, Any] = {}
-        self._chip_cfg: Dict[str, Any] = {}
         self._serial: Optional[Serial] = None
         self._io_task: Optional[asyncio.Task] = None
         self._stop_event = asyncio.Event()
         self._packet_cache: Dict[str, UBXMessage] = {}
         self._cache_lock = asyncio.Lock()
         self._client_queues: list[asyncio.Queue] = []
+        self._main_loop: Optional[asyncio.AbstractEventLoop] = None
 
     async def _open_serial(self, device: str, baud: int, timeout=0.5):
         """Opens the serial port."""
@@ -159,8 +159,8 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                     failures.append(failure_detail)
 
             if failures:
-                error_message = f"Configuration verification failed for {len(failures)} items on layer {verify_layer}:\n" + "\n".join(
-                    failures)
+                error_message = (f"Configuration verification failed for {len(failures)}"
+                                 f" items on layer {verify_layer}:\n") + "\n".join(failures)
                 self.logger.error(error_message)
                 raise RuntimeError(error_message)
 
@@ -183,7 +183,8 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
 
     def _reader_loop_sync(self):
         """The synchronous part of the reader loop that runs in a separate thread."""
-        if not self._serial:
+        if not self._serial or not self._main_loop:
+            self.logger.error("Reader loop cannot start: serial port or main event loop is not available.")
             return
         ubr = UBXReader(self._serial, protfilter=UBX_PROTOCOL)
         self.logger.info("Starting reader loop.")
@@ -191,7 +192,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             try:
                 raw, parsed = ubr.read()
                 if parsed:
-                    asyncio.run_coroutine_threadsafe(self._distribute_packet(parsed), asyncio.get_running_loop())
+                    asyncio.run_coroutine_threadsafe(self._distribute_packet(parsed), self._main_loop)
             except Exception as e:
                 # Log non-critical errors without stopping the loop
                 if self._serial and self._serial.is_open:
@@ -259,7 +260,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                         )
 
             # Stream new packets
-            while context.is_active() and self.is_running():
+            while not context.cancelled() and self.is_running():
                 try:
                     parsed_data = await asyncio.wait_for(q.get(), timeout=1.0)
                     packet_name = parsed_data.identity
@@ -293,6 +294,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
         self._stop_event.set()
         if self._io_task:
             try:
+                await asyncio.sleep(0.1)
                 await asyncio.wait_for(self._io_task, timeout=2.0)
             except asyncio.TimeoutError:
                 self.logger.warning("I/O task did not stop in time, cancelling.")
