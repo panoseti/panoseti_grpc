@@ -245,7 +245,21 @@ def _to_cfg_items(entries):
         val = e["value"]
         if isinstance(val, str) and val.lower().startswith("0x"):
             val = int(val, 16)
-        kid, dtype  = cfgname2key(name) #resolve_keyid(name)
+
+        # Resolve key ID and data type from the name
+        kid, dtype = cfgname2key(name)
+        dtype_char = dtype[0]
+
+        # pyubx2 is strict about value types. Coerce the value to the
+        # type expected by the library based on the configuration key's data type.
+        try:
+            if dtype_char in ('L', 'U', 'I', 'E', 'X') and not isinstance(val, int):
+                val = int(val)
+            elif dtype_char == 'R' and not isinstance(val, float):
+                val = float(val)
+        except (ValueError, TypeError) as exc:
+            print(f"Warning: Could not coerce value for {name} to expected type {dtype}: {exc}", file=sys.stderr)
+
         out.append({"name": name, "id": kid, "dtype": dtype, "value": val})
     return out
 
