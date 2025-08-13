@@ -1,5 +1,5 @@
 {
     "max_workers": 5,
     "max_read_queue_size": 200,
-    "shutdown_grace_period": 0.1
+    "shutdown_grace_period": 0.5
 }

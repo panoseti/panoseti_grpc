@@ -109,15 +109,12 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Device path not specified in config.")
         if not isinstance(device, str):
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Device path must be a string.")
-
         if not os.path.exists(device):
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"Device path {device} does not exist.")
-
-        device_file_mode = os.stat(device).st_mode
-        if not stat.S_ISCHR(device_file_mode):
-            await context.abort(grpc.StatusCode.INVALID_ARGUMENT,f"Device path {device} is not a character device as "
-                                                                 f"expected for a ZED-F9T device file.")
-
+        if not stat.S_ISCHR(os.stat(device).st_mode):
+            await context.abort(grpc.StatusCode.INVALID_ARGUMENT,
+                                f"Device path {device} is not a character device as expected for a ZED-F9T device file:"
+                                f"{os.stat(device).st_mode=}")
         if not await self._open_serial(device, client_f9t_cfg.get("baud", 115200)):
             device_abs_path = os.path.abspath(device)
             await context.abort(grpc.StatusCode.UNAVAILABLE, f"Could not connect to device {device_abs_path}.")
@@ -318,17 +315,24 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
         return self._io_task and not self._io_task.done()
 
     async def stop(self):
-        """Gracefully stops the server and I/O tasks."""
+        """Gracefully shuts down the servicer's background tasks."""
         self.logger.info("Initiating graceful shutdown.")
-        self._stop_event.set()
-        if self._io_task:
+
+        # Cancel the main I/O task if it exists and is running
+        if self._io_task and not self._io_task.done():
+            self._io_task.cancel()
             try:
-                await asyncio.sleep(0.1)
+                # Wait for the task to acknowledge cancellation
                 await asyncio.wait_for(self._io_task, timeout=2.0)
+            except asyncio.CancelledError:
+                # This is the expected outcome of cancellation
+                self.logger.debug("I/O task successfully cancelled.")
             except asyncio.TimeoutError:
-                self.logger.warning("I/O task did not stop in time, cancelling.")
-                self._io_task.cancel()
-        await self._close_serial()
+                self.logger.warning("Timeout waiting for I/O task to stop.")
+
+        # Close the serial port if it's open
+        if self._serial and self._serial.is_open:
+            await self._close_serial()
 
 
 async def serve(_stop_event=None, in_main_thread=True):

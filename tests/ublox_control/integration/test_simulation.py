@@ -7,6 +7,7 @@ import json
 import base64
 from pyubx2 import UBXReader
 from tests.ublox_control.conftest import TEST_DATA_DIR
+from ublox_control import ublox_control_pb2
 
 # This assumes you have run save_raw_ubx.py and have ubx_packets.jsonl
 @pytest.fixture(scope="module")
