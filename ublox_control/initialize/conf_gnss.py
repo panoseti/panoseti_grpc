@@ -579,22 +579,20 @@ def detect_model(ser) -> str:
 
 def get_f9t_unique_id(ser: serial.Serial, timeout: float = 3.0) -> str:
     """
-    chat:
     Polls and returns the 5-byte ZED-F9T unique ID as a lowercase hex string.
-
     Args:
         ser (serial.Serial): An open serial.Serial instance for the F9T.
         timeout (float): Time in seconds to wait for a response.
-
     Raises:
         RuntimeError: If no valid SEC-UNIQID response is received before timeout.
-
     Returns:
         str: The 10-character unique ID hex string (e.g., 'a1b2c3d4e5').
     """
     # Build the poll request for UBX-SEC-UNIQID (Class 0x27, ID 0x03)
-    # Using POLL mode is equivalent to an empty payload poll request.
-    msg = UBXMessage("SEC", "UNIQID", POLL)
+    # Using the numerical class and ID is more robust than string lookups.
+    SEC_CLASS = 0x27
+    UNIQID_ID = 0x03
+    msg = UBXMessage(SEC_CLASS, UNIQID_ID, POLL)
 
     # Flush any stale input and send the poll, consistent with other polls
     try:
@@ -607,7 +605,6 @@ def get_f9t_unique_id(ser: serial.Serial, timeout: float = 3.0) -> str:
     # Adopt the standard read loop pattern from this file
     rdr = UBXReader(ser, protfilter=2)
     t0 = time.time()
-
     while time.time() - t0 < timeout:
         try:
             # Use the script-defined exception tuple for robust parsing

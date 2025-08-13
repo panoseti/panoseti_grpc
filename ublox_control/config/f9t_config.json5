@@ -68,7 +68,7 @@
       "uid": "DEADBEEF",                           // TODO: replace with real value
       "host": "localhost",// TODO: get this from daq_config.json + network_config.json
       "port": 50051,    // TODO: get this from daq_config.json + network_config.json
-      "device": "/dev/ttyACM0",                         // TODO: replace with real device file
+      "device": "/dev/ttyACM1",                         // TODO: replace with real device file
       "position": {
         "format": "LLH",              // "LLH" or "ECEF"
         "lat_deg": 37.4219999,        // degrees
