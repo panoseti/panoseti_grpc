@@ -5,6 +5,7 @@ import os
 import sys
 import json5
 import logging
+import datetime
 from typing import List, Callable, Tuple, Any
 from contextlib import contextmanager
 from pathlib import Path
@@ -28,7 +29,7 @@ from ublox_control import (
 )
 
 # message enums
-from ublox_control.ublox_control_pb2 import TestCase, InitF9tResponse, CaptureUbloxRequest, CaptureUbloxResponse
+from ublox_control.ublox_control_pb2 import InitF9tResponse, CaptureUbloxRequest, CaptureUbloxResponse
 
 
 
@@ -50,20 +51,60 @@ except FileNotFoundError:
     sys.exit(1)
 
 
-def make_rich_logger(name, level=logging.DEBUG):
-    LOG_FORMAT = (
-        "[tid=%(thread)d] [%(funcName)s()] %(message)s "
-        # "[%(filename)s:%(lineno)d %(funcName)s()]"
-    )
+def make_rich_logger(name: str, level=logging.INFO) -> logging.Logger:
+    """
+    Sets up a logger with a RichHandler for console output and a FileHandler
+    for writing logs to a file. Also silences noisy third-party loggers.
 
-    logging.basicConfig(
+    Args:
+        name (str): The name for the logger (e.g., 'daq_data').
+        level (int): The logging level (e.g., logging.INFO).
+
+    Returns:
+        logging.Logger: A configured logger instance.
+    """
+    # logging.getLogger("watchfiles").setLevel(logging.WARNING)
+
+    # define log directory and file path
+    log_dir = Path("ublox_control/logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file_path = log_dir / f"{name}_{datetime.datetime.now().strftime('%Y-%m-%d')}.log"
+
+    # Get the logger and set its level.
+    # We use getLogger(name) to get our specific application logger.
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+
+    # Prevent messages from being passed to the root logger
+    logger.propagate = False
+
+    # Configure and add the RichHandler for console output
+    # This handler is for pretty-printing logs to the terminal.
+    console_handler = RichHandler(
         level=level,
-        format=LOG_FORMAT,
-        datefmt="%H:%M:%S",
-        # datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=[RichHandler(rich_tracebacks=True)]
+        show_time=True,
+        show_level=True,
+        show_path=False, # Set to False for cleaner output
+        rich_tracebacks=True,
+        tracebacks_theme="monokai",
     )
-    return logging.getLogger(name)
+    console_handler.setFormatter(logging.Formatter("[%(funcName)s()] %(message)s", datefmt="%H:%M:%S"))
+
+    # Configure and add the FileHandler for file output
+    # This handler writes logs to the file defined above.
+    file_handler = logging.FileHandler(log_file_path)
+    file_handler.setLevel(level)
+    file_formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - [%(funcName)s] - %(message)s"
+    )
+    file_handler.setFormatter(file_formatter)
+
+    # Add handlers to the logger, but only if they haven't been added already
+    if not logger.handlers:
+        logger.addHandler(console_handler)
+        logger.addHandler(file_handler)
+
+    return logger
 
 
 """ Redis utility functions """
@@ -87,34 +128,34 @@ def get_f9t_redis_key(chip_name, chip_uid, prot_msg):
 
 """ Testing utils """
 
-async def run_all_tests(
-    test_fn_list: List[Callable[..., Tuple[bool, str]]],
-    args_list: List[List[Any]],
-) -> Tuple[bool, type(ublox_control_pb2.TestCase.TestResult)]:
-    """
-    Runs each test function in [test_functions], now supporting async functions.
-    """
-    assert len(test_fn_list) == len(args_list), "test_fn_list must have the same length as args_list"
-    def get_test_name(test_fn):
-        return f"%s.%s" % (test_fn.__module__, test_fn.__name__)
-
-    all_pass = True
-    test_results = []
-    for test_fn, args in zip(test_fn_list, args_list):
-        if inspect.iscoroutinefunction(test_fn):
-            test_result, message = await test_fn(*args)
-        else:
-            test_result, message = test_fn(*args)
-
-        all_pass &= test_result
-        test_result = ublox_control_pb2.TestCase(
-            name=get_test_name(test_fn),
-            result=TestCase.TestResult.PASS if test_result else TestCase.TestResult.FAIL,
-            message=message
-        )
-        test_results.append(test_result)
-    return all_pass, test_results
-
+# async def run_all_tests(
+#     test_fn_list: List[Callable[..., Tuple[bool, str]]],
+#     args_list: List[List[Any]],
+# ) -> Tuple[bool, type(ublox_control_pb2.TestCase.TestResult)]:
+#     """
+#     Runs each test function in [test_functions], now supporting async functions.
+#     """
+#     assert len(test_fn_list) == len(args_list), "test_fn_list must have the same length as args_list"
+#     def get_test_name(test_fn):
+#         return f"%s.%s" % (test_fn.__module__, test_fn.__name__)
+#
+#     all_pass = True
+#     test_results = []
+#     for test_fn, args in zip(test_fn_list, args_list):
+#         if inspect.iscoroutinefunction(test_fn):
+#             test_result, message = await test_fn(*args)
+#         else:
+#             test_result, message = test_fn(*args)
+#
+#         all_pass &= test_result
+#         test_result = ublox_control_pb2.TestCase(
+#             name=get_test_name(test_fn),
+#             result=TestCase.TestResult.PASS if test_result else TestCase.TestResult.FAIL,
+#             message=message
+#         )
+#         test_results.append(test_result)
+#     return all_pass, test_results
+#
 
 def test_redis_connection(host, port=6379, socket_timeout=1, logger=None) -> Tuple[bool, str]:
     """

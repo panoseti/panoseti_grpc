@@ -8,7 +8,7 @@
   "chips": [
     {
       "server_connection_target": "localhost:50051",    // TODO: get this from daq_config.json + network_config.json
-      "chip_uid": "DEADBEEF",                           // TODO: replace with real value
+      "uid": "DEADBEEF",                           // TODO: replace with real value
       "device": "/dev/ttyACM0",                         // TODO: replace with real device file
       "position": {
         "format": "LLH",              // "LLH" or "ECEF"

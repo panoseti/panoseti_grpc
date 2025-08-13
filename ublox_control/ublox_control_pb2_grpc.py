@@ -5,7 +5,7 @@ import warnings
 
 from . import ublox_control_pb2 as ublox__control__pb2
 
-GRPC_GENERATED_VERSION = '1.73.0'
+GRPC_GENERATED_VERSION = '1.73.1'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 

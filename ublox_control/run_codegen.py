@@ -20,9 +20,9 @@ from grpc_tools import protoc
 protoc.main(
     (
         "",
-        "-I../protos",
-        "--python_out=.",
-        "--grpc_python_out=.",
-        "../protos/ublox_control.proto",
+        "-Iprotos",
+        "--python_out=ublox_control",
+        "--grpc_python_out=ublox_control",
+        "protos/ublox_control.proto",
     )
 )

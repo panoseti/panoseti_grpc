@@ -41,6 +41,8 @@ message CaptureUbloxResponse {
   google.protobuf.Timestamp timestamp = 4;
   // optional message for errors and other details
   string message = 5;
+  // Serialized UBXMessage
+  bytes payload = 6;
 }
 
 
@@ -69,25 +71,9 @@ message CaptureUbloxRequest {
 // It contains a JSON object specifying F9t configuration.
 message InitF9tRequest {
   // JSON-formatted configuration for an F9T
-  google.protobuf.Struct f9t_cfg = 1;
+  google.protobuf.Struct f9t_config = 1;
 }
 
-message TestCase {
-  enum TestResult {
-    // default state
-    UNDEFINED = 0;
-    // the test passed
-    PASS = 1;
-    // the test failed
-    FAIL = 2;
-  }
-  // test name
-  string name = 1;
-  // test result
-  TestResult result = 2;
-  // error message
-  string message = 3;
-}
 
 // A InitF9tResponse is returned by the InitF9t RPC.
 //
@@ -109,6 +95,4 @@ message InitF9tResponse {
   string message = 2;
   // return the current active f9t config
   google.protobuf.Struct f9t_cfg = 3;
-  // test results
-  repeated TestCase test_results = 4;
 }
