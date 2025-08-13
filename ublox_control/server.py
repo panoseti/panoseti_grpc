@@ -87,28 +87,11 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             always_print_fields_with_no_presence=True
         )
 
-        if 'chips' not in client_f9t_cfg:
-            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Chip configuration not specified in config.")
-
-        for chip_cfg in client_f9t_cfg.get('chips', []):
-            if chip_cfg.get('uid') == self.server_cfg.get('f9t_uid'):
-                self._chip_cfg = chip_cfg
-                break
-
-        if not self._chip_cfg:
-            await context.abort(grpc.StatusCode.INVALID_ARGUMENT,
-                                f"No chip configuration found for the server's F9t chip with UID={self.server_cfg['f9t_uid']}.")
-
-        # Initialize _f9t_cfg with cfg flags for only one chip
-        self._f9t_cfg = copy.deepcopy(client_f9t_cfg)
-        del self._f9t_cfg['chips']
-        self._f9t_cfg.update(self._chip_cfg)
-
-        device = self._f9t_cfg.get("device")
+        device = client_f9t_cfg.get("device")
         if not device:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Device path not specified in config.")
 
-        if not await self._open_serial(device, self._f9t_cfg.get("baud", 115200)):
+        if not await self._open_serial(device, client_f9t_cfg.get("baud", 115200)):
             await context.abort(grpc.StatusCode.UNAVAILABLE, f"Could not connect to device {device}.")
 
         try:
@@ -124,15 +107,15 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             if not uid:
                 await self._close_serial()
                 await context.abort(grpc.StatusCode.INTERNAL, "Could not detect F9T UID.")
-            if uid != self._f9t_cfg.get("uid"):
-                self.logger.warning(f"Detected F9T UID {uid} does not match expected UID {self._f9t_cfg.get('uid')}.")
+            if uid != client_f9t_cfg.get("uid"):
+                self.logger.warning(f"Detected F9T UID {uid} does not match expected UID {client_f9t_cfg.get('uid')}.")
 
             # 2. Get base configuration items
-            cfg_entries = self._f9t_cfg.get("cfg_key_settings", [])
+            cfg_entries = client_f9t_cfg.get("cfg_key_settings", [])
             cfg_items = _to_cfg_items(cfg_entries)
 
             # 3. Add ZED-F9T specific TMODE settings if applicable
-            position_settings = self._f9t_cfg.get("position")
+            position_settings = client_f9t_cfg.get("position")
             if model.startswith(self.F9T_MODEL_PREFIX) and position_settings:
                 self.logger.info("ZED-F9T detected with position settings. Applying TMODE configuration.")
                 tmode_pairs = build_tmode_fixed_from_json(
@@ -144,7 +127,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                 self.logger.debug(f"Added {len(tmode_items)} TMODE configuration items.")
 
             # 4. Prepare and send configuration
-            layers = self._f9t_cfg.get("apply_to_layers", ["RAM"])
+            layers = client_f9t_cfg.get("apply_to_layers", ["RAM"])
             layers_mask = _layers_mask(layers)
             self.logger.info(f"Sending {len(cfg_items)} configuration items to device.")
             acks = await asyncio.to_thread(send_cfg_valset_grouped, self._serial, cfg_items, layers_mask, verbose=True)
@@ -153,7 +136,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             self.logger.info("Configuration sent and acknowledged.")
 
             # 5. Verify configuration by polling the device
-            verify_layer = self._f9t_cfg.get("verify_layer", "RAM").upper()
+            verify_layer = client_f9t_cfg.get("verify_layer", "RAM").upper()
             self.logger.info(f"Verifying configuration on layer: {verify_layer}")
             key_ids = [it["id"] for it in cfg_items]
 
@@ -180,6 +163,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                 raise RuntimeError(error_message)
 
             self.logger.info("All settings applied and verified successfully.")
+            self._f9t_cfg = client_f9t_cfg  # commit transaction
 
             # 6. Start the I/O reader loop
             if not self._io_task or self._io_task.done():

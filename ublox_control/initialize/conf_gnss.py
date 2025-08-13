@@ -580,34 +580,22 @@ def detect_model(ser) -> str:
 def get_f9t_unique_id(ser: serial.Serial, timeout: float = 3.0) -> str:
     """
     Polls and returns the 5-byte ZED-F9T unique ID as a lowercase hex string.
-    Args:
-        ser (serial.Serial): An open serial.Serial instance for the F9T.
-        timeout (float): Time in seconds to wait for a response.
-    Raises:
-        RuntimeError: If no valid SEC-UNIQID response is received before timeout.
-    Returns:
-        str: The 10-character unique ID hex string (e.g., 'a1b2c3d4e5').
     """
     # Build the poll request for UBX-SEC-UNIQID (Class 0x27, ID 0x03)
-    # Using the numerical class and ID is more robust than string lookups.
     SEC_CLASS = 0x27
     UNIQID_ID = 0x03
     msg = UBXMessage(SEC_CLASS, UNIQID_ID, POLL)
 
-    # Flush any stale input and send the poll, consistent with other polls
     try:
         ser.reset_input_buffer()
     except Exception:
-        # Some serial implementations might not support this
         pass
     ser.write(msg.serialize())
 
-    # Adopt the standard read loop pattern from this file
     rdr = UBXReader(ser, protfilter=2)
     t0 = time.time()
     while time.time() - t0 < timeout:
         try:
-            # Use the script-defined exception tuple for robust parsing
             (_raw, parsed) = rdr.read()
         except UBX_EXC:
             continue
@@ -615,12 +603,16 @@ def get_f9t_unique_id(ser: serial.Serial, timeout: float = 3.0) -> str:
         if not parsed:
             continue
 
-        # Check for the expected response identity
         if getattr(parsed, "identity", "") == "SEC-UNIQID":
-            # The payload attribute in pyubx2 is `uniqueId` (5 bytes for ZED-F9T)
             uid = getattr(parsed, "uniqueId", None)
+
+            # Handle case where pyubx2 parses the ID as a byte array
             if isinstance(uid, (bytes, bytearray)) and len(uid) == 5:
-                return uid.hex()
+                return uid.hex().upper()
+            # Handle case where pyubx2 parses the ID as an integer
+            elif isinstance(uid, int):
+                # Format as a 10-character hex string (5 bytes)
+                return f'{uid:010x}'.upper()
             else:
                 # This case handles unexpected payload structures
                 raise RuntimeError(

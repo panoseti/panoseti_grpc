@@ -1,6 +1,5 @@
 {
     "max_workers": 5,
     "max_read_queue_size": 200,
-    "shutdown_grace_period": 0.1,
-    "f9t_uid": "DEADBEEF"
+    "shutdown_grace_period": 0.1
 }

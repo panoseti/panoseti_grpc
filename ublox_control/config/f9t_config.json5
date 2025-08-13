@@ -63,9 +63,9 @@
   ],
 
   // Chip-specific configuration information
-  "chips": [
+  "f9t_chips": [
     {
-      "uid": "DEADBEEF",                           // TODO: replace with real value
+      "f9t_uid": "DF03A241BC",
       "host": "localhost",// TODO: get this from daq_config.json + network_config.json
       "port": 50051,    // TODO: get this from daq_config.json + network_config.json
       "device": "/dev/ttyACM1",                         // TODO: replace with real device file
