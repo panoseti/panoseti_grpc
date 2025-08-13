@@ -1,5 +1,7 @@
 import asyncio
 import json
+import logging
+
 import grpc
 import copy
 import signal
@@ -10,6 +12,7 @@ from google.protobuf.struct_pb2 import Struct
 
 
 async def run():
+    logger = make_rich_logger("UbloxControlClient", level=logging.DEBUG)
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
 
@@ -21,7 +24,6 @@ async def run():
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, _signal_handler)
 
-    logger = make_rich_logger("UbloxControlClient")
     async with grpc.aio.insecure_channel('localhost:50051') as channel:
         stub = ublox_control_pb2_grpc.UbloxControlStub(channel)
 
@@ -60,7 +62,7 @@ async def run():
                     always_print_fields_with_no_presence=True,
                     preserving_proto_field_name=True,
                 )
-                logger.debug(f"Received data: {response.name}: {parsed_data}")
+                logger.info(f"Received data: {response.name}: {parsed_data}")
         except grpc.aio.AioRpcError as e:
             logger.error(f"CaptureUblox stream failed: {e.details()}")
             raise e
