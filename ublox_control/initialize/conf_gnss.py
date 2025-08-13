@@ -19,6 +19,7 @@ from pyubx2 import (
     UBXMessageError,
     UBXTypeError,
     UBXParseError,
+    POLL
 )
 
 try:
@@ -574,6 +575,64 @@ def detect_model(ser) -> str:
     mods = [x for x in info["extensions"] if isinstance(x, (bytes, bytearray)) and x.startswith(b"MOD=")]
     mod = mods[0][4:].decode(errors="ignore").strip("\x00") if mods else ""
     return mod or "UNKNOWN"
+
+
+def get_f9t_unique_id(ser: serial.Serial, timeout: float = 3.0) -> str:
+    """
+    chat:
+    Polls and returns the 5-byte ZED-F9T unique ID as a lowercase hex string.
+
+    Args:
+        ser (serial.Serial): An open serial.Serial instance for the F9T.
+        timeout (float): Time in seconds to wait for a response.
+
+    Raises:
+        RuntimeError: If no valid SEC-UNIQID response is received before timeout.
+
+    Returns:
+        str: The 10-character unique ID hex string (e.g., 'a1b2c3d4e5').
+    """
+    # Build the poll request for UBX-SEC-UNIQID (Class 0x27, ID 0x03)
+    # Using POLL mode is equivalent to an empty payload poll request.
+    msg = UBXMessage("SEC", "UNIQID", POLL)
+
+    # Flush any stale input and send the poll, consistent with other polls
+    try:
+        ser.reset_input_buffer()
+    except Exception:
+        # Some serial implementations might not support this
+        pass
+    ser.write(msg.serialize())
+
+    # Adopt the standard read loop pattern from this file
+    rdr = UBXReader(ser, protfilter=2)
+    t0 = time.time()
+
+    while time.time() - t0 < timeout:
+        try:
+            # Use the script-defined exception tuple for robust parsing
+            (_raw, parsed) = rdr.read()
+        except UBX_EXC:
+            continue
+
+        if not parsed:
+            continue
+
+        # Check for the expected response identity
+        if getattr(parsed, "identity", "") == "SEC-UNIQID":
+            # The payload attribute in pyubx2 is `uniqueId` (5 bytes for ZED-F9T)
+            uid = getattr(parsed, "uniqueId", None)
+            if isinstance(uid, (bytes, bytearray)) and len(uid) == 5:
+                return uid.hex()
+            else:
+                # This case handles unexpected payload structures
+                raise RuntimeError(
+                    "SEC-UNIQID received, but 'uniqueId' attribute was missing, "
+                    f"of wrong type, or wrong length. Got: {uid!r}"
+                )
+    # If the loop finishes without returning, we timed out
+    raise RuntimeError("Timeout waiting for SEC-UNIQID response from device.")
+
 
 # add helper
 def lock_config(ser, layers: list[str]) -> list[bool]:
