@@ -38,85 +38,75 @@ class BaseDataSource(abc.ABC):
 
 
 class UdsDataSource(BaseDataSource):
-    """Acquires data from a Unix Domain Socket. Acts as the UDS server."""
+    """Acquires data from a Unix Domain Socket. Acts as the UDS SERVER."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, config: dict, logger: logging.Logger, data_queue: asyncio.Queue, stop_event: asyncio.Event):
+        super().__init__(config, logger, data_queue, stop_event)
         self.dp_name = self.config['dp_name']
-        self.module_id = self.config['module_id']
+
         socket_path_template = self.config.get('socket_path_template')
         if not socket_path_template:
-            raise ValueError("UdsDataSource requires a 'socket_path_template' in its configuration.")
-        self.socket_path = socket_path_template.format(
-            module_id=self.module_id,
-            dp_name=self.dp_name
-        )
+            raise ValueError("UdsDataSource requires a 'socket_path_template'")
+
+        self.socket_path = socket_path_template.format(dp_name=self.dp_name)
         self.dp_config = get_dp_config([self.dp_name])[self.dp_name]
         self.server: Optional[asyncio.AbstractServer] = None
 
     async def run(self):
-        """
-        Creates, binds, and listens on the UDS socket file.
-        This method is responsible for the socket's lifecycle.
-        """
-        self.logger.info(f"Starting UDS receiver for module {self.module_id} on {self.socket_path}")
+        """Creates, binds, and listens on the UDS socket file."""
+        self.logger.info(f"Starting UDS receiver for '{self.dp_name}' on {self.socket_path}")
 
-        # --- SERVER RESPONSIBILITY ---
-        # Ensure any old socket file is removed before creating a new one.
         if os.path.exists(self.socket_path):
             self.logger.warning(f"Removing stale socket file: {self.socket_path}")
             os.unlink(self.socket_path)
 
         try:
-            # Create the socket file and start listening for clients.
             self.server = await asyncio.start_unix_server(self._handle_client, path=self.socket_path)
             self.ready_event.set()
             await self.stop_event.wait()
         except Exception as e:
             self.logger.error(f"UDS receiver for {self.socket_path} failed: {e}", exc_info=True)
         finally:
-            # --- SERVER RESPONSIBILITY ---
-            # Clean up the socket and its file on shutdown.
             if self.server:
                 self.server.close()
                 await self.server.wait_closed()
             if os.path.exists(self.socket_path):
                 try:
                     os.unlink(self.socket_path)
-                except OSError as e:
-                    self.logger.warning(f"Could not unlink UDS socket {self.socket_path}: {e}")
+                except OSError:
+                    pass  # Ignore errors if file is already gone
             self.ready_event.clear()
-            self.logger.info(f"UDS receiver for {self.socket_path} has stopped.")
+            self.logger.info(f"UDS receiver for {self.socket_path} stopped.")
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        """
-        Handles a client connection, reading PFF frames efficiently by assuming
-        a constant header size after the first frame.
-        """
-        self.logger.info(f"New connection on {self.dp_name} socket for module {self.module_id}.")
+        """Handles a client connection, parsing [module_id][PFF frame] messages."""
+        client_info = writer.get_extra_info('peername')
+        self.logger.info(f"New client connection on {self.socket_path} from {client_info}")
         frame_count = 0
-        header_size = None
+        header_size = None  # Discover from first frame
 
         try:
             while not self.stop_event.is_set():
+                # 1. Read the 2-byte module ID prefix
+                module_id_bytes = await reader.readexactly(2)
+                module_id = int.from_bytes(module_id_bytes, 'big')
+
+                # 2. Discover or read the fixed-size PFF frame
                 if header_size is None:
-                    # First frame: discover header size
-                    header_buf = await reader.readuntil(b'\n\n')
-                    header_size = len(header_buf)
-                    self.logger.info(f"Discovered constant header size of {header_size} bytes for {self.socket_path}")
-                    header_bytes = header_buf
+                    header_with_sep = await reader.readuntil(b'\n\n')
+                    header_size = len(header_with_sep)
+                    self.logger.info(f"Discovered header size of {header_size} bytes for {self.socket_path}")
                 else:
-                    # Subsequent frames: read fixed size
-                    header_bytes = await reader.readexactly(header_size)
+                    header_with_sep = await reader.readexactly(header_size)
 
-                img_data_buf = await reader.readexactly(self.dp_config.bytes_per_image + 1)
+                # 3. Read the image data
+                # '1 +' is needed to account for the '*' prefix
+                img_data = await reader.readexactly(1 + self.dp_config.bytes_per_image)
 
-                if img_data_buf[0:1] != b'*':
-                    self.logger.warning(f"Invalid image start character. Resetting connection.")
-                    break
-
-                header = loads(header_bytes.decode().strip())
-                img_array = pff.read_image(BytesIO(img_data_buf), self.dp_config.image_shape[0],
+                # 4. Parse and process the frame
+                json_bytes = header_with_sep[:-2]  # Strip the '\n\n' separator
+                header = loads(json_bytes.decode())
+                img_array = pff.read_image(BytesIO(img_data), self.dp_config.image_shape[0],
                                            self.dp_config.bytes_per_pixel)
 
                 pano_image = PanoImage(
@@ -127,12 +117,12 @@ class UdsDataSource(BaseDataSource):
                     bytes_per_pixel=self.dp_config.bytes_per_pixel,
                     file=f"uds_{self.dp_name}",
                     frame_number=frame_count,
-                    module_id=self.module_id,
+                    module_id=module_id,  # Use the module_id from the stream
                 )
                 await self.data_queue.put(pano_image)
                 frame_count += 1
         except (asyncio.IncompleteReadError, ConnectionResetError):
-            self.logger.info(f"Client disconnected from {self.socket_path}.")
+            self.logger.info(f"Client {client_info} disconnected from {self.socket_path}.")
         except asyncio.CancelledError:
             self.logger.info(f"Client handler for {self.socket_path} was cancelled.")
         finally:

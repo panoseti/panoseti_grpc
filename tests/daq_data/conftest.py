@@ -42,11 +42,11 @@ def rpc_sim_server_config(server_config_base):
 def uds_sim_server_config(server_config_base):
     cfg = copy.deepcopy(server_config_base)
     cfg['simulate_daq_cfg']['simulation_mode'] = 'uds'
-    dps = ["img16", "ph256"]
+    dps = ["img8", "img16", "ph256", "ph1024"]
     cfg['acquisition_methods'] = {"uds": {
         "enabled": True,
         "data_products": dps,
-        "socket_path_template": "/tmp/hashpipe_grpc.module_{module_id}.dp_{dp_name}.sock"
+        "socket_path_template": "/tmp/hashpipe_grpc.dp_{dp_name}.sock"
     }}
     cfg['simulate_daq_cfg']['strategies'] = {"uds": {"data_products": dps}}
     return cfg
@@ -181,7 +181,7 @@ async def n_sim_servers_fixture_factory(server_config_base):
             config['acquisition_methods']['filesystem_poll']['enabled'] = True
             config['acquisition_methods']['filesystem_pipe']['enabled'] = True
             config['acquisition_methods']['uds'][
-                'socket_path_template'] = "/tmp/hashpipe_grpc.module_{module_id}.dp_{dp_name}.sock"
+                'socket_path_template'] = "/tmp/hashpipe_grpc.dp_{dp_name}.sock"
 
             uds_path = Path(urllib.parse.urlparse(uds_path_str).path)
             if uds_path.exists():

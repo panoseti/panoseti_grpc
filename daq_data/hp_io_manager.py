@@ -82,38 +82,24 @@ class HpIoManager:
         acq_config = self.server_config.get("acquisition_methods", {})
         self.logger.info(f"Configuring data sources: {acq_config}")
 
-        # UDS Data Source
+        # UDS Data Source (Server Mode)
         uds_cfg = acq_config.get("uds", {})
         if uds_cfg.get("enabled"):
-            self.logger.info("Configuring UDS data sources.")
+            self.logger.info("Configuring UDS data sources (Server Mode).")
             socket_template = uds_cfg.get("socket_path_template")
             if not socket_template:
-                self.logger.error("UDS is enabled, but 'socket_path_template' is not defined in server config.")
+                self.logger.error("UDS is enabled, but 'socket_path_template' is not defined.")
             else:
-                module_ids_to_serve = []
-                if self.simulate_daq:
-                    sim_cfg = self.server_config.get('simulate_daq_cfg', {})
-                    module_ids_to_serve = sim_cfg.get('sim_module_ids', [])
-                    self.logger.info(f"UDS in simulation mode. Will serve module IDs: {module_ids_to_serve}")
-                else:
-                    self.logger.warning(
-                        "UDS source is configured for a real run, but module ID discovery is not yet implemented for this mode.")
-
                 data_products = uds_cfg.get("data_products", [])
-                if not module_ids_to_serve:
-                    self.logger.warning("No module IDs configured for UDS. No UDS sources will be started.")
-
-                for mid in module_ids_to_serve:
-                    for dp_name in data_products:
-                        source_cfg = {
-                            "dp_name": dp_name,
-                            "module_id": mid,
-                            "socket_path_template": socket_template,
-                        }
-                        self.logger.info(f"Creating UDS source for module {mid}, data product {dp_name}")
-                        self.data_sources.append(
-                            UdsDataSource(source_cfg, self.logger, self.data_queue, self.stop_event)
-                        )
+                for dp_name in data_products:
+                    source_cfg = {
+                        "dp_name": dp_name,
+                        "socket_path_template": socket_template,
+                    }
+                    self.logger.info(f"Creating UDS server for data product '{dp_name}'")
+                    self.data_sources.append(
+                        UdsDataSource(source_cfg, self.logger, self.data_queue, self.stop_event)
+                    )
 
         # Filesystem Polling Data Source
         poll_cfg = acq_config.get("filesystem_poll", {})

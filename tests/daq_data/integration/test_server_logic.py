@@ -25,7 +25,8 @@ async def test_stream_fails_if_not_initialized(default_server_process):
                 hosts=None,
                 stream_movie_data=True,
                 stream_pulse_height_data=False,  # Can be false
-                update_interval_seconds=1.0  # Must be provided
+                update_interval_seconds=1.0,  # Must be provided
+                timeout=10.0
             )
             await stream.__anext__()
         assert e.value.code() == grpc.StatusCode.FAILED_PRECONDITION

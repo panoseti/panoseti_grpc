@@ -25,7 +25,7 @@ async def test_async_stream_images(async_client):
     assert await async_client.init_sim(hosts=None) is True
     stream = await async_client.stream_images(
         hosts=None, stream_movie_data=True, stream_pulse_height_data=True,
-        update_interval_seconds=0.1,
+        update_interval_seconds=0.1, timeout=5.0
     )
     received_images = 0
     async for image in stream:
@@ -45,7 +45,7 @@ async def test_async_stream_stops_with_event(default_server_process):
         assert await client.init_sim(hosts=None)
         stream = await client.stream_images(
             hosts=None, stream_movie_data=True, stream_pulse_height_data=True,
-            update_interval_seconds=0.05,
+            update_interval_seconds=0.05, timeout=5.0
         )
 
         async def stop_streamer():

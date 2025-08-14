@@ -16,15 +16,15 @@
     
     "acquisition_methods": {
         "filesystem_poll": {
-            "enabled": true
+            "enabled": false
         },
         "filesystem_pipe": {
             "enabled": false
         },
         "uds": {
             "enabled": true,
-            "data_products": ["ph256", "img16"],
-            "socket_path_template": "/tmp/hashpipe_grpc.module_{module_id}.dp_{dp_name}.sock"
+            "data_products": ["img8", "img16", "ph256", "ph1024"],
+            "socket_path_template": "/tmp/hashpipe_grpc.dp_{dp_name}.sock"
         }
     },
 
