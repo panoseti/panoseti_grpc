@@ -46,14 +46,15 @@ message CaptureUbloxResponse {
 }
 
 
-message PollRequest {
+message PollCfgRequest {
   // regex patterns specifying which messages to poll
-  repeated string patterns = 1;
+  repeated string cfg_key_patterns = 1;
 }
 
-message PollResponse {
+message PollCfgResponse {
   // list of messages for each message matching the patterns sent in PollRequest
-  repeated CaptureUbloxResponse gnss_packet = 1;
+  google.protobuf.Struct parsed_data = 1;
+
 }
 
 // A CaptureUbloxRequest specifies which messages to stream with the CaptureUblox RPC.

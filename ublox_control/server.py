@@ -61,9 +61,19 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
         self._client_queues: list[asyncio.Queue] = []
         self._main_loop: Optional[asyncio.AbstractEventLoop] = None
 
-    async def _open_serial(self, device: str, baud: int, timeout=0.5):
+    async def _open_serial(self, device: str, baud: int, context, timeout=0.5):
         """Opens the serial port."""
         try:
+            if not device:
+                await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Device path not specified in config.")
+            if not isinstance(device, str):
+                await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Device path must be a string.")
+            if not os.path.exists(device):
+                await context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"Device path {device} does not exist.")
+            if not stat.S_ISCHR(os.stat(device).st_mode):
+                await context.abort(grpc.StatusCode.INVALID_ARGUMENT,
+                                    f"Device path {device} is not a character device as expected for a ZED-F9T device file:"
+                                    f"{os.stat(device).st_mode=}")
             self._serial = Serial(device, baudrate=baud, timeout=timeout)
             self.logger.info(f"Opened serial port {device} at {baud} baud.")
             self._serial.reset_input_buffer()
@@ -105,17 +115,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
 
         # Validate the provided F9T device file
         device = client_f9t_cfg.get("device")
-        if not device:
-            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Device path not specified in config.")
-        if not isinstance(device, str):
-            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Device path must be a string.")
-        if not os.path.exists(device):
-            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"Device path {device} does not exist.")
-        if not stat.S_ISCHR(os.stat(device).st_mode):
-            await context.abort(grpc.StatusCode.INVALID_ARGUMENT,
-                                f"Device path {device} is not a character device as expected for a ZED-F9T device file:"
-                                f"{os.stat(device).st_mode=}")
-        if not await self._open_serial(device, client_f9t_cfg.get("baud", 115200)):
+        if not await self._open_serial(device, client_f9t_cfg.get("baud", 115200), context):
             device_abs_path = os.path.abspath(device)
             await context.abort(grpc.StatusCode.UNAVAILABLE, f"Could not connect to device {device_abs_path}.")
 
@@ -224,6 +224,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             try:
                 raw, parsed = ubr.read()
                 if parsed:
+                    self.logger.debug(f"Received packet: {parsed.identity} ")
                     asyncio.run_coroutine_threadsafe(self._distribute_packet(parsed), self._main_loop)
             except Exception as e:
                 # Log non-critical errors without stopping the loop
