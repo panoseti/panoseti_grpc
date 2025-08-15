@@ -41,7 +41,7 @@ class BaseDataSource(abc.ABC):
 
 class UdsDataSource(BaseDataSource):
     """Acquires data from a Unix Domain Socket. Acts as the UDS SERVER."""
-    SOCKET_BUFFER_SIZE = 8192
+    SOCKET_BUFFER_SIZE = 2048 * 100
 
     def __init__(self, config: dict, logger: logging.Logger, data_queue: asyncio.Queue, stop_event: asyncio.Event):
         super().__init__(config, logger, data_queue, stop_event)
