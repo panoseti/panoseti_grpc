@@ -2,9 +2,9 @@ name: PANOSETI gRPC CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ tests ]
   pull_request:
-    branches: [ main ]
+    branches: [ tests ]
 
 jobs:
 #  daq-data-build-and-test:

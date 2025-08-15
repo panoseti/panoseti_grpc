@@ -1,4 +1,4 @@
-CC          = g++
+CC          = aarch64-linux-gnu-g++
 REDIS_LIB_CCFLAGS = -lhiredis
 CCFLAGS     = -g -O3 -fPIC -shared -lstdc++ \
     -I. -I$(CUDA_DIR)/include -I/usr/local/include \
@@ -19,8 +19,8 @@ SOURCES  = net_thread.c \
 
 INCLUDES = databuf.h compute_thread.h process_frame.h snapshot.h
 
-N_INPUT_BLOCKS=8
-N_OUTPUT_BLOCKS=1
+N_INPUT_BLOCKS=64
+N_OUTPUT_BLOCKS=2
 
 all: $(TARGET)
 
