@@ -21,21 +21,21 @@
 
 // the size and characteristics of the input and output circular buffers
 
-#define CACHE_ALIGNMENT 256
+#define CACHE_ALIGNMENT 16
 // Align the cache within the buffer
 #ifndef N_INPUT_BLOCKS
-    #define N_INPUT_BLOCKS 64
+    #define N_INPUT_BLOCKS 16
 #endif
 // Number of blocks in the input buffer
 #ifndef N_OUTPUT_BLOCKS
     #define N_OUTPUT_BLOCKS 1
 #endif
 // Number of blocks in the output buffer
-#define IN_PKT_PER_BLOCK 16
+#define IN_PKT_PER_BLOCK 8
 // Number of input packets stored in each block of the input buffer
-#define OUT_MOD_PER_BLOCK 256
+#define OUT_MOD_PER_BLOCK 16
 // Max Number of Modules stored in each block of the output buffer
-#define OUT_PH_IMG_PER_BLOCK 256
+#define OUT_PH_IMG_PER_BLOCK 16
 // Max # of PH packets stored in each block of the output buffer
 
 // Imaging Data Values and characteristics of modules
@@ -46,13 +46,13 @@
 // Number of pixels for each image data
 #define BYTES_PER_MODULE_FRAME QUABO_PER_MODULE *PIXELS_PER_IMAGE * 2
 // Size of module image allocated in buffer
-#define CIRCULAR_MODULE_IMAGE_BUFFER_LENGTH 16
+#define CIRCULAR_MODULE_IMAGE_BUFFER_LENGTH 8
 
 // Pulse Height data values
 
 #define BYTES_PER_PH_FRAME QUABO_PER_MODULE *PIXELS_PER_IMAGE * 2
 // Size of PH image allocated in one PH buffer
-#define CIRCULAR_PH_BUFFER_LENGTH 16
+#define CIRCULAR_PH_BUFFER_LENGTH 8
 // Number of PH image buffers per module. NOTE: this number should always be at least one.
 // Higher values give the compute thread greater tolerance for packet delays before it must write partial PH1024 images.
 // Increasing this parameter is recommended if your configuration has a high data rate because packets from distinct

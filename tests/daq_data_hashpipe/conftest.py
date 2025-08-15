@@ -72,7 +72,7 @@ def hashpipe_pcap_runner():
     # Command to loop the pcap file to the loopback interface, simulating network traffic.
     tcpreplay_cmd = [
         "tcpreplay",
-        "--mbps=1",
+        "--mbps=0.25",
         "--loop=0",  # Loop indefinitely
         "--intf1=lo",  # Send to loopback interface
         pcap_file
