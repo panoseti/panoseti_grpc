@@ -12,6 +12,7 @@ from json import loads
 from pathlib import Path
 import select
 from typing import Dict, Optional
+import socket
 
 from google.protobuf.json_format import ParseDict
 from google.protobuf.struct_pb2 import Struct
@@ -77,21 +78,47 @@ class UdsDataSource(BaseDataSource):
             )
             return  # Abort if cleanup fails
 
+        # manually create a socket to
+        server_sock = None
         try:
-            self.server = await asyncio.start_unix_server(self._handle_client, path=self.socket_path)
+            # Create a UNIX socket manually
+            server_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+
+            # Set a small receive buffer (4 KiB) to detect disconnects faster.
+            # o solve the low-rate data product issue.
+            buffer_size = 4096 * 8
+            server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, buffer_size)
+            self.logger.info(f"Set UDS receive buffer size to {buffer_size} for {self.socket_path}")
+
+            # Bind the socket and prepare it for the asyncio server
+            server_sock.bind(self.socket_path)
+            server_sock.listen(1) # Hashpipe should be the only process that connects to the grpc input.
+            server_sock.setblocking(False)
+
+            # Hand over the pre-configured socket to asyncio
+            self.server = await asyncio.start_unix_server(self._handle_client, sock=server_sock)
             self.ready_event.set()
             await self.stop_event.wait()
+
+        except OSError as e:
+            self.logger.error(f"UDS receiver for {self.socket_path} failed to bind or start: {e}", exc_info=True)
         except Exception as e:
-            self.logger.error(f"UDS receiver for {self.socket_path} failed: {e}", exc_info=True)
+            self.logger.error(f"UDS receiver for {self.socket_path} failed unexpectedly: {e}", exc_info=True)
         finally:
             if self.server:
                 self.server.close()
                 await self.server.wait_closed()
+
+            # Ensure server_sock is closed if it was created
+            if server_sock:
+                server_sock.close()
+
+            # Final cleanup attempt
             if os.path.exists(self.socket_path):
                 try:
                     os.unlink(self.socket_path)
                 except OSError:
-                    pass  # Ignore errors if file is already gone
+                    pass
             self.ready_event.clear()
             self.logger.info(f"UDS receiver for {self.socket_path} stopped.")
 
