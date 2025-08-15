@@ -13,6 +13,7 @@ from pathlib import Path
 import select
 from typing import Dict, Optional
 import socket
+import struct
 
 from google.protobuf.json_format import ParseDict
 from google.protobuf.struct_pb2 import Struct
@@ -40,6 +41,7 @@ class BaseDataSource(abc.ABC):
 
 class UdsDataSource(BaseDataSource):
     """Acquires data from a Unix Domain Socket. Acts as the UDS SERVER."""
+    SOCKET_BUFFER_SIZE = 8192
 
     def __init__(self, config: dict, logger: logging.Logger, data_queue: asyncio.Queue, stop_event: asyncio.Event):
         super().__init__(config, logger, data_queue, stop_event)
@@ -86,9 +88,15 @@ class UdsDataSource(BaseDataSource):
 
             # Set a small receive buffer (4 KiB) to detect disconnects faster.
             # o solve the low-rate data product issue.
-            buffer_size = 4096 * 8
-            server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, buffer_size)
-            self.logger.info(f"Set UDS receive buffer size to {buffer_size} for {self.socket_path}")
+
+            server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.SOCKET_BUFFER_SIZE)
+            self.logger.info(f"Set UDS receive buffer size to {self.SOCKET_BUFFER_SIZE} for {self.socket_path}")
+
+            # l_onoff=1 (enable), l_linger=0 (timeout is 0 seconds)
+            # This immediately signals a connection reset to the client's OS.
+            linger_struct = struct.pack('ii', 1, 0)
+            server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, linger_struct)
+            self.logger.info(f"Set SO_LINGER option for {self.socket_path} to force RST on close.")
 
             # Bind the socket and prepare it for the asyncio server
             server_sock.bind(self.socket_path)
