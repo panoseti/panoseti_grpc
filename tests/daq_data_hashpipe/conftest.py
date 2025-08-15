@@ -31,7 +31,7 @@ def is_utility_available(name):
     return subprocess.run(["which", name], capture_output=True).returncode == 0
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def hashpipe_pcap_runner():
     """
     A session-scoped fixture that creates a realistic hashpipe run environment,
@@ -74,7 +74,7 @@ def hashpipe_pcap_runner():
     # Command to loop the pcap file to the loopback interface, simulating network traffic.
     tcpreplay_cmd = [
         "tcpreplay",
-        "--mbps=2",
+        "--mbps=4",
         "--loop=0",  # Loop indefinitely
         "--intf1=lo",  # Send to loopback interface
         pcap_file

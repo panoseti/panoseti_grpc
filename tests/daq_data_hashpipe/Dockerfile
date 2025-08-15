@@ -42,6 +42,7 @@ RUN git clone --depth 1 --branch uds-to-grpc https://github.com/panoseti/panoset
 WORKDIR /build/panoseti_daq
 # Overwrite the Makefile with our Makefile to define small data buffers
 COPY "${TEST_DIR}/Makefile" .
+COPY "${TEST_DIR}/databuf.h" .
 
 RUN make
 RUN make install
