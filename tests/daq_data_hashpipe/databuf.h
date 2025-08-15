@@ -31,11 +31,11 @@
     #define N_OUTPUT_BLOCKS 2
 #endif
 // Number of blocks in the output buffer
-#define IN_PKT_PER_BLOCK 64
+#define IN_PKT_PER_BLOCK 4
 // Number of input packets stored in each block of the input buffer
-#define OUT_MOD_PER_BLOCK 4
+#define OUT_MOD_PER_BLOCK 32
 // Max Number of Modules stored in each block of the output buffer
-#define OUT_PH_IMG_PER_BLOCK 4
+#define OUT_PH_IMG_PER_BLOCK 32
 // Max # of PH packets stored in each block of the output buffer
 
 // Imaging Data Values and characteristics of modules

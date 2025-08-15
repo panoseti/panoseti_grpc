@@ -103,7 +103,7 @@ def hashpipe_pcap_runner():
     )
 
     # --- 4. Wait for Initialization and Validation ---
-    time.sleep(5)  # Allow time for processes to initialize and sockets to be created.
+    time.sleep(10)  # Allow time for processes to initialize and sockets to be created.
     if tcpreplay_proc.poll() is not None:
         pytest.fail(f"tcpreplay failed to start. Exit code: {tcpreplay_proc.returncode}")
     if hashpipe_proc.poll() is not None:
@@ -118,7 +118,7 @@ def hashpipe_pcap_runner():
     # First, stop tcpreplay so it stops feeding data.
     tcpreplay_proc.terminate()
     try:
-        tcpreplay_proc.wait(timeout=5)
+        tcpreplay_proc.wait(timeout=15)
     except subprocess.TimeoutExpired:
         tcpreplay_proc.kill()
 

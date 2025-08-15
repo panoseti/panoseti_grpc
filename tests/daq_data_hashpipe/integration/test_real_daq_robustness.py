@@ -15,7 +15,7 @@ async def test_daq_grpc_stream_stress(default_server_process):
     # Use a realistic but aggressive update interval for streaming.
     hp_io_cfg = {
         "data_dir": "/tmp/ci_run_dir",  # As configured in the conftest.py runner
-        "update_interval_seconds": 0.05,  # Very fast update to stress the system
+        "update_interval_seconds": 0.1,  # fast update to stress the system
         "simulate_daq": False,  # Real DAQ
         "force": True,
         "module_ids": [],

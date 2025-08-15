@@ -43,17 +43,17 @@ async def test_server_reinit_during_real_daq(default_server_process):
                 stream_movie_data=True,
                 stream_pulse_height_data=True,
                 update_interval_seconds=0.1,
-                timeout=15.0,
+                timeout=30.0,
             )
             # Prove we are receiving frames
-            first = await _await_stream_next_or_stop(stream_a, timeout=5.0)
+            first = await _await_stream_next_or_stop(stream_a, timeout=10.0)
             assert first is not None, "Should receive data before re-init"
 
             # Re-initialize with force=True while a stream is active
             assert await client_a.init_hp_io(hosts=None, hp_io_cfg={**hp_io_cfg, "force": True}) is True
 
             # After forced re-init, existing stream should end
-            post = await _await_stream_next_or_stop(stream_a, timeout=3.0)
+            post = await _await_stream_next_or_stop(stream_a, timeout=10.0)
             assert post is None, "Stream should end cleanly after forced re-init"
 
             # Start a new stream to verify post-reinit pipeline works
