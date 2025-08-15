@@ -24,7 +24,8 @@
         "uds": {
             "enabled": true,
             "data_products": ["img8", "img16", "ph256", "ph1024"],
-            "socket_path_template": "/tmp/hashpipe_grpc.dp_{dp_name}.sock"
+            "socket_path_template": "/tmp/hashpipe_grpc.dp_{dp_name}.sock",
+            "read_timeout": 600.0
         }
     },
 

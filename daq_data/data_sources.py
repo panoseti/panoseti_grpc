@@ -51,14 +51,31 @@ class UdsDataSource(BaseDataSource):
         self.socket_path = socket_path_template.format(dp_name=self.dp_name)
         self.dp_config = get_dp_config([self.dp_name])[self.dp_name]
         self.server: Optional[asyncio.AbstractServer] = None
+        self.read_timeout = config.get('read_timeout', 10.0)
 
     async def run(self):
         """Creates, binds, and listens on the UDS socket file."""
         self.logger.info(f"Starting UDS receiver for '{self.dp_name}' on {self.socket_path}")
 
-        if os.path.exists(self.socket_path):
-            self.logger.warning(f"Removing stale socket file: {self.socket_path}")
-            os.unlink(self.socket_path)
+        try:
+            # Check if a file exists at the socket path and if it's actually a socket.
+            if os.path.exists(self.socket_path):
+                s = os.stat(self.socket_path)
+                if stat.S_ISSOCK(s.st_mode):
+                    self.logger.warning(f"Removing stale socket file: {self.socket_path}")
+                    os.unlink(self.socket_path)
+                else:
+                    self.logger.error(
+                        f"A non-socket file exists at the socket path {self.socket_path}. "
+                        "Manual intervention required."
+                    )
+                    return  # Prevent the server from starting
+        except OSError as e:
+            self.logger.error(
+                f"Error removing stale socket file {self.socket_path}: {e}. "
+                "UDS receiver cannot start."
+            )
+            return  # Abort if cleanup fails
 
         try:
             self.server = await asyncio.start_unix_server(self._handle_client, path=self.socket_path)
@@ -87,21 +104,22 @@ class UdsDataSource(BaseDataSource):
 
         try:
             while not self.stop_event.is_set():
-                # 1. Read the 2-byte module ID prefix
-                module_id_bytes = await reader.readexactly(2)
+                # 1. Read the 2-byte module ID prefix with a timeout
+                module_id_bytes = await asyncio.wait_for(reader.readexactly(2), self.read_timeout)
                 module_id = int.from_bytes(module_id_bytes, 'big')
 
-                # 2. Discover or read the fixed-size PFF frame
+                # 2. Discover or read the fixed-size PFF frame with a timeout
                 if header_size is None:
-                    header_with_sep = await reader.readuntil(b'\n\n')
+                    header_with_sep = await asyncio.wait_for(reader.readuntil(b'\n\n'), self.read_timeout)
                     header_size = len(header_with_sep)
                     self.logger.info(f"Discovered header size of {header_size} bytes for {self.socket_path}")
                 else:
-                    header_with_sep = await reader.readexactly(header_size)
+                    header_with_sep = await asyncio.wait_for(reader.readexactly(header_size), self.read_timeout)
 
-                # 3. Read the image data
+                # 3. Read the image data with a timeout
                 # '1 +' is needed to account for the '*' prefix
-                img_data = await reader.readexactly(1 + self.dp_config.bytes_per_image)
+                img_data_size = 1 + self.dp_config.bytes_per_image
+                img_data = await asyncio.wait_for(reader.readexactly(img_data_size), self.read_timeout)
 
                 # 4. Parse and process the frame
                 json_bytes = header_with_sep[:-2]  # Strip the '\n\n' separator

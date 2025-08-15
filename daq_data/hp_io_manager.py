@@ -95,6 +95,7 @@ class HpIoManager:
                     source_cfg = {
                         "dp_name": dp_name,
                         "socket_path_template": socket_template,
+                        "read_timeout": uds_cfg.get("read_timeout", 60.0),
                     }
                     self.logger.info(f"Creating UDS server for data product '{dp_name}'")
                     self.data_sources.append(
@@ -138,15 +139,18 @@ class HpIoManager:
                 await asyncio.wait_for(all_sources_ready, timeout=10.0)
                 self.logger.info("All data sources have reported ready.")
             except asyncio.TimeoutError:
-                self.logger.error("Timeout waiting for all data sources to become ready. HpIoManager will not be valid.")
+                self.logger.error(
+                    "Timeout waiting for all data sources to become ready. HpIoManager will not be valid.")
+                # Cancel all started tasks and exit
                 for task in source_tasks + [processing_task]:
                     if not task.done():
                         task.cancel()
                 return  # Exit without setting self.valid
 
+        # Now that sources are ready, the manager can be considered valid.
         await self._update_active_data_products()
-        self.valid.set()  # Now, 'valid' means the full data pipeline is up.
-        self.logger.info("HpIoManager task started and is valid .")
+        self.valid.set()
+        self.logger.info("HpIoManager task started and is valid.")
 
         try:
             await asyncio.gather(processing_task, *source_tasks)
