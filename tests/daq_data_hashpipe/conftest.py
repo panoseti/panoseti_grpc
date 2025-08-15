@@ -56,8 +56,12 @@ def hashpipe_pcap_runner():
 
     # Create the directory structure that `make_run_dirs` in start.py would create.
     # The gRPC server (via HpIoManager) will look for data inside base_dir/module_X/run_name/
-    module_data_dir = base_dir / "module_1" / run_name
-    module_data_dir.mkdir(parents=True, exist_ok=True)
+    module_ids = [1, 254]
+    cfg_str = ""
+    for mid in module_ids:
+        module_dir = base_dir / "module_{}".format(mid) / run_name
+        module_dir.mkdir(parents=True, exist_ok=True)
+        cfg_str += f"{mid}\n"
 
     # The config file for hashpipe goes in base_dir/run_name/
     config_dir = base_dir / run_name
@@ -66,13 +70,13 @@ def hashpipe_pcap_runner():
     # The module.config file tells hashpipe which module to listen for.
     module_config_path = config_dir / "module.config"
     with open(module_config_path, "w") as f:
-        f.write("1\n")
+        f.write(cfg_str)
 
     # --- 2. Build Commands ---
     # Command to loop the pcap file to the loopback interface, simulating network traffic.
     tcpreplay_cmd = [
         "tcpreplay",
-        "--mbps=1",
+        "--mbps=0.5",
         "--loop=0",  # Loop indefinitely
         "--intf1=lo",  # Send to loopback interface
         pcap_file
@@ -86,7 +90,7 @@ def hashpipe_pcap_runner():
         "-o", "BINDHOST=lo",
         "-o", f"RUNDIR={run_name}",
         "-o", f"CONFIG={run_name}/module.config",
-        "-o", "MAXFILESIZE=0",
+        "-o", "MAXFILESIZE=1",
         "-o", "GROUPPHFRAMES=0",
         "-o", "OBS=TEST",
         "net_thread", "compute_thread", "output_thread"
@@ -94,7 +98,7 @@ def hashpipe_pcap_runner():
 
     # --- 3. Start Processes ---
     # Start tcpreplay to generate UDP packets.
-    tcpreplay_proc = subprocess.Popen(tcpreplay_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    tcpreplay_proc = subprocess.Popen(tcpreplay_cmd)#, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # Start the hashpipe process with the CWD set to the base directory.
     hashpipe_proc = subprocess.Popen(
@@ -103,7 +107,7 @@ def hashpipe_pcap_runner():
     )
 
     # --- 4. Wait for Initialization and Validation ---
-    time.sleep(10)  # Allow time for processes to initialize and sockets to be created.
+    time.sleep(5)  # Allow time for processes to initialize and sockets to be created.
     if tcpreplay_proc.poll() is not None:
         pytest.fail(f"tcpreplay failed to start. Exit code: {tcpreplay_proc.returncode}")
     if hashpipe_proc.poll() is not None:

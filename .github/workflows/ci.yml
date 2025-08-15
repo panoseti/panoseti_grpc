@@ -90,6 +90,7 @@ jobs:
           RUN_REAL_DATA_TESTS: "1"
         run: |
           docker run --rm \
+            --shm-size=2g \
             --env RUN_REAL_DATA_TESTS=${RUN_REAL_DATA_TESTS} \
             panoseti-grpc-test-real-daq:latest \
             python3 -m pytest -v tests/daq_data_hashpipe/

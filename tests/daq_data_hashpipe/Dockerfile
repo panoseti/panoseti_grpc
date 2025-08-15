@@ -51,7 +51,7 @@ COPY "${TEST_DIR}/databuf.h" .
 
 RUN make
 RUN make install
-RUN ./HSD_init.sh
+# RUN ./HSD_init.sh
 
 
 # Stage 2: Final Runtime and Test Environment
