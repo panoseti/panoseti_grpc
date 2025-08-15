@@ -31,7 +31,7 @@ class BaseDataSource(abc.ABC):
         self.logger = logger
         self.data_queue = data_queue
         self.stop_event = stop_event
-        self.ready_event = asyncio.Event()  # Add readiness event
+        self.ready_event = asyncio.Event()
 
     @abc.abstractmethod
     async def run(self):
@@ -55,6 +55,19 @@ class UdsDataSource(BaseDataSource):
         self.dp_config = get_dp_config([self.dp_name])[self.dp_name]
         self.server: Optional[asyncio.AbstractServer] = None
         self.read_timeout = config.get('read_timeout', 10.0)
+        self.client_handler_tasks = set()
+
+    async def _client_connection_wrapper(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        """Wraps the client handler to track its task lifecycle."""
+        task = asyncio.create_task(self._handle_client(reader, writer))
+        self.client_handler_tasks.add(task)
+
+        def on_task_done(t):
+            self.client_handler_tasks.discard(t)
+            client_info = writer.get_extra_info('peername')
+            self.logger.info(f"Client handler task for {client_info} on {self.socket_path} has finished.")
+
+        task.add_done_callback(on_task_done)
 
     async def run(self):
         """Creates, binds, and listens on the UDS socket file."""
@@ -104,7 +117,8 @@ class UdsDataSource(BaseDataSource):
             server_sock.setblocking(False)
 
             # Hand over the pre-configured socket to asyncio
-            self.server = await asyncio.start_unix_server(self._handle_client, sock=server_sock)
+            # self.server = await asyncio.start_unix_server(self._handle_client, sock=server_sock)
+            self.server = await asyncio.start_unix_server(self._client_connection_wrapper, sock=server_sock)
             self.ready_event.set()
             await self.stop_event.wait()
 
@@ -113,6 +127,20 @@ class UdsDataSource(BaseDataSource):
         except Exception as e:
             self.logger.error(f"UDS receiver for {self.socket_path} failed unexpectedly: {e}", exc_info=True)
         finally:
+            self.logger.info(f"Shutting down UDS receiver for {self.socket_path}...")
+
+            if self.client_handler_tasks:
+                self.logger.warning(
+                    f"Cancelling {len(self.client_handler_tasks)} outstanding client handler tasks for {self.socket_path}."
+                )
+                # Create a copy of the set to iterate over
+                tasks_to_cancel = list(self.client_handler_tasks)
+                for task in tasks_to_cancel:
+                    task.cancel()
+
+                # Wait for all tasks to acknowledge cancellation
+                await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
+
             if self.server:
                 self.server.close()
                 await self.server.wait_closed()
@@ -128,7 +156,6 @@ class UdsDataSource(BaseDataSource):
                 except OSError:
                     pass
             self.ready_event.clear()
-            self.logger.info(f"UDS receiver for {self.socket_path} stopped.")
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         """Handles a client connection, parsing [module_id][PFF frame] messages."""
