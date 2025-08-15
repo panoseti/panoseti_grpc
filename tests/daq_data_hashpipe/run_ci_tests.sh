@@ -5,7 +5,7 @@ set -e
 IMAGE_NAME="panoseti-daq-ci"
 
 echo "--- Building CI Docker Image: $IMAGE_NAME ---"
-docker --debug build -t $IMAGE_NAME -f tests/daq_data_hashpipe/Dockerfile .
+docker build -t $IMAGE_NAME -f tests/daq_data_hashpipe/Dockerfile .
 
 echo "--- Running Integration Tests ---"
 # Run the tests inside the container.
