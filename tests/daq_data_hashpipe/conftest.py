@@ -74,6 +74,7 @@ def hashpipe_pcap_runner():
     # Command to loop the pcap file to the loopback interface, simulating network traffic.
     tcpreplay_cmd = [
         "tcpreplay",
+        "--mbps=2",
         "--loop=0",  # Loop indefinitely
         "--intf1=lo",  # Send to loopback interface
         pcap_file
@@ -87,7 +88,7 @@ def hashpipe_pcap_runner():
         "-o", "BINDHOST=lo",
         "-o", f"RUNDIR={run_name}",
         "-o", f"CONFIG={run_name}/module.config",
-        "-o", "MAXFILESIZE=1000",
+        "-o", "MAXFILESIZE=0",
         "-o", "GROUPPHFRAMES=0",
         "-o", "OBS=TEST",
         "net_thread", "compute_thread", "output_thread"

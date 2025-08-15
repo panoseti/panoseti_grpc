@@ -64,4 +64,33 @@ jobs:
       # Run tests inside the now-cached Docker container
       - name: Run Pytest in container
         run: docker run --rm panoseti-grpc-test-ublox-control:latest
+  real-daq-robustness-tests:
+    name: Real DAQ Robustness Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and cache Docker image for real DAQ tests
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./tests/daq_data_hashpipe/Dockerfile
+          load: true
+          tags: panoseti-grpc-test-real-daq:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Real DAQ Robustness Tests in container
+        env:
+          # This environment variable enables the hashpipe_pcap_runner fixture
+          RUN_REAL_DATA_TESTS: "1"
+        run: |
+          docker run --rm \
+            --env RUN_REAL_DATA_TESTS=${RUN_REAL_DATA_TESTS} \
+            panoseti-grpc-test-real-daq:latest \
+            pytest -v tests/daq_data_hashpipe/test_real_daq_robustness.py
 
