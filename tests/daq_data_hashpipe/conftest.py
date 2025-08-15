@@ -24,14 +24,12 @@ from google.protobuf.json_format import ParseDict
 TEST_CFG_DIR = Path("tests/daq_data/config")
 TEST_CFG_DIR.mkdir(exist_ok=True)
 
-
-
 def is_utility_available(name):
     """Check if a command-line utility is in the system PATH."""
     return subprocess.run(["which", name], capture_output=True).returncode == 0
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def hashpipe_pcap_runner():
     """
     A session-scoped fixture that creates a realistic hashpipe run environment,
@@ -74,7 +72,7 @@ def hashpipe_pcap_runner():
     # Command to loop the pcap file to the loopback interface, simulating network traffic.
     tcpreplay_cmd = [
         "tcpreplay",
-        "--mbps=4",
+        "--mbps=1",
         "--loop=0",  # Loop indefinitely
         "--intf1=lo",  # Send to loopback interface
         pcap_file

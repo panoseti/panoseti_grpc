@@ -24,18 +24,18 @@
 #define CACHE_ALIGNMENT 256
 // Align the cache within the buffer
 #ifndef N_INPUT_BLOCKS
-    #define N_INPUT_BLOCKS 4
+    #define N_INPUT_BLOCKS 64
 #endif
 // Number of blocks in the input buffer
 #ifndef N_OUTPUT_BLOCKS
-    #define N_OUTPUT_BLOCKS 4
+    #define N_OUTPUT_BLOCKS 1
 #endif
 // Number of blocks in the output buffer
 #define IN_PKT_PER_BLOCK 16
 // Number of input packets stored in each block of the input buffer
-#define OUT_MOD_PER_BLOCK 16
+#define OUT_MOD_PER_BLOCK 256
 // Max Number of Modules stored in each block of the output buffer
-#define OUT_PH_IMG_PER_BLOCK 16
+#define OUT_PH_IMG_PER_BLOCK 256
 // Max # of PH packets stored in each block of the output buffer
 
 // Imaging Data Values and characteristics of modules

@@ -32,8 +32,13 @@ WORKDIR /build/hashpipe/src
 RUN autoreconf -is && \
     ./configure --prefix=/usr/local && \
     make && \
-    make install && \
-    ldconfig
+    make install
+
+# Install Python dependencies into a python venv
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
 
 # --- Build the custom panoseti_daq Plugin ---
 # The compiled .so file will be in the workdir /build/panoseti_daq
@@ -47,14 +52,6 @@ COPY "${TEST_DIR}/databuf.h" .
 RUN make
 RUN make install
 RUN ./HSD_init.sh
-
-# --- Prepare App Source for Final Stage ---
-WORKDIR /app
-# Install Python dependencies into the new, native venv
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
-
 
 
 # Stage 2: Final Runtime and Test Environment
@@ -97,7 +94,7 @@ RUN apt-get remove build-essential --autoremove -y
 
 # --- Finalize ---
 # Copy test data
-COPY "${TEST_DIR}/PH_onsky_1pixtrigger_11.5pe_ph11.5pe__20250801_043621_307.pcapng" /app/test_data.pcapng
+COPY "${TEST_DIR}/PH_onsky_NGC7331_1pixTrig_Anytrig1.5pe__20250801_102213_965_filtered2.pcapng" /app/test_data.pcapng
 
 # Set a working directory for command execution
 WORKDIR /app
