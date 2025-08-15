@@ -1,4 +1,4 @@
-CC          = aarch64-linux-gnu-g++
+CC          = g++
 REDIS_LIB_CCFLAGS = -lhiredis
 CCFLAGS     = -g -O3 -fPIC -shared -lstdc++ \
     -I. -I$(CUDA_DIR)/include -I/usr/local/include \

@@ -27,7 +27,7 @@ async def test_server_reinit_during_real_daq(default_server_process):
 
     hp_io_cfg = {
         "data_dir": "/tmp/ci_run_dir",
-        "update_interval_seconds": 0.05,
+        "update_interval_seconds": 0.1,
         "simulate_daq": False,
         "force": True,
         "module_ids": [],
@@ -42,7 +42,7 @@ async def test_server_reinit_during_real_daq(default_server_process):
                 hosts=None,
                 stream_movie_data=True,
                 stream_pulse_height_data=True,
-                update_interval_seconds=0.05,
+                update_interval_seconds=0.1,
                 timeout=15.0,
             )
             # Prove we are receiving frames
@@ -61,7 +61,7 @@ async def test_server_reinit_during_real_daq(default_server_process):
                 hosts=None,
                 stream_movie_data=True,
                 stream_pulse_height_data=True,
-                update_interval_seconds=0.05,
+                update_interval_seconds=0.1,
                 timeout=15.0,
             )
             again = await _await_stream_next_or_stop(stream_b, timeout=5.0)
@@ -73,7 +73,7 @@ async def test_init_waits_for_uds_ready(default_server_process):
     async with AioDaqDataClient(daq_config, network_config=None) as client:
         hp_io_cfg = {
             "data_dir": "/tmp/ci_run_dir",
-            "update_interval_seconds": 0.05,
+            "update_interval_seconds": 0.1,
             "simulate_daq": False,
             "force": True,
             "module_ids": [],
@@ -90,7 +90,7 @@ async def test_first_frame_with_real_daq(default_server_process):
     async with AioDaqDataClient(daq_config, network_config=None) as client:
         hp_io_cfg = {
             "data_dir": "/tmp/ci_run_dir",
-            "update_interval_seconds": 0.05,
+            "update_interval_seconds": 0.1,
             "simulate_daq": False,
             "force": True,
             "module_ids": [],
@@ -100,7 +100,7 @@ async def test_first_frame_with_real_daq(default_server_process):
             hosts=None,
             stream_movie_data=True,
             stream_pulse_height_data=True,
-            update_interval_seconds=0.05
+            update_interval_seconds=0.1
         )
         # Allow up to 10s for the first frame
         async def next_or_timeout():

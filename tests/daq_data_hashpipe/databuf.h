@@ -28,7 +28,7 @@
 #endif
 // Number of blocks in the input buffer
 #ifndef N_OUTPUT_BLOCKS
-    #define N_OUTPUT_BLOCKS 1
+    #define N_OUTPUT_BLOCKS 2
 #endif
 // Number of blocks in the output buffer
 #define IN_PKT_PER_BLOCK 64
@@ -46,13 +46,13 @@
 // Number of pixels for each image data
 #define BYTES_PER_MODULE_FRAME QUABO_PER_MODULE *PIXELS_PER_IMAGE * 2
 // Size of module image allocated in buffer
-#define CIRCULAR_MODULE_IMAGE_BUFFER_LENGTH 8
+#define CIRCULAR_MODULE_IMAGE_BUFFER_LENGTH 4
 
 // Pulse Height data values
 
 #define BYTES_PER_PH_FRAME QUABO_PER_MODULE *PIXELS_PER_IMAGE * 2
 // Size of PH image allocated in one PH buffer
-#define CIRCULAR_PH_BUFFER_LENGTH 8
+#define CIRCULAR_PH_BUFFER_LENGTH 4
 // Number of PH image buffers per module. NOTE: this number should always be at least one.
 // Higher values give the compute thread greater tolerance for packet delays before it must write partial PH1024 images.
 // Increasing this parameter is recommended if your configuration has a high data rate because packets from distinct
