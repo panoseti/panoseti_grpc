@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 import os
 import urllib.parse
+import tempfile
 import uuid
 import copy
 from typing import Optional, Tuple
@@ -161,39 +162,48 @@ async def default_server_process(uds_sim_server_config):
 @pytest_asyncio.fixture(scope="function")
 async def n_sim_servers_fixture_factory(server_config_base):
     """
-    A pytest fixture factory that starts N simulation server instances.
+    A pytest fixture factory that starts N sandboxed simulation server instances.
+    Each server runs in its own temporary directory to prevent socket conflicts.
     """
     all_server_details = []
+    # This list will hold TemporaryDirectory objects for automatic cleanup
+    temp_dirs = []
 
     async def _factory(num_servers: int, uds_paths: Optional[list[str]] = None):
-        if uds_paths and len(uds_paths) != num_servers:
-            raise ValueError("The number of provided UDS paths must match num_servers.")
+        # The uds_paths argument is now ignored in favor of automatic temp dirs.
 
         for i in range(num_servers):
+            # 1. Create a unique temporary directory for this server instance.
+            temp_dir = tempfile.TemporaryDirectory()
+            temp_dirs.append(temp_dir)
+            temp_dir_path = Path(temp_dir.name)
+
             config = copy.deepcopy(server_config_base)
-            uds_path_str = uds_paths[i] if uds_paths else f"unix:///tmp/test_daq_data_{uuid.uuid4().hex}.sock"
             module_id = 200 + i
 
+            # 2. Modify paths in the config to point into the unique temp directory.
+            # Main gRPC socket for the client to connect to.
+            uds_path_str = f"unix://{temp_dir_path / 'grpc_test.sock'}"
             config["unix_domain_socket"] = uds_path_str
+
+            # Data-plane UDS socket template for the internal simulation data flow.
+            uds_cfg = config['acquisition_methods']['uds']
+            template_basename = Path(uds_cfg['socket_path_template']).name
+            new_template_path = str(temp_dir_path / template_basename)
+            uds_cfg['socket_path_template'] = new_template_path
+
+            # Update other configuration details for this specific instance.
             config['simulate_daq_cfg']['sim_module_ids'] = [module_id]
             config['simulate_daq_cfg']['simulation_mode'] = 'uds'
             config['acquisition_methods']['uds']['enabled'] = True
-            config['acquisition_methods']['filesystem_poll']['enabled'] = True
-            config['acquisition_methods']['filesystem_pipe']['enabled'] = True
-            config['acquisition_methods']['uds'][
-                'socket_path_template'] = "/tmp/hashpipe_grpc.dp_{dp_name}.sock"
 
             uds_path = Path(urllib.parse.urlparse(uds_path_str).path)
-            if uds_path.exists():
-                uds_path.unlink()
-
             shutdown_event = asyncio.Event()
-
             server_task = asyncio.create_task(serve(config, shutdown_event, in_main_thread=False))
 
-            # readiness check
+            # Readiness check
             async with AioDaqDataClient({"daq_nodes": [{"ip_addr": uds_path_str}]}, network_config=None) as client:
-                for _ in range(30):
+                for _ in range(30):  # 3-second timeout
                     if uds_path.exists() and await client.ping(uds_path_str):
                         break
                     await asyncio.sleep(0.1)
@@ -204,22 +214,19 @@ async def n_sim_servers_fixture_factory(server_config_base):
                 "ip_addr": uds_path_str,
                 "task": server_task,
                 "stop_event": shutdown_event,
-                "path": uds_path,
                 "module_id": module_id,
             }
             all_server_details.append(server_details)
-
         return all_server_details
 
     try:
         yield _factory
     finally:
-        # Graceful shutdown sequence
+        # Stop all gRPC server tasks
+        server_tasks = [sd['task'] for sd in all_server_details if sd.get('task')]
         for sd in all_server_details:
             if sd.get('stop_event'):
                 sd['stop_event'].set()
-
-        server_tasks = [sd['task'] for sd in all_server_details if sd.get('task')]
 
         if server_tasks:
             try:
@@ -230,13 +237,9 @@ async def n_sim_servers_fixture_factory(server_config_base):
                         task.cancel()
                 await asyncio.gather(*server_tasks, return_exceptions=True)
 
-        for sd in all_server_details:
-            p = sd.get('path')
-            if p and p.exists():
-                try:
-                    os.unlink(p)
-                except OSError:
-                    pass
+        # 3. Clean up all temporary directories and their contents.
+        for temp_dir in temp_dirs:
+            temp_dir.cleanup()
 
 
 @pytest_asyncio.fixture
