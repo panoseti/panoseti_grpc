@@ -15,11 +15,13 @@ import uuid
 import copy
 from typing import Optional, Tuple
 
+from google.protobuf.struct_pb2 import Struct
+from google.protobuf.json_format import ParseDict
+
 from daq_data.server import serve
 from daq_data.client import AioDaqDataClient, DaqDataClient
 from daq_data.daq_data_pb2 import PanoImage
-from google.protobuf.struct_pb2 import Struct
-from google.protobuf.json_format import ParseDict
+from panoseti_util import control_utils as util
 
 TEST_CFG_DIR = Path("tests/daq_data/config")
 TEST_CFG_DIR.mkdir(exist_ok=True)
@@ -76,7 +78,7 @@ def hashpipe_pcap_runner():
     # Command to loop the pcap file to the loopback interface, simulating network traffic.
     tcpreplay_cmd = [
         "tcpreplay",
-        "--mbps=0.5",
+        "--mbps=1",
         "--loop=0",  # Loop indefinitely
         "--intf1=lo",  # Send to loopback interface
         pcap_file
@@ -107,11 +109,20 @@ def hashpipe_pcap_runner():
     )
 
     # --- 4. Wait for Initialization and Validation ---
-    time.sleep(5)  # Allow time for processes to initialize and sockets to be created.
-    if tcpreplay_proc.poll() is not None:
-        pytest.fail(f"tcpreplay failed to start. Exit code: {tcpreplay_proc.returncode}")
-    if hashpipe_proc.poll() is not None:
-        pytest.fail(f"hashpipe failed to start. Exit code: {hashpipe_proc.returncode}. Check logs in {base_dir}.")
+    num_retries = 20
+    for i in range(num_retries):
+        # Allow time for processes to initialize and sockets to be created.
+        if tcpreplay_proc.poll() is not None:
+            pytest.fail(f"tcpreplay failed to start. Exit code: {tcpreplay_proc.returncode}")
+        elif hashpipe_proc.poll() is not None:
+            pytest.fail(f"hashpipe failed to start. Exit code: {hashpipe_proc.returncode}. Check logs in {base_dir}.")
+        if util.is_hashpipe_running():
+            print(f"hashpipe is running after {i} retries.")
+            break
+        print(f"hashpipe is not running after {i}/{num_retries} retries. Retrying in 1 second.")
+        time.sleep(1)
+    else:
+        pytest.fail(f"hashpipe failed to start after {num_retries} retries. Check logs in {base_dir}.")
 
     # Yield to let the tests run
     yield

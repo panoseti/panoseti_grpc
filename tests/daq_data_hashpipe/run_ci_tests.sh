@@ -12,9 +12,9 @@ echo "--- Running Integration Tests ---"
 # The RUN_REAL_DATA_TESTS=1 environment variable enables the fixture.
 # The --rm flag ensures the container is removed after the test run.
 docker run --rm \
-    --shm-size=1g \
+    --shm-size=2g \
     -e RUN_REAL_DATA_TESTS=1 \
     $IMAGE_NAME \
-    python3 -m pytest -v tests/daq_data_hashpipe/
+    python3 -m pytest -v -s --maxfail=2 tests/daq_data_hashpipe/
 
 echo "--- CI Test Run Completed Successfully ---"

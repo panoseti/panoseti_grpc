@@ -9,7 +9,8 @@
 #
 # On success, print OK.  Otherwise print an error message
 
-import os, signal
+import os, signal, sys
+sys.path.append('/app/')
 from panoseti_util import control_utils as util
 
 def main():

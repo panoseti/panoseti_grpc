@@ -2,68 +2,68 @@ name: PANOSETI gRPC CI
 
 on:
   push:
-    branches: [ tests ]
+    branches: [ main, tests ]
   pull_request:
-    branches: [ tests ]
+    branches: [ main ]
 
 jobs:
-#  daq-data-build-and-test:
-#    runs-on: ubuntu-latest
-#    steps:
-#      # Checks-out repository
-#      - name: Checkout repository
-#        uses: actions/checkout@v3
-#
-#      # Set up Docker Buildx
-#      # enables advanced features like multi-platform builds and cache management.
-#      - name: Set up Docker Buildx
-#        uses: docker/setup-buildx-action@v3
-#
-#      #Build the Docker image with cache enabled
-#      # This step builds the image and pushes the cache to the GitHub Actions cache.
-#      # The 'load: true' flag makes the image available to subsequent steps in the same job.
-#      - name: Build and cache Docker image
-#        uses: docker/build-push-action@v5
-#        with:
-#          context: .
-#          file: ./tests/daq_data/Dockerfile
-#          load: true # Makes the image available for the next step
-#          tags: panoseti-grpc-test-daq-data:latest
-#          cache-from: type=gha # Pulls cache from GitHub Actions cache
-#          cache-to: type=gha,mode=max # Pushes cache to GitHub Actions cache
-#
-#      # Run tests inside the now-cached Docker container
-#      - name: Run Pytest in container
-#        run: docker run --rm panoseti-grpc-test-daq-data:latest
-#
-#  ublox-control-build-and-test:
-#    runs-on: ubuntu-latest
-#    steps:
-#      # Checks-out repository
-#      - name: Checkout repository
-#        uses: actions/checkout@v3
-#
-#      # Set up Docker Buildx
-#      # enables advanced features like multi-platform builds and cache management.
-#      - name: Set up Docker Buildx
-#        uses: docker/setup-buildx-action@v3
-#
-#      #Build the Docker image with cache enabled
-#      # This step builds the image and pushes the cache to the GitHub Actions cache.
-#      # The 'load: true' flag makes the image available to subsequent steps in the same job.
-#      - name: Build and cache Docker image
-#        uses: docker/build-push-action@v5
-#        with:
-#          context: .
-#          file: ./tests/ublox_control/Dockerfile
-#          load: true # Makes the image available for the next step
-#          tags: panoseti-grpc-test-ublox-control:latest
-#          cache-from: type=gha # Pulls cache from GitHub Actions cache
-#          cache-to: type=gha,mode=max # Pushes cache to GitHub Actions cache
-#
-#      # Run tests inside the now-cached Docker container
-#      - name: Run Pytest in container
-#        run: docker run --rm panoseti-grpc-test-ublox-control:latest
+  daq-data-build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks-out repository
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Set up Docker Buildx
+      # enables advanced features like multi-platform builds and cache management.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      #Build the Docker image with cache enabled
+      # This step builds the image and pushes the cache to the GitHub Actions cache.
+      # The 'load: true' flag makes the image available to subsequent steps in the same job.
+      - name: Build and cache Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./tests/daq_data/Dockerfile
+          load: true # Makes the image available for the next step
+          tags: panoseti-grpc-test-daq-data:latest
+          cache-from: type=gha # Pulls cache from GitHub Actions cache
+          cache-to: type=gha,mode=max # Pushes cache to GitHub Actions cache
+
+      # Run tests inside the now-cached Docker container
+      - name: Run Pytest in container
+        run: docker run --rm panoseti-grpc-test-daq-data:latest
+
+  ublox-control-build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks-out repository
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Set up Docker Buildx
+      # enables advanced features like multi-platform builds and cache management.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      #Build the Docker image with cache enabled
+      # This step builds the image and pushes the cache to the GitHub Actions cache.
+      # The 'load: true' flag makes the image available to subsequent steps in the same job.
+      - name: Build and cache Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./tests/ublox_control/Dockerfile
+          load: true # Makes the image available for the next step
+          tags: panoseti-grpc-test-ublox-control:latest
+          cache-from: type=gha # Pulls cache from GitHub Actions cache
+          cache-to: type=gha,mode=max # Pushes cache to GitHub Actions cache
+
+      # Run tests inside the now-cached Docker container
+      - name: Run Pytest in container
+        run: docker run --rm panoseti-grpc-test-ublox-control:latest
   real-daq-robustness-tests:
     name: Real DAQ Robustness Tests
     runs-on: ubuntu-latest
@@ -93,5 +93,5 @@ jobs:
             --shm-size=2g \
             --env RUN_REAL_DATA_TESTS=${RUN_REAL_DATA_TESTS} \
             panoseti-grpc-test-real-daq:latest \
-            python3 -m pytest -v tests/daq_data_hashpipe/
+            python3 -m pytest -s -v --maxfail=2 tests/daq_data_hashpipe/
 

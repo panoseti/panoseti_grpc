@@ -19,7 +19,7 @@ SOURCES  = net_thread.c \
 
 INCLUDES = databuf.h compute_thread.h process_frame.h snapshot.h
 
-N_INPUT_BLOCKS=4
+N_INPUT_BLOCKS=64
 N_OUTPUT_BLOCKS=1
 
 all: $(TARGET)
