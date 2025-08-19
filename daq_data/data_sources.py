@@ -113,6 +113,7 @@ class UdsDataSource(BaseDataSource):
 
             # Bind the socket and prepare it for the asyncio server
             server_sock.bind(self.socket_path)
+            os.chmod(self.socket_path, 0o777)
             server_sock.listen(1) # Hashpipe should be the only process that connects to the grpc input.
             server_sock.setblocking(False)
 
