@@ -1,0 +1,66 @@
+{
+  "port": "/dev/ttyACM0",
+  "register_csv": "./ZED-F9T_Registers.csv",
+  "baud": 115200,
+  "apply_to_layers": ["RAM"], // Options: RAM, BBR (battery backup RAM), flash, default?
+  "verify_layer": "RAM",
+  
+  "position": {
+    "format": "LLH",              // "LLH" or "ECEF"
+    "lat_deg": 37.4219999,        // degrees
+    "lon_deg": -122.0840575,      // degrees
+    "height_m": 12.345,           // meters (ellipsoidal)
+    "acc_m": 0.02                 // 3D accuracy estimate (meters) for fixed mode
+  },
+  "config": [
+   { "key": "CFG_UART1_BAUDRATE",            "value": 115200 },
+          { "key": "CFG_UART1INPROT_UBX",           "value": 1 },
+          { "key": "CFG_UART1INPROT_NMEA",          "value": 0 },
+          { "key": "CFG_UART1INPROT_RTCM3X",        "value": 1 },
+          { "key": "CFG_UART1OUTPROT_UBX",          "value": 1 },
+          { "key": "CFG_UART1OUTPROT_NMEA",         "value": 0 },
+          { "key": "CFG_UART1OUTPROT_RTCM3X",       "value": 0 },
+          { "key": "CFG_USBINPROT_UBX",           "value": 1 },
+          { "key": "CFG_USBINPROT_NMEA",          "value": 0 },
+          { "key": "CFG_USBINPROT_RTCM3X",        "value": 1 },
+          { "key": "CFG_USBOUTPROT_UBX",          "value": 1 },
+          { "key": "CFG_USBOUTPROT_NMEA",         "value": 0 },
+          { "key": "CFG_USBOUTPROT_RTCM3X",       "value": 0 },
+          { "key": "CFG_USB_ENABLED",            "value": 1},
+          { "key": "CFG_UART1_ENABLED",            "value": 1},
+
+
+          // ===== UBX messages out on UART1 (rates are “per nav cycle”) =====
+          { "key": "CFG_MSGOUT_UBX_NAV_PVT_USB",       "value": 1 },
+          { "key": "CFG_MSGOUT_UBX_NAV_HPPOSLLH_USB",  "value": 1 },
+          { "key": "CFG_MSGOUT_UBX_NAV_RELPOSNED_USB", "value": 1 },
+          // (optional debug)
+          { "key": "CFG_MSGOUT_UBX_RXM_RTCM_USB",      "value": 0 },
+          { "key": "CFG_MSGOUT_UBX_MON_COMMS_USB",     "value": 0 },
+
+          // ===== GNSS enables (dual-freq GPS/Galileo/GLONASS/BeiDou) =====
+          { "key": "CFG_SIGNAL_GPS_ENA",      "value": 1 },
+          //{ "key": "CFG_SIGNAL_GPS_L1CA_ENA", "value": 1 },
+          //{ "key": "CFG_SIGNAL_GPS_L2C_ENA",  "value": 1 },
+
+          { "key": "CFG_SIGNAL_GAL_ENA",      "value": 1 },
+          //{ "key": "CFG_SIGNAL_GAL_E1_ENA",   "value": 1 },
+          //{ "key": "CFG_SIGNAL_GAL_E5B_ENA",  "value": 1 },
+
+          { "key": "CFG_SIGNAL_GLO_ENA",      "value": 0 },
+          //{ "key": "CFG_SIGNAL_GLO_L1_ENA",   "value": 0 },
+          //{ "key": "CFG_SIGNAL_GLO_L2_ENA",   "value": 0 },
+
+          { "key": "CFG_SIGNAL_BDS_ENA",      "value": 1 },
+          //{ "key": "CFG_SIGNAL_BDS_B1_ENA",   "value": 1 },
+          //{ "key": "CFG_SIGNAL_BDS_B2_ENA",   "value": 1 },
+          // (optional: disable SBAS for RTK-focused rover)
+          //{ "key": "CFG_SIGNAL_SBAS_ENA",     "value": 0 },
+          // ===== Rates & dynamics =====
+          { "key": "CFG_RATE_MEAS",           "value": 200 },  // 200 ms = 5 Hz
+          { "key": "CFG_RATE_NAV",            "value": 1 },
+          { "key": "CFG_NAVSPG_DYNMODEL",     "value": 2},    // 4 = automotive (2 = stationary)
+          // ===== Rover (time/base mode off) =====
+          { "key": "CFG_TMODE_MODE",          "value": 0 }     // 0 = disabled (rover)
+  ]
+}

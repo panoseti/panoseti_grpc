@@ -1,0 +1,206 @@
+
+Starting handler threads. Press Ctrl-C to terminate...
+Polling NAV-AOPSTATUS message type...
+[NTRIP] ggamode=1 ggainterval=15 reflat=37.8731 reflon=-122.2571
+[NTRIP] Connecting to 132.239.152.4:2105 mp=P479_RTCM3 tls=0 -> 2105@115200
+numSV: 27, hAcc (mm): 14, vAcc (mm): 21, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665019
+numSV: 27, hAcc (mm): 14, vAcc (mm): 21, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624634, Altitude: 1665023
+numSV: 27, hAcc (mm): 14, vAcc (mm): 21, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624634, Altitude: 1665022
+numSV: 27, hAcc (mm): 14, vAcc (mm): 22, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624634, Altitude: 1665023
+numSV: 27, hAcc (mm): 14, vAcc (mm): 22, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624634, Altitude: 1665024
+Polling NAV-ATT message type...
+numSV: 27, hAcc (mm): 14, vAcc (mm): 22, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624634, Altitude: 1665022
+numSV: 27, hAcc (mm): 14, vAcc (mm): 22, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665019
+numSV: 27, hAcc (mm): 14, vAcc (mm): 22, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624634, Altitude: 1665016
+numSV: 27, hAcc (mm): 14, vAcc (mm): 22, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624634, Altitude: 1665018
+numSV: 27, hAcc (mm): 15, vAcc (mm): 22, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624634, Altitude: 1665019
+Polling NAV-CLOCK message type...
+numSV: 27, hAcc (mm): 15, vAcc (mm): 22, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624634, Altitude: 1665020
+numSV: 27, hAcc (mm): 15, vAcc (mm): 23, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624634, Altitude: 1665021
+numSV: 27, hAcc (mm): 15, vAcc (mm): 23, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624634, Altitude: 1665020
+numSV: 27, hAcc (mm): 15, vAcc (mm): 23, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624634, Altitude: 1665020
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665028
+Polling NAV-COV message type...
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665030
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665030
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665031
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665030
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665032
+Polling NAV-DGPS message type...
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534827, Longitude: -116.8624633, Altitude: 1665034
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534827, Longitude: -116.8624633, Altitude: 1665034
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534827, Longitude: -116.8624633, Altitude: 1665033
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665033
+numSV: 27, hAcc (mm): 14, vAcc (mm): 11, fix type:  3, locked: 1
+Latitude: 33.3534827, Longitude: -116.8624633, Altitude: 1665030
+Polling NAV-DOP message type...
+numSV: 27, hAcc (mm): 14, vAcc (mm): 11, fix type:  3, locked: 1
+Latitude: 33.3534827, Longitude: -116.8624633, Altitude: 1665032
+numSV: 27, hAcc (mm): 14, vAcc (mm): 11, fix type:  3, locked: 1
+Latitude: 33.3534827, Longitude: -116.8624633, Altitude: 1665034
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665029
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665027
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534827, Longitude: -116.8624633, Altitude: 1665027
+Polling NAV-EELL message type...
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665029
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665029
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665031
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534827, Longitude: -116.8624633, Altitude: 1665031
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665029
+Polling NAV-EKFSTATUS message type...
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665031
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665030
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665030
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665030
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665029
+Polling NAV-EOE message type...
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665022
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665022
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665021
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665020
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665019
+Polling NAV-GEOFENCE message type...
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665017
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665021
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665021
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665019
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665020
+Polling NAV-HPPOSECEF message type...
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665020
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665022
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665025
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665021
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665023
+Polling NAV-HPPOSLLH message type...
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665022
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665022
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665022
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665020
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665021
+Polling NAV-NMI message type...
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665020
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665024
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665021
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665026
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534827, Longitude: -116.8624633, Altitude: 1665022
+Polling NAV-ODO message type...
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534827, Longitude: -116.8624633, Altitude: 1665024
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665024
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665022
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665023
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665020
+Polling NAV-ORB message type...
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665024
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665023
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665024
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665024
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665022
+Polling NAV-PL message type...
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665022
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665023
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665025
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665023
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665024
+Polling NAV-POSECEF message type...
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665025
+
+
+Terminated by user.
+
+Stop signal set. Waiting for threads to complete...
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534827, Longitude: -116.8624633, Altitude: 1665025
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665024
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665026
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665024
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665026
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534827, Longitude: -116.8624633, Altitude: 1665025
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665026
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665026
+numSV: 27, hAcc (mm): 14, vAcc (mm): 10, fix type:  3, locked: 1
+Latitude: 33.3534828, Longitude: -116.8624633, Altitude: 1665028

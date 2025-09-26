@@ -1,0 +1,89 @@
+{
+  "port": "/dev/ttyACM0",
+  "register_csv": "/home/bgodfrey/GNSS/ZED-F9T_Registers.csv",
+  "baud": 115200,
+  "apply_to_layers": ["RAM"], // Options: RAM, BBR (battery backup RAM), flash, default?
+  "verify_layer": "RAM",
+  
+  "config": [
+    // --- Constellations & signals ---
+    { "key": "CFG_SIGNAL_GPS_ENA", "value": 1 },
+    { "key": "CFG_SIGNAL_GPS_L1CA_ENA", "value": 1 },
+    { "key": "CFG_SIGNAL_GPS_L2C_ENA", "value": 1 },
+    { "key": "CFG_SIGNAL_GPS_L5_ENA", "value": 0 },
+
+    { "key": "CFG_SIGNAL_GAL_ENA", "value": 1 },
+    { "key": "CFG_SIGNAL_GAL_E1_ENA", "value": 1 },
+    //{ "key": "CFG_SIGNAL_GAL_E5A_ENA", "value": 1 },
+    { "key": "CFG_SIGNAL_GAL_E5B_ENA", "value": 1 },
+
+    { "key": "CFG_SIGNAL_BDS_ENA", "value": 1 },
+    { "key": "CFG_SIGNAL_BDS_B1_ENA", "value": 1 },
+    { "key": "CFG_SIGNAL_BDS_B2_ENA", "value": 1 },
+
+    { "key": "CFG_SIGNAL_SBAS_ENA", "value": 0 },
+    { "key": "CFG_SIGNAL_QZSS_ENA", "value": 0 },
+   
+    // --- Port protocols (USB as RTCM INPUT; keep UBX OUT for monitoring) ---
+    { "key": "CFG-USBINPROT-RTCM3X",      "value": 1 },
+    { "key": "CFG-USBINPROT-UBX",         "value": 1 },
+    { "key": "CFG-USBINPROT-NMEA",        "value": 0 },
+
+    // --- Timepulse global modes (use frequency + ratio) ---
+    { "key": "CFG_TP_PULSE_DEF", "value": 1 },          // 1 = FREQ mode
+    { "key": "CFG_TP_PULSE_LENGTH_DEF", "value": 0 },   // 0 = RATIO (percent)
+    { "key": "CFG-TP-ANT_CABLEDELAY", "value": 10 },   // Antenna delay due to cable (in ns)
+
+    // --- TP1: 1 Hz, 100 µs duty (=0.01%), GPS grid, align to TOW ---
+    { "key": "CFG_TP_TP1_ENA", "value": 1 },
+    { "key": "CFG_TP_FREQ_TP1", "value": 1 },
+    { "key": "CFG_TP_DUTY_TP1", "value": 0.01 },
+    { "key": "CFG_TP_SYNC_GNSS_TP1", "value": 1 },
+    { "key": "CFG_TP_USE_LOCKED_TP1", "value": 1 },
+    { "key": "CFG_TP_ALIGN_TO_TOW_TP1", "value": 1 },
+    { "key": "CFG_TP_TIMEGRID_TP1", "value": 0 },       // 1 = GPS //0 = UTC
+    { "key": "CFG_TP_FREQ_LOCK_TP1", "value": 1 },
+    { "key": "CFG_TP_DUTY_LOCK_TP1", "value": 0.01 },
+
+    // UBX-TIM-TP (qErr) at 1 Hz on USB and/or UART1
+    { "key": "CFG_MSGOUT_UBX_TIM_TP_USB", "value": 1 },
+    { "key": "CFG_MSGOUT_UBX_NAV_TIMEUTC_USB",   "value": 1 },
+    
+
+    // --- TP2: 10 MHz, 50% duty, GPS grid, align to TOW ---
+    { "key": "CFG_TP_TP2_ENA", "value": 1 },
+    { "key": "CFG_TP_FREQ_TP2", "value": 10000000 },
+    { "key": "CFG_TP_DUTY_TP2", "value": 50.0 },
+    { "key": "CFG_TP_ALIGN_TO_TOW_TP2", "value": 1 },
+    { "key": "CFG_TP_SYNC_GNSS_TP2", "value": 1 },
+    { "key": "CFG_TP_TIMEGRID_TP2", "value": 0 },
+    { "key": "CFG_TP_DRSTR_TP2", "value": 1}, // Configure drive strength of TP2 to 12 mA = 3
+    { "key": "CFG_TP_USE_LOCKED_TP2", "value": 1 },
+    { "key": "CFG_TP_FREQ_LOCK_TP2", "value": 10000000 },
+    { "key": "CFG_TP_DUTY_LOCK_TP2", "value": 50.0 },
+
+    { "key": "CFG-TMODE-MODE",             "value": 0 },  // 0 = disabled
+
+    // Set up receiver station using settings suggested in integration manual
+    { "key": "CFG-USBOUTPROT-NMEA", "value": 0 },
+    { "key": "CFG-USBOUTPROT-RTCM3X", "value": 0 },
+    { "key": "CFG-USBOUTPROT-UBX", "value": 1 },
+    { "key": "CFG-MSGOUT-RTCM_3X_TYPE1005_USB", "value": 0 },
+    { "key": "CFG-MSGOUT-RTCM_3X_TYPE1077_USB", "value": 0 },
+    { "key": "CFG-MSGOUT-RTCM_3X_TYPE1087_USB", "value": 0 },
+    { "key": "CFG-MSGOUT-RTCM_3X_TYPE1097_USB", "value": 0 },
+    { "key": "CFG-MSGOUT-RTCM_3X_TYPE1127_USB", "value": 0 },
+    { "key": "CFG-MSGOUT-RTCM_3X_TYPE1230_USB", "value": 0 },
+    { "key": "CFG-MSGOUT-RTCM_3X_TYPE4072_1_USB", "value": 0 },
+
+    { "key": "CFG-USBINPROT-RTCM3X", "value": 1 },
+    { "key": "CFG-USBINPROT-UBX",    "value": 1 },
+
+    { "key": "CFG-USBOUTPROT-UBX",   "value": 1 },
+
+    { "key": "CFG-MSGOUT-UBX_RXM_RTCM_USB",   "value": 1 },  // prints a short UBX for each RTCM it ingests
+    { "key": "CFG-MSGOUT-UBX_NAV_PVT_USB",    "value": 1 },  // shows fixType; expect 5 (=TIME) when using corrections
+    { "key": "CFG_MSGOUT_UBX_NAV_TIMEGPS_USB","value": 1 },  // GNSS time validity
+    { "key": "CFG_MSGOUT_UBX_TIM_TP_USB",     "value": 1 },  // PPS jitter (qErr) shrinks when corrections are applied
+  ]
+}
