@@ -17,8 +17,20 @@ def getQueueData(stop_event, data):
 
 # Simple code to create a NTRIP client using pygnssutils library 
 
+#gnssntripclient --server 132.239.152.175 --port 2103 --ggamode 1 --reflat 37.76 --reflon -122.46 --ntripversion 1.0 --ntripuser CRTNBERKBENG --ntrippassword BERKBENGSURV --datatype RTCM --mountpoint UCSF_RTCM3
 
-serverName = '132.239.152.4'  #'132.239.154.80' #'132.239.152.175'
+# Obtained from http://132.239.152.175:2103/
+
+#New server
+#132.239.152.4:2105
+#Old server
+#132.239.154.80:2103
+# Name of the server
+
+#Berkeley server
+#132.239.152.4:2103
+#SRB2_RTCM3
+serverName = '132.239.152.4'
 
 # Port numbers
 portNumber = 2105
@@ -31,7 +43,7 @@ datatype = 'RTCM'
 
 # Name of the receiver
 
-mountpoint = 'PMOB_RTCM3' #'KEBL_RTCM3' #'MHC2_RTCM3' #'P230_RTCM3' #'UCSF_RTCM3'
+mountpoint = 'PMOB_RTCM3'
 
 # From the documentation: To retrieve correction data from a designated mountpoint 
 # (this will send NMEA GGA position sentences to the server at intervals of 60 seconds, 

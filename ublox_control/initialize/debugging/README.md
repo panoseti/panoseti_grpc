@@ -10,10 +10,9 @@ There are two different configuration files for the F9T: `f9t_config_base_exampl
 To configure the F9T with the base configuration run the following from the command line:
 ```console
 foo@bar:~$ ./conf_gnss_no_grpc.py ../../config/f9t_config_base_example.json5
-foo
 ```
 
-Note: Be careful that you have the right USB port (e.g. /dev/ttyACM0).
+Note: Be careful that you have the right USB port (e.g. /dev/ttyACM0). Also, the given position will likely need to be updated depending on what you get from the F9P. See the section on configuring an F9P for how to do this.
 
 
 Configuring an F9P
@@ -22,7 +21,6 @@ Configuring an F9P can be done in the exact same way as configuring an F9T. From
 
 ```console
 foo@bar:~$ ./conf_gnss_no_grpc.py ../../config/f9p_config_example.json5
-foo
 ```
 
 The registers inside this are given below. If interested, the interface description is from Sparkfun: [Zed F9P Interface Description direct link](https://cdn.sparkfun.com/assets/f/7/4/3/5/PM-15136.pdf). This works as of September 2025. The important things to note are that GPS L1/2, Galileo E1/5B, and Beidou (B1/2) are enabled. Another thing to be aware of is that battery backup RAM will persist for a while after power-down. If you accidentally mess up a setting, you can reset things. See the [debugging][[Debugging] section.
@@ -132,8 +130,20 @@ This will give you lots of data that includes:
 
 Debugging
 ------------
-If you end up in a state where you can't program the device, a nice thing to try is resetting it. This can be done by pulling the reset line low.
+  * If you end up in a state where you can't program the device, a nice thing to try is resetting it. This can be done by pulling the reset line low. A picture of how to do this is taken from SparkFun.
 
-![Sparkfun reset instructions](./Sparkfun_Reset_Instructions.png)
+  ![Sparkfun reset instructions](./Sparkfun_Reset_Instructions.png)
 
-A cool site with neat info about GNSS is [here](https://gssc.esa.int/navipedia/index.php?title=Main_Page).
+  * If you would like to observe the state of a CRTN NTRIP caster, you can run 
+
+  ```
+  python get_RTCM_data.py
+  ```
+
+  If the caster is working, you should get data like the following
+
+  ![PMOB Status](./PMOB_Status_9-25.png)
+
+  Note that I've removed the username and password fields. You'll need to add these yourselves by changing the variables *username*/*userpass* with your name/password.
+
+  * A cool site with neat info about GNSS is [here](https://gssc.esa.int/navipedia/index.php?title=Main_Page).
