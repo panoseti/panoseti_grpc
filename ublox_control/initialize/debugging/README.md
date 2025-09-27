@@ -144,6 +144,6 @@ Debugging
 
   ![PMOB Status](./PMOB_Status_9-25.png)
 
-  Note that I've removed the username and password fields. You'll need to add these yourselves by changing the variables *username*/*userpass* with your name/password.
+  Note that I've removed the username and password fields. You'll need to add these yourselves by changing the variables *username*/*userpass* with your name/password. Each message type (e.g. 1004 also has associated data fields). The Radio Technical Commission for Maritime Services (RTCM) maintains the standard and requires membership in order to access the published standard. See [https://www.rtcm.org/](https://www.rtcm.org/) for more information.
 
   * A cool site with neat info about GNSS is [here](https://gssc.esa.int/navipedia/index.php?title=Main_Page).
