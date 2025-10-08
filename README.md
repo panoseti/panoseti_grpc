@@ -24,8 +24,13 @@ pip install panoseti-grpc
 
 [//]: # (pip install -r requirements.txt)
 
+# The Snapshot API in Two Slides
+<img width="1473" height="764" alt="overview of the api architecture" src="https://github.com/user-attachments/assets/260e2d92-f616-4d61-b475-2e982df11de4" />
+<img width="1483" height="758" alt="file i/o parallels" src="https://github.com/user-attachments/assets/f9b79460-93a4-4b42-a40f-621f9e0c8f20" />
 
 # Using the `DaqDataClient` API
+
+
 `DaqDataClient` is a Python API for the gRPC DaqData service, providing
 a simple interface for collecting real-time pulse-height and movie-mode data from an in-progress observing run.
 
