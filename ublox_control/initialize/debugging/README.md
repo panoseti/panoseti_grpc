@@ -9,7 +9,7 @@ There are two different configuration files for the F9T: `f9t_config_base_exampl
 
 To configure the F9T with the base configuration run the following from the command line:
 ```console
-foo@bar:~$ ./conf_gnss_no_grpc.py ../../config/f9t_config_base_example.json5
+foo@bar:~$ python ./conf_gnss_no_grpc.py ../initialize/f9t_config_base_example.json5
 ```
 
 Note: Be careful that you have the right USB port (e.g. /dev/ttyACM0). Also, the given position will likely need to be updated depending on what you get from the F9P. See the section on configuring an F9P for how to do this.
