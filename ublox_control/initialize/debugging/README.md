@@ -5,7 +5,7 @@ Sometimes it is easier to configure a single device without having to instantiat
 
 Configuring an F9T
 ------------
-There are two different configuration files for the F9T: `f9t_config_base_example.json5` and `f9t_config_base_receiver.json5`. The big difference between these two is that the base is responsible for sending out correction data to the receiver in order to improve differential timing. The interface description for the F9T is  is from Sparkfun: [Zed F9T Interface Description direct link](https://cdn.sparkfun.com/assets/8/4/d/1/6/ZED-F9T-00B_IntegrationManual.pdf. This works as of September 2025. The timing system that are enabled are GPS L1/2, Galileo E1/5B, and Beidou (B1/2) are enabled. Suggested registers for a base station are given in Section 3.1.5.5 of the [Zed F9T Integration Manual](https://cdn.sparkfun.com/assets/8/4/d/1/6/https://content.u-blox.com/sites/default/files/ZED-F9T_IntegrationManual_UBX-21040375.pdf).
+There are two different configuration files for the F9T: `f9t_config_base_example.json5` and `f9t_config_base_receiver.json5`. The big difference between these two is that the base is responsible for sending out correction data to the receiver in order to improve differential timing. The interface description for the F9T is  is from Sparkfun: [Zed F9T Interface Description direct link](https://cdn.sparkfun.com/assets/8/4/d/1/6/ZED-F9T-00B_IntegrationManual.pdf). This works as of September 2025. The timing system that are enabled are GPS L1/2, Galileo E1/5B, and Beidou (B1/2) are enabled. Suggested registers for a base station are given in Section 3.1.5.5 of the [Zed F9T Integration Manual](https://cdn.sparkfun.com/assets/8/4/d/1/6/https://content.u-blox.com/sites/default/files/ZED-F9T_IntegrationManual_UBX-21040375.pdf).
 
 To configure the F9T with the base configuration run the following from the command line:
 ```console
@@ -20,7 +20,7 @@ Configuring an F9P
 Configuring an F9P can be done in the exact same way as configuring an F9T. From the command line run
 
 ```console
-foo@bar:~$ ./conf_gnss_no_grpc.py ../../config/f9p_config_example.json5
+foo@bar:~$ ./conf_gnss_nogrpc.py ../initialize/f9p_config.json5
 ```
 
 The registers inside this are given below. If interested, the interface description is from Sparkfun: [Zed F9P Interface Description direct link](https://cdn.sparkfun.com/assets/f/7/4/3/5/PM-15136.pdf). This works as of September 2025. The important things to note are that GPS L1/2, Galileo E1/5B, and Beidou (B1/2) are enabled. Another thing to be aware of is that battery backup RAM will persist for a while after power-down. If you accidentally mess up a setting, you can reset things. See the [debugging][[Debugging] section.
@@ -106,7 +106,7 @@ CRTN offers Real Time Correction Messages (RTCM) data streams for free for acade
 After running the F9P you can check the position accuracy using 
 
 ```
-python check_f9p_status.py
+python check_f9p_status.py port=/dev/ttyACM0
 ```
 
 This will give you lots of data that includes:
