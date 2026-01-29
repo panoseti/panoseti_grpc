@@ -43,7 +43,7 @@ async def test_server_reinit_during_real_daq(default_server_process):
                 stream_movie_data=True,
                 stream_pulse_height_data=True,
                 update_interval_seconds=0.1,
-                timeout=30.0,
+                timeout=10.0,
             )
             # Prove we are receiving frames
             first = await _await_stream_next_or_stop(stream_a, timeout=10.0)
