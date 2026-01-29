@@ -17,7 +17,7 @@ from typing import List, Callable, Tuple, Any, Dict
 
 from rich import print
 
-from .daq_data_pb2 import StreamImagesResponse, StreamImagesRequest
+from panoseti_grpc.generated.daq_data_pb2 import StreamImagesResponse, StreamImagesRequest
 
 """ Testing utils """
 

@@ -27,17 +27,17 @@ from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf import timestamp_pb2
 
 # protoc-generated marshalling / demarshalling code
-from daq_data import (
+from panoseti_grpc.generated import (
     daq_data_pb2,
     daq_data_pb2_grpc,
 )
-from .daq_data_pb2 import (
+from panoseti_grpc.generated.daq_data_pb2 import (
     PanoImage, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse, UploadImageRequest
 )
+from panoseti_grpc.panoseti_util import control_utils
 
 ## daq_data utils
 from .resources import make_rich_logger, parse_pano_image, format_stream_images_response
-from panoseti_util import control_utils
 
 
 hp_io_config_simulate_path = "daq_data/config/hp_io_config_simulate.json"

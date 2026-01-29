@@ -13,12 +13,12 @@ from pathlib import Path
 
 from google.protobuf.json_format import MessageToDict
 
-from daq_data import (
+from panoseti_grpc.generated import (
     daq_data_pb2,
     daq_data_pb2_grpc
 )
+from panoseti_grpc.generated.daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
 from .resources import make_rich_logger
-from .daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
 from .client import DaqDataClient, AioDaqDataClient
 from .plot import PulseHeightDistribution, PanoImagePreviewer
 

@@ -11,7 +11,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.ticker import MaxNLocator
 import textwrap
 
-from panoseti_util import pff
+from panoseti_grpc.panoseti_util import pff
 
 class PulseHeightDistribution:
     def __init__(self, durations_seconds, module_ids, plot_update_interval):

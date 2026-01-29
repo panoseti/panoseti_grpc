@@ -10,8 +10,9 @@ import time
 from pathlib import Path
 
 # Package imports
-from daq_data.daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
-from panoseti_util import pff
+from panoseti_grpc.generated.daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
+from panoseti_grpc.panoseti_util import pff
+
 from .resources import _parse_dp_name, _parse_seqno
 
 @dataclass

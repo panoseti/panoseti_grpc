@@ -40,11 +40,12 @@ from collections import defaultdict
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import ParseDict
 
-from .daq_data_pb2 import PanoImage
+from panoseti_grpc.generated.daq_data_pb2 import PanoImage
+from panoseti_grpc.panoseti_util import pff
+
 from .resources import get_dp_name_from_props, is_daq_active
 from .state import ReaderState, DataProductState, CachedPanoImage, ModuleState
 from .data_sources import UdsDataSource, PollWatcherDataSource, PipeWatcherDataSource
-from panoseti_util import pff
 
 
 class HpIoManager:

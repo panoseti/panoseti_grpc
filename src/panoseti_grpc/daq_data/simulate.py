@@ -15,10 +15,11 @@ from typing import Any, Dict, List, Optional, Union
 from google.protobuf.json_format import ParseDict
 from google.protobuf.struct_pb2 import Struct
 
+from panoseti_grpc.generated.daq_data_pb2 import PanoImage
+from panoseti_grpc.panoseti_util import pff
+
 from .client import AioDaqDataClient
-from .daq_data_pb2 import PanoImage
 from .state import get_dp_config
-from panoseti_util import pff
 
 
 class BaseSimulationStrategy(abc.ABC):

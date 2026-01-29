@@ -19,10 +19,11 @@ from google.protobuf.json_format import ParseDict
 from google.protobuf.struct_pb2 import Struct
 from watchfiles import awatch
 
-from .daq_data_pb2 import PanoImage
+from panoseti_grpc.generated.daq_data_pb2 import PanoImage
+from panoseti_grpc.panoseti_util import pff
+
 from .state import ModuleState, get_dp_config  # Forward reference for typing
 from .resources import _parse_dp_name, _parse_seqno
-from panoseti_util import pff
 
 class BaseDataSource(abc.ABC):
     """Abstract base class for a data acquisition source."""

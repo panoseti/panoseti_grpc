@@ -26,10 +26,10 @@ from google.protobuf.json_format import MessageToDict, ParseDict
 # from google.protobuf import timestamp_pb2
 
 # protoc-generated marshalling / demarshalling code
-from daq_data import daq_data_pb2
-from .daq_data_pb2 import PanoImage
-from daq_data.daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
-from panoseti_util import pff, control_utils
+from panoseti_grpc.generated import daq_data_pb2
+from panoseti_grpc.generated.daq_data_pb2 import PanoImage
+from panoseti_grpc.generated.daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
+from panoseti_grpc.panoseti_util import pff, control_utils
 
 CFG_DIR = Path('daq_data/config')
 

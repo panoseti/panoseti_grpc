@@ -25,8 +25,8 @@ from google.protobuf.json_format import MessageToDict
 from google.protobuf.empty_pb2 import Empty
 
 # Protoc-generated imports
-from . import daq_data_pb2, daq_data_pb2_grpc
-from .daq_data_pb2 import InitHpIoResponse, StreamImagesResponse, PanoImage
+from panoseti_grpc.generated import daq_data_pb2, daq_data_pb2_grpc
+from panoseti_grpc.generated.daq_data_pb2 import InitHpIoResponse, StreamImagesResponse, PanoImage
 
 # Package imports
 from .resources import make_rich_logger, CFG_DIR, is_daq_active
