@@ -12,6 +12,8 @@ from pathlib import Path
 import redis
 import inspect
 
+import importlib.resources as resources
+
 from rich import print
 # from rich.markup import escape
 from rich.logging import RichHandler
@@ -43,9 +45,27 @@ ublox_control_config_file = 'ublox_control_config.json'
 default_f9t_cfg_file = "f9t_config.json5"
 
 f9t_cfg_path = CFG_DIR / default_f9t_cfg_file
+
+def load_package_json(package, fname):
+    """Define the resource path relative to the package root
+    Args:
+        - package: refers to a path in the package (e.g., 'package.daq_data.config' )
+        - fname:  refers to the file within the package (e.g., 'hp_io_config_simulate.json')
+
+    """
+    resource_path = resources.files(package).joinpath(fname)
+
+    # 2. Use 'as_file' to obtain a path-like object that can be opened
+    #    This is necessary because the resource might be inside a zip file
+    with resource_path.open('r') as f:
+        data = json5.load(f)
+
+    return data
+
 try:
-    with open(f9t_cfg_path) as f:
-        default_f9t_cfg = json5.load(f)
+    default_f9t_cfg = load_package_json("panoseti_grpc.ublox_control", f"config/{ublox_control_config_file}")
+    # with open(f9t_cfg_path) as f:
+    #     default_f9t_cfg = json5.load(f)
 except FileNotFoundError:
     print(f"could not find {os.path.abspath(f9t_cfg_path)}")
     sys.exit(1)

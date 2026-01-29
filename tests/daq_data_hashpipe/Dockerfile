@@ -34,13 +34,22 @@ RUN autoreconf -is && \
     make && \
     make install
 
-# Install Python dependencies into a python venv
+# 1) Install dependencies and build the panoseti-grpc package
 WORKDIR /app
-#COPY requirements.txt .
-#RUN pip install --no-cache-dir -r requirements.txt
+
+# Install test dependencies
 RUN pip install pytest pytest-asyncio
-COPY . .
+
+# Copy relevant files for panoseti-grpc package
+COPY pyproject.toml LICENSE README.md /app/
+COPY src ./src/
+
+# Build the panoseti-grpc package from the current repo
 RUN pip install .
+
+# Copy test directory
+COPY tests /app/tests
+
 
 # --- Build the custom panoseti_daq Plugin ---
 # The compiled .so file will be in the workdir /build/panoseti_daq

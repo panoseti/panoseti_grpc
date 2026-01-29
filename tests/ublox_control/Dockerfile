@@ -10,16 +10,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc build-essential \
  && rm -rf /var/lib/apt/lists/*
 
+# 1) Install dependencies and build the panoseti-grpc package
 WORKDIR /app
 
-# If ublox_control has its own requirements, copy and install those.
-# Otherwise, use the repo-wide requirements.txt as below.
-#COPY requirements.txt .
-#RUN pip install --no-cache-dir -r requirements.txt
-#COPY src/panoseti_grpc .
+# Install test dependencies
 RUN pip install pytest pytest-asyncio
-COPY . .
+
+# Copy relevant files for panoseti-grpc package
+COPY pyproject.toml LICENSE README.md /app/
+COPY src ./src/
+
+# Build the panoseti-grpc package from the current repo
 RUN pip install .
+
+# Copy test directory
+COPY tests /app/tests
 
 # --- Stage 2: Final runtime image ---
 FROM python:3.9-slim
@@ -35,5 +40,4 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 COPY src/panoseti_grpc/ublox_control/config /app/ublox_control/config
-
 CMD ["python", "-m", "pytest", "-v", "tests/ublox_control"]

@@ -1,7 +1,7 @@
 import pytest
 import asyncio
-from daq_data.daq_data_pb2 import PanoImage
-from daq_data.client import AioDaqDataClient
+from panoseti_grpc.generated.daq_data_pb2 import PanoImage
+from panoseti_grpc.daq_data.client import AioDaqDataClient
 import grpc
 
 pytestmark = pytest.mark.asyncio

@@ -3,8 +3,8 @@ import asyncio
 import grpc
 from pathlib import Path
 
-from daq_data.client import AioDaqDataClient
-from daq_data.server import DaqDataServicer
+from panoseti_grpc.daq_data.client import AioDaqDataClient
+from panoseti_grpc.daq_data.server import DaqDataServicer
 
 pytestmark = pytest.mark.asyncio
 

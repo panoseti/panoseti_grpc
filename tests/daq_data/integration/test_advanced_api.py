@@ -2,7 +2,7 @@ import pytest
 import asyncio
 import grpc
 import json
-from daq_data.client import AioDaqDataClient, hp_io_config_simulate_path
+from panoseti_grpc.daq_data.client import AioDaqDataClient, hp_io_config_simulate_path
 
 pytestmark = pytest.mark.asyncio
 

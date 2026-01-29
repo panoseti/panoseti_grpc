@@ -11,9 +11,10 @@ import uuid
 import copy
 from typing import Optional, Tuple
 
-from daq_data.server import serve
-from daq_data.client import AioDaqDataClient, DaqDataClient
-from daq_data.daq_data_pb2 import PanoImage
+from panoseti_grpc.daq_data.server import serve
+from panoseti_grpc.daq_data.client import AioDaqDataClient, DaqDataClient
+from panoseti_grpc.generated.daq_data_pb2 import PanoImage
+
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import ParseDict
 

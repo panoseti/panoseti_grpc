@@ -37,10 +37,9 @@ from panoseti_grpc.generated.daq_data_pb2 import (
 from panoseti_grpc.panoseti_util import control_utils
 
 ## daq_data utils
-from .resources import make_rich_logger, parse_pano_image, format_stream_images_response
+from .resources import make_rich_logger, parse_pano_image, format_stream_images_response, load_package_json
 
-
-hp_io_config_simulate_path = "daq_data/config/hp_io_config_simulate.json"
+hp_io_config_simulate = load_package_json("panoseti_grpc.daq_data", "config/hp_io_config_simulate.json")
 
 class DaqDataClient:
     """A synchronous gRPC client for the PANOSETI DaqData service.
@@ -383,8 +382,7 @@ class DaqDataClient:
             bool: True if the simulated initialization succeeded.
         """
         if hp_io_cfg is None:
-            with open(hp_io_config_simulate_path, 'rb') as f:
-                config_to_send = json.load(f)
+            config_to_send = hp_io_config_simulate
             config_to_send['simulate_daq'] = True
         else:
             config_to_send = hp_io_cfg
@@ -859,8 +857,7 @@ class AioDaqDataClient:
         # If no config is provided, create a minimal one to trigger simulation mode
         # on the server, which will then use its own default settings.
         if hp_io_cfg is None:
-            with open(hp_io_config_simulate_path, 'rb') as f:
-                config_to_send = json.load(f)
+            config_to_send = hp_io_config_simulate
             config_to_send['simulate_daq'] = True
         else:
             config_to_send = hp_io_cfg

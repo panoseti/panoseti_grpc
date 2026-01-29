@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from daq_data.client import DaqDataClient, AioDaqDataClient
+from panoseti_grpc.daq_data.client import DaqDataClient, AioDaqDataClient
 
 def test_client_init_with_invalid_config_path():
     """Test that client initialization fails if the config path does not exist."""

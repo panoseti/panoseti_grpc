@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
-from daq_data.resources import _parse_dp_name, _parse_seqno, get_dp_name_from_props, parse_pano_image
-from daq_data.daq_data_pb2 import PanoImage
+from panoseti_grpc.daq_data.resources import _parse_dp_name, _parse_seqno, get_dp_name_from_props, parse_pano_image
+from panoseti_grpc.generated.daq_data_pb2 import PanoImage
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import ParseDict
 import numpy as np

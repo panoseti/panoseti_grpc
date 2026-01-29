@@ -9,7 +9,7 @@ import logging
 import grpc
 from pathlib import Path
 from panoseti_grpc.ublox_control.server import UbloxControlServicer, serve
-from panoseti_grpc.ublox_control.resources import make_rich_logger
+from panoseti_grpc.ublox_control.resources import make_rich_logger, load_package_json
 from panoseti_grpc.generated import ublox_control_pb2_grpc
 
 TEST_CFG_DIR = Path("tests/config")
@@ -27,6 +27,7 @@ def server_config():
     config_path = TEST_CFG_DIR / "ublox_control_server_config.json"
     with open(config_path, "w") as f:
         json.dump(cfg, f)
+
     return cfg
 
 
