@@ -46,12 +46,12 @@ message CaptureUbloxResponse {
 }
 
 
-message PollCfgRequest {
+message PollRequest {
   // regex patterns specifying which messages to poll
   repeated string cfg_key_patterns = 1;
 }
 
-message PollCfgResponse {
+message PollResponse {
   // list of messages for each message matching the patterns sent in PollRequest
   google.protobuf.Struct parsed_data = 1;
 

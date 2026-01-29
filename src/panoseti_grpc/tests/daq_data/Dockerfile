@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # 2) Copy only the parts of the repo needed for these tests
 # Doing this AFTER deps preserves the cached pip layer for code-only changes
-COPY . .
+COPY src/panoseti_grpc .
 
 # --- Stage 2: Final runtime image (clean) ---
 FROM python:3.9-slim

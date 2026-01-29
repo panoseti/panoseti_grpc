@@ -5,7 +5,7 @@ FROM python:3.9-slim AS builder
 LABEL stage="builder"
 
 ENV DEBIAN_FRONTEND=noninteractive
-ARG TEST_DIR="tests/daq_data_hashpipe"
+ARG TEST_DIR="src/panoseti_grpc/tests/daq_data_hashpipe"
 
 # Create a fresh, architecture-native virtual environment.
 ENV VENV_PATH=/opt/venv
@@ -38,7 +38,7 @@ RUN autoreconf -is && \
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
+COPY src/panoseti_grpc .
 
 # --- Build the custom panoseti_daq Plugin ---
 # The compiled .so file will be in the workdir /build/panoseti_daq
@@ -59,7 +59,7 @@ RUN make install
 FROM python:3.9-slim
 
 LABEL stage="runtime"
-ARG TEST_DIR="tests/daq_data_hashpipe"
+ARG TEST_DIR="src/panoseti_grpc/tests/daq_data_hashpipe"
 
 # Install runtime-only and build-essential dependencies
 # build-essential is required for packages that compile C extensions, like netifaces.

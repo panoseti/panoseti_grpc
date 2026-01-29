@@ -16,8 +16,7 @@ WORKDIR /app
 # Otherwise, use the repo-wide requirements.txt as below.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
+COPY src/panoseti_grpc .
 
 # --- Stage 2: Final runtime image ---
 FROM python:3.9-slim
