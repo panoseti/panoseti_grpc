@@ -27,8 +27,8 @@ from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from ublox_control import ublox_control_pb2, ublox_control_pb2_grpc
-from ublox_control.initialize.conf_gnss import (
+from panoseti_grpc.generated import ublox_control_pb2, ublox_control_pb2_grpc
+from .initialize.conf_gnss import (
     _to_cfg_items,
     _layers_mask,
     send_cfg_valset_grouped,
@@ -39,7 +39,7 @@ from ublox_control.initialize.conf_gnss import (
     DTYPE_BY_ID,
     get_f9t_unique_id
 )
-from ublox_control.resources import make_rich_logger, CFG_DIR, ubx_to_dict
+from .resources import make_rich_logger, CFG_DIR, ubx_to_dict
 
 
 class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):

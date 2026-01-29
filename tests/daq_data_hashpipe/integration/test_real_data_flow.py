@@ -2,7 +2,7 @@
 
 import pytest
 import asyncio
-from daq_data.client import AioDaqDataClient
+from panoseti_grpc.daq_data.client import AioDaqDataClient
 
 pytestmark = pytest.mark.asyncio
 

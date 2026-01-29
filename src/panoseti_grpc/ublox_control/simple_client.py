@@ -5,10 +5,11 @@ import logging
 import grpc
 import copy
 import signal
-from ublox_control import ublox_control_pb2, ublox_control_pb2_grpc
-from ublox_control.resources import make_rich_logger, default_f9t_cfg
 from google.protobuf.json_format import ParseDict, MessageToDict
 from google.protobuf.struct_pb2 import Struct
+
+from panoseti_grpc.generated import ublox_control_pb2, ublox_control_pb2_grpc
+from .resources import make_rich_logger, default_f9t_cfg
 
 
 async def run():

@@ -18,10 +18,10 @@ from typing import Optional, Tuple
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import ParseDict
 
-from daq_data.server import serve
-from daq_data.client import AioDaqDataClient, DaqDataClient
-from daq_data.daq_data_pb2 import PanoImage
-from panoseti_util import control_utils as util
+from panoseti_grpc.daq_data.server import serve
+from panoseti_grpc.daq_data.client import AioDaqDataClient, DaqDataClient
+from panoseti_grpc.generated.daq_data_pb2 import PanoImage
+from panoseti_grpc.panoseti_util import control_utils as util
 
 TEST_CFG_DIR = Path("tests/daq_data/config")
 TEST_CFG_DIR.mkdir(exist_ok=True)

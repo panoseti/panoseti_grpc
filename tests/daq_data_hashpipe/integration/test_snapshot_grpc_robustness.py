@@ -5,7 +5,7 @@ from pathlib import Path
 import grpc
 import pytest
 
-from daq_data.client import AioDaqDataClient
+from panoseti_grpc.daq_data.client import AioDaqDataClient
 # from tests.daq_data_hashpipe.conftest import hashpipe_pcap_runner  # type: ignore
 
 pytestmark = pytest.mark.asyncio

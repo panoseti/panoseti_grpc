@@ -29,7 +29,7 @@ except Exception:
     DTYPE_BY_ID = {}
 
 from pyubx2.ubxhelpers import cfgname2key, process_monver  # pretty parser for MON-VER
-from ublox_control.resources import make_rich_logger
+from panoseti_grpc.ublox_control.resources import make_rich_logger
 
 confg_gnss_logger = make_rich_logger("confg_gnss")
 

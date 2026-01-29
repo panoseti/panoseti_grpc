@@ -4,8 +4,8 @@ import pytest
 import pytest_asyncio
 import grpc
 import copy
-from ublox_control import ublox_control_pb2, ublox_control_pb2_grpc
-from ublox_control.resources import default_f9t_cfg
+from panoseti_grpc.generated import ublox_control_pb2, ublox_control_pb2_grpc
+from panoseti_grpc.ublox_control.resources import default_f9t_cfg
 from google.protobuf.json_format import ParseDict
 from google.protobuf.struct_pb2 import Struct
 

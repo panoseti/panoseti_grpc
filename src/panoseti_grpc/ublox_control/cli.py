@@ -13,8 +13,8 @@ import json
 from pathlib import Path
 from rich import print
 
-from client import AioUbloxControlClient
-from resources import default_f9t_cfg
+from .client import AioUbloxControlClient
+from .resources import default_f9t_cfg
 
 
 async def run_init(args):

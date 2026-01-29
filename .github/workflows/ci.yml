@@ -26,7 +26,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: src/panoseti_grpc/tests/daq_data/Dockerfile
+          file: tests/daq_data/Dockerfile
           load: true # Makes the image available for the next step
           tags: panoseti-grpc-test-daq-data:latest
           cache-from: type=gha # Pulls cache from GitHub Actions cache
@@ -55,7 +55,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: src/panoseti_grpc/tests/ublox_control/Dockerfile
+          file: tests/ublox_control/Dockerfile
           load: true # Makes the image available for the next step
           tags: panoseti-grpc-test-ublox-control:latest
           cache-from: type=gha # Pulls cache from GitHub Actions cache
@@ -78,7 +78,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: src/panoseti_grpc/tests/daq_data_hashpipe/Dockerfile
+          file: tests/daq_data_hashpipe/Dockerfile
           load: true
           tags: panoseti-grpc-test-real-daq:latest
           cache-from: type=gha

@@ -17,7 +17,7 @@ from pyubx2 import POLL, UBX_PAYLOADS_POLL, UBX_PROTOCOL, UBXMessage, UBXReader
 from serial import Serial
 from typing import List, Callable, Tuple, Any, Dict
 
-from ublox_control.resources import F9T_BAUDRATE
+from .resources import F9T_BAUDRATE
 
 
 def check_client_f9t_cfg_keys(required_f9t_cfg_keys: List[str], client_f9t_keys: List[str]) -> Tuple[bool, str]:

@@ -12,9 +12,9 @@ import grpc
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import ParseDict, MessageToDict
 
-import ublox_control_pb2
-import ublox_control_pb2_grpc
-from resources import make_rich_logger
+from panoseti_grpc.generated import ublox_control_pb2
+from panoseti_grpc.generated import ublox_control_pb2_grpc
+from .resources import make_rich_logger
 
 
 # --- Synchronous Client ---

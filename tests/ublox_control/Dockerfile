@@ -14,9 +14,12 @@ WORKDIR /app
 
 # If ublox_control has its own requirements, copy and install those.
 # Otherwise, use the repo-wide requirements.txt as below.
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY src/panoseti_grpc .
+#COPY requirements.txt .
+#RUN pip install --no-cache-dir -r requirements.txt
+#COPY src/panoseti_grpc .
+RUN pip install pytest pytest-asyncio
+COPY . .
+RUN pip install .
 
 # --- Stage 2: Final runtime image ---
 FROM python:3.9-slim
@@ -30,5 +33,7 @@ COPY --from=builder /app /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
+
+COPY src/panoseti_grpc/ublox_control/config /app/ublox_control/config
 
 CMD ["python", "-m", "pytest", "-v", "tests/ublox_control"]

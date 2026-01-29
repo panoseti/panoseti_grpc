@@ -43,7 +43,8 @@ dependencies = [
     "numpy",
     "psutil",
     "watchfiles",
-    "aiofiles"
+    "aiofiles",
+    "pygnssutils"
 ]
 
 [project.optional-dependencies]
@@ -74,7 +75,7 @@ where = ["src"]
 #    "generated/*",
 #    "panoseti_util/*",
 #]
-exclude = ["*tests*", "*logs*", "*simulated_data_dir*", "*.pcapng", "*.pff", "*.pffd", "*.png"]
+exclude = ["*logs*", "*simulated_data_dir*", "*.pcapng", "*.pff", "*.pffd", "*.png"]
 
 [tool.setuptools]
 include-package-data = true
