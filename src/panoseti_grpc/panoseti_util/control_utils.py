@@ -1,8 +1,7 @@
 # control script utilities
 
-import os, sys, subprocess, signal, socket, datetime, time, psutil, shutil
+import os, sys, subprocess, signal, socket, datetime, time, psutil, shutil, json
 import __main__
-import netifaces, json
 # TODO: we need to find a better way to deal with this...
 try:
     import quabo_driver
@@ -82,19 +81,34 @@ def create_logger(logfile, tag, mode='w'):
 # our IP address on local network (192.x.x.x)
 # see https://pypi.org/project/netifaces/
 #
+# def local_ip():
+#     ips = []
+#     for ifname in netifaces.interfaces():
+#         addrs = netifaces.ifaddresses(ifname)
+#         for a, b in addrs.items():
+#             for c in b:
+#                 z = c['addr']
+#                 if (z.startswith('192.')):
+#                     ips.append(z)
+#     if not ips:
+#         raise Exception("can't get local IP")
+#     else:
+#         return ips
+
 def local_ip():
     ips = []
-    for ifname in netifaces.interfaces():
-        addrs = netifaces.ifaddresses(ifname)
-        for a, b in addrs.items():
-            for c in b:
-                z = c['addr']
-                if (z.startswith('192.')):
-                    ips.append(z)
+    # psutil.net_if_addrs() works similarly to netifaces but is built-in to psutil
+    for interface_name, snics in psutil.net_if_addrs().items():
+        for snic in snics:
+            # specific check for IPv4 to ensure .address is an IP string
+            if snic.family == socket.AF_INET:
+                if snic.address.startswith('192.'):
+                    ips.append(snic.address)
+
     if not ips:
         raise Exception("can't get local IP")
-    else:
-        return ips
+
+    return ips
     
 def ip_addr_str_to_bytes(ip_addr_str):
     pieces = ip_addr_str.strip().split('.')

@@ -4,21 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "panoseti-grpc"
-version = "0.1.2"
+version = "0.2.3"
 description = "gRPC for the PANOSETI project."
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [
-    { name="Nicolas Rault-Wang", email="nraultwang@berkeley.edu" },
+    { name="Nicolas Rault-Wang"},
+    { name="Ben Godfrey"}
 ]
-license = { file="LICENSE" }
+license-files = [ "LICENSE" ]
 keywords = [
     "panoseti", "gRPC", "observatory", "data-acquisition", "astronomy", "real-time"
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Operating System :: OS Independent",
-    "License :: OSI Approved :: MIT License",
+    "Operating System :: Unix",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Astronomy",
     "Framework :: AsyncIO",
@@ -27,33 +27,32 @@ classifiers = [
 dependencies = [
     "grpcio>=1.73.0",
     "grpcio-reflection>=1.73.0",
-    "grpcio-tools>=1.73.0",
     "protobuf>=6.30.0,<7.0.0",
     "coverage>=4.0",
-    "cython>=3.1.1",
-    "wheel>=0.29",
-    "rich>=14.0.0",
-    "redis>=3.5.3",
-    "snakeviz>=2.2.2",
-    "json5>=0.12.0",
-    "pyserial>=3.5",
-    "pyubx2>=1.2.43",
-    "seaborn>=0.13.2",
-    "matplotlib>=3.8.4",
-    "pandas>=2.3.0",
-    "numpy>=1.26.4",
-    "netifaces>=0.11.0",
-    "psutil>=7.0.0",
-    "watchfiles>=1.1.0",
-    "aiofiles>=24.1.0"
+    "cython",
+    "wheel",
+    "rich",
+    "redis",
+    "snakeviz",
+    "json5",
+    "pyserial",
+    "pyubx2",
+    "seaborn",
+    "matplotlib",
+    "pandas",
+    "numpy",
+    "psutil",
+    "watchfiles",
+    "aiofiles"
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
-    "black",
-    "flake8",
+#    "black",
+#    "flake8",
     "ipython",
+    "grpcio-tools>=1.73.0",
 ]
 docs = [
     "sphinx",
@@ -68,11 +67,14 @@ Repository = "https://github.com/panoseti/panoseti_grpc"
 Issues = "https://github.com/panoseti/panoseti_grpc/issues"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = [
-    "daq_data*",
-    "panoseti_util*",
-]
+where = ["src"]
+#include = [
+#    "panoseti_grpc/daq_data/*",
+#    "ublox_control/*",
+#    "generated/*",
+#    "panoseti_util/*",
+#]
+exclude = ["*tests*", "*logs*", "*simulated_data_dir*", "*.pcapng", "*.pff", "*.pffd", "*.png"]
 
 [tool.setuptools]
 include-package-data = true
