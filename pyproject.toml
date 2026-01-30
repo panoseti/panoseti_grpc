@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "panoseti-grpc"
-version = "0.2.3"
+version = "0.2.4"
 description = "gRPC for the PANOSETI project."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -77,7 +77,7 @@ where = ["src"]
 #]
 exclude = ["*logs*", "*.pcapng", "*.png"]
 
-# ADD THIS BLOCK to include non-python data files:
+# Include non-python data files:
 [tool.setuptools.package-data]
 "*" = ["*.json", "*.json5", "*.txt", "*.csv", "*.pff", "*.pffd"]
 "panoseti_grpc.daq_data" = ["simulated_data_dir/**/*"]
@@ -85,16 +85,12 @@ exclude = ["*logs*", "*.pcapng", "*.png"]
 [tool.setuptools]
 include-package-data = true
 
-#[tool.setuptools.package-data]
-#daq_data = ["config/*", "simulated_data_dir/*.pffd/*"]
-
-
 [tool.black]
-line-length = 88
+line-length = 120
 target-version = ["py39"]
 
 [tool.flake8]
-max-line-length = 88
+max-line-length = 120
 extend-ignore = ["E203", "W503"]
 
 [tool.pytest.ini_options]
