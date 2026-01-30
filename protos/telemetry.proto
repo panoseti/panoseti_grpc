@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.grpc.panoseti.telemetry";
+option java_outer_classname = "TelemetryProto";
+option objc_class_prefix = "PANO_TLM";
+
+package panoseti.telemetry;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+service Telemetry {
+  rpc ReportStatus(StatusRequest) returns (StatusResponse) {}
+}
+
+message StatusRequest {
+  // 1. ADDRESSING
+  // e.g., device_type="weather", device_id="mast_01"
+  string device_type = 1;
+  string device_id = 2;
+
+  // 2. TIMING
+  google.protobuf.Timestamp timestamp = 3;
+
+  // 3. PAYLOAD
+  // We use Struct for maximum flexibility.
+  // Validation happens on the server side via Pydantic.
+  google.protobuf.Struct data = 4;
+}
+
+message StatusResponse {
+  bool success = 1;
+  string message = 2; // Contains validation errors if success is false
+}

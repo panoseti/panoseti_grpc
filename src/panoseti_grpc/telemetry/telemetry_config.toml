@@ -1,0 +1,7 @@
+[devices.gps]
+type = "gps"
+redis_prefix = "UBLOX_ZED-F9T_"
+
+[devices.weather]
+type = "weather"
+redis_prefix = "WEATHER_MAST_"
