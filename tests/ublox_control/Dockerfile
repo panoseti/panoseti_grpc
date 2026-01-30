@@ -18,7 +18,7 @@ RUN pip install pytest pytest-asyncio
 
 # Copy relevant files for panoseti-grpc package
 COPY pyproject.toml LICENSE README.md /app/
-COPY src ./src/
+COPY src src/
 
 # Build the panoseti-grpc package from the current repo
 RUN pip install .
@@ -39,5 +39,5 @@ COPY --from=builder /app /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-COPY src/panoseti_grpc/ublox_control/config /app/ublox_control/config
+#COPY src/panoseti_grpc/ublox_control/config /app/ublox_control/config
 CMD ["python", "-m", "pytest", "-v", "tests/ublox_control"]

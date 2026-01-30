@@ -12,6 +12,8 @@ import errno
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from importlib import resources
+
 from google.protobuf.json_format import ParseDict
 from google.protobuf.struct_pb2 import Struct
 
@@ -20,6 +22,7 @@ from panoseti_grpc.panoseti_util import pff
 
 from .client import AioDaqDataClient
 from .state import get_dp_config
+from .resources import daq_data_anchor_package
 
 
 class BaseSimulationStrategy(abc.ABC):
@@ -57,13 +60,14 @@ class BaseSimulationStrategy(abc.ABC):
         source_cfg = self.common_config['source_data']
         dp_cfgs = get_dp_config([self.common_config['movie_type'], self.common_config['ph_type']])
         try:
-            with open(source_cfg['movie_pff_path'], "rb") as f:
+            with resources.files(daq_data_anchor_package).joinpath(source_cfg['movie_pff_path']).open("rb") as f:
                 dp_config = dp_cfgs[self.common_config['movie_type']]
                 frame_size, nframes, _, _ = pff.img_info(f, dp_config.bytes_per_image)
                 f.seek(0)
                 for _ in range(nframes):
                     self.movie_frames.append(f.read(frame_size))
-            with open(source_cfg['ph_pff_path'], "rb") as f:
+            #with open(source_cfg['ph_pff_path'], "rb") as f:
+            with resources.files(daq_data_anchor_package).joinpath(source_cfg['ph_pff_path']).open("rb") as f:
                 dp_config = dp_cfgs[self.common_config['ph_type']]
                 frame_size, nframes, _, _ = pff.img_info(f, dp_config.bytes_per_image)
                 f.seek(0)

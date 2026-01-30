@@ -75,13 +75,18 @@ where = ["src"]
 #    "generated/*",
 #    "panoseti_util/*",
 #]
-exclude = ["*logs*", "*simulated_data_dir*", "*.pcapng", "*.pff", "*.pffd", "*.png"]
+exclude = ["*logs*", "*.pcapng", "*.png"]
+
+# ADD THIS BLOCK to include non-python data files:
+[tool.setuptools.package-data]
+"*" = ["*.json", "*.json5", "*.txt", "*.csv", "*.pff", "*.pffd"]
+"panoseti_grpc.daq_data" = ["simulated_data_dir/**/*"]
 
 [tool.setuptools]
 include-package-data = true
 
-[tool.setuptools.package-data]
-daq_data = ["config/*", "simulated_data_dir/*.pffd/*"]
+#[tool.setuptools.package-data]
+#daq_data = ["config/*", "simulated_data_dir/*.pffd/*"]
 
 
 [tool.black]

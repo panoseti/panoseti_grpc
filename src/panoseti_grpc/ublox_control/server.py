@@ -39,7 +39,7 @@ from .initialize.conf_gnss import (
     DTYPE_BY_ID,
     get_f9t_unique_id
 )
-from .resources import make_rich_logger, CFG_DIR, ubx_to_dict
+from .resources import make_rich_logger, CFG_DIR, ubx_to_dict, load_package_json
 
 
 class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
@@ -340,8 +340,9 @@ async def serve(_stop_event=None, in_main_thread=True):
     """Initializes and starts the async gRPC server."""
     logger = make_rich_logger(__name__, level=logging.DEBUG)
     try:
-        with open(CFG_DIR / "ublox_control_server_config.json", "r") as f:
-            server_config = json.load(f)
+        server_config = load_package_json("panoseti_grpc", CFG_DIR / "ublox_control_server_config.json")
+        # with open(, "r") as f:
+        #     server_config = json.load(f)
     except FileNotFoundError:
         logger.error("Server config file not found. Exiting.")
         return

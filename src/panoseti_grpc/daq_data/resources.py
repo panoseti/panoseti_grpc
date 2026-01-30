@@ -36,6 +36,8 @@ from panoseti_grpc.panoseti_util import pff, control_utils
 
 CFG_DIR = Path('daq_data/config')
 
+daq_data_anchor_package = "panoseti_grpc"
+
 def load_package_json(package, fname):
     """Define the resource path relative to the package root
     Args:

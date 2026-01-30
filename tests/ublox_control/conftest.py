@@ -25,6 +25,7 @@ def ubx_packets_data_path():
 def server_config():
     cfg = {"max_workers": 5, "max_read_queue_size": 200, "shutdown_grace_period": 0.1}
     config_path = TEST_CFG_DIR / "ublox_control_server_config.json"
+    # config_path = load_package_json("panoseti_grpc.ublox_control", "config/ublox_control_server_config.json")
     with open(config_path, "w") as f:
         json.dump(cfg, f)
 
@@ -51,7 +52,7 @@ async def live_server(server_config):
     address = f"{host}:{port}"
 
     # Command to run the server module in a new Python process
-    cmd = [sys.executable, "-m", "ublox_control.server"]
+    cmd = [sys.executable, "-m", "panoseti_grpc.ublox_control.server"]
 
     # Start the server as a subprocess
     proc = await asyncio.create_subprocess_exec(

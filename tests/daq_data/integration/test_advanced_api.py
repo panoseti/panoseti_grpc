@@ -2,7 +2,7 @@ import pytest
 import asyncio
 import grpc
 import json
-from panoseti_grpc.daq_data.client import AioDaqDataClient, hp_io_config_simulate_path
+from panoseti_grpc.daq_data.client import AioDaqDataClient, hp_io_config_simulate
 
 pytestmark = pytest.mark.asyncio
 
@@ -27,7 +27,8 @@ async def test_multiple_clients_streaming_concurrently(default_server_process):
                 hosts=None,
                 stream_movie_data=stream_movie,
                 stream_pulse_height_data=stream_ph,
-                update_interval_seconds=0.1
+                update_interval_seconds=0.1,
+                timeout=15
             )
 
             images_received = 0
@@ -56,8 +57,7 @@ async def test_server_reinitialization_logic(default_server_process):
     daq_config = {"daq_nodes": [{"ip_addr": default_server_process['ip_addr']}]}
 
     # Load the simulation config to be used for initialization
-    with open(hp_io_config_simulate_path, 'r') as f:
-        hp_io_cfg = json.load(f)
+    hp_io_cfg = hp_io_config_simulate
 
     # Client A will connect and start reading
     async with AioDaqDataClient(daq_config, network_config=None) as client_a:
@@ -67,7 +67,8 @@ async def test_server_reinitialization_logic(default_server_process):
             hosts=None,
             stream_movie_data=True,
             stream_pulse_height_data=True,
-            update_interval_seconds=0.2
+            update_interval_seconds=0.2,
+            timeout=15
         )
 
         # This task will keep the reader stream active in the background

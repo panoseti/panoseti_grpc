@@ -39,9 +39,10 @@ from panoseti_grpc.generated.ublox_control_pb2 import InitF9tResponse, CaptureUb
 F9T_BAUDRATE = 38400
 
 CFG_DIR = Path('ublox_control/config')
-ublox_control_config_file = 'ublox_control_config.json'
+ublox_control_config_file = 'ublox_control_server_config.json'
+ublox_control_anchor_package = "panoseti_grpc"
+
 # Configuration for metadata capture from the u-blox ZED-F9T timing chip
-# TODO: make this a separate config file and track with version control etc.
 default_f9t_cfg_file = "f9t_config.json5"
 
 f9t_cfg_path = CFG_DIR / default_f9t_cfg_file
@@ -63,7 +64,7 @@ def load_package_json(package, fname):
     return data
 
 try:
-    default_f9t_cfg = load_package_json("panoseti_grpc.ublox_control", f"config/{ublox_control_config_file}")
+    default_f9t_cfg = load_package_json(ublox_control_anchor_package, f9t_cfg_path)
     # with open(f9t_cfg_path) as f:
     #     default_f9t_cfg = json5.load(f)
 except FileNotFoundError:
