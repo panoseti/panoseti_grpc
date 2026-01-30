@@ -25,10 +25,11 @@ classifiers = [
 ]
 
 dependencies = [
-    "grpcio>=1.73.0",
-    "grpcio-reflection>=1.73.0",
-    "protobuf>=6.30.0,<7.0.0",
-    "coverage>=4.0",
+    "grpcio>=1.76.0",
+    "grpcio-reflection>=1.76.0",
+    "grpcio-tools>=1.76.0",
+    "protobuf>=6.33.4,<7.0.0",
+    "coverage>=7.10.7",
     "cython",
     "wheel",
     "rich",
@@ -50,10 +51,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest",
-#    "black",
-#    "flake8",
+    "black",
+    "flake8",
     "ipython",
-    "grpcio-tools>=1.73.0",
 ]
 docs = [
     "sphinx",

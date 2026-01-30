@@ -5,11 +5,12 @@ FROM python:3.9-slim
 WORKDIR /app
 COPY pyproject.toml LICENSE README.md .
 COPY src ./src
+RUN pip install .
 
 # 2. Install the package strictly from the source files
 # This tests your pyproject.toml dependencies!
-# RUN pip install panoseti-grpc==0.2.2
-RUN pip install .
+#RUN pip install panoseti-grpc==0.2.3
+
 
 # 3. Run a simple smoke test
 #Fails if imports are broken
