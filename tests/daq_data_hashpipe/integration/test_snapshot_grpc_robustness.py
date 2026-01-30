@@ -12,11 +12,20 @@ pytestmark = pytest.mark.asyncio
 
 
 # Utilities
-async def _await_stream_next_or_stop(stream, timeout=3.0):
+async def _await_stream_next_or_stop(stream, timeout=5.0):
     try:
-        return await asyncio.wait_for(stream.__anext__(), timeout=timeout)
-    except (StopAsyncIteration, grpc.aio.AioRpcError, asyncio.TimeoutError):
+        # We wait for the next item.
+        # If the stream is closed, stream.__anext__() raises StopAsyncIteration immediately.
+        item = await asyncio.wait_for(stream.__anext__(), timeout=timeout)
+        return item
+    except StopAsyncIteration:
+        # This is the "Success" case for checking if a stream has ended.
         return None
+    except asyncio.TimeoutError:
+        # This means the stream is still open and "hanging" (waiting for data).
+        raise asyncio.TimeoutError(f"Stream did not end within {timeout} seconds.")
+    except grpc.aio.AioRpcError as e:
+        raise grpc.aio.AioRpcError(f"Stream had an unexpected gRPC error {e=} within {timeout} seconds.")
 
 
 # 1) gRPC server is re-initialized (InitHpIo) during DAQ: DAQ keeps running; clients see clean cancellation and can reconnect.

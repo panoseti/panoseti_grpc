@@ -27,9 +27,10 @@ from google.protobuf.empty_pb2 import Empty
 # Protoc-generated imports
 from panoseti_grpc.generated import daq_data_pb2, daq_data_pb2_grpc
 from panoseti_grpc.generated.daq_data_pb2 import InitHpIoResponse, StreamImagesResponse, PanoImage
+from tests.ublox_control.conftest import server_config
 
 # Package imports
-from .resources import make_rich_logger, CFG_DIR, is_daq_active
+from .resources import make_rich_logger, CFG_DIR, is_daq_active, load_package_json, daq_data_anchor_package
 from .testing import is_os_posix
 from .managers import ClientManager, HpIoTaskManager
 from .state import ReaderState, CachedPanoImage
@@ -306,8 +307,9 @@ async def serve(server_cfg, shutdown_event=None, in_main_thread: bool = True):
 
 if __name__ == "__main__":
     try:
-        with open(CFG_DIR / "daq_data_server_config.json", "r") as f:
-            server_config = json.load(f)
+        server_config = load_package_json(daq_data_anchor_package,CFG_DIR / "daq_data_server_config.json" )
+        # with open(CFG_DIR / "daq_data_server_config.json", "r") as f:
+        #     server_config = json.load(f)
         # asyncio.run will wait for the serve() coroutine to complete
         asyncio.run(serve(server_config))
     except (KeyboardInterrupt, asyncio.CancelledError):
