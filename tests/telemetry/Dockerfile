@@ -28,7 +28,7 @@ COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /app/src /app/src
 
 # Copy Configs and Tests
-COPY telemetry_config.toml .
+COPY src/panoseti_grpc/telemetry/telemetry_config.toml .
 COPY tests ./tests
 #COPY utils ./utils
 

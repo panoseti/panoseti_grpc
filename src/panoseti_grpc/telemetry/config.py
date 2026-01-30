@@ -1,5 +1,5 @@
 import tomli
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ValidationError
 from typing import Dict, Type, Optional, Any
 from importlib import resources
 

@@ -31,12 +31,23 @@ def influx_client():
             time.sleep(1)
     raise ConnectionError("Could not connect to InfluxDB")
 
+
 @pytest_asyncio.fixture(scope="session")
 async def start_grpc_server():
-    # Run the server in the background
     task = asyncio.create_task(serve("telemetry_config.toml", redis_host=REDIS_HOST))
-    # Give it a moment to bind
-    await asyncio.sleep(1)
+
+    # Robust wait: Ping the port until it is open
+    import socket
+    start_time = time.time()
+    while True:
+        try:
+            with socket.create_connection(("localhost", 50051), timeout=0.1):
+                break
+        except (OSError, ConnectionRefusedError):
+            if time.time() - start_time > 5:
+                raise TimeoutError("gRPC server failed to start within 5 seconds")
+            await asyncio.sleep(0.1)
+
     yield
     task.cancel()
 
