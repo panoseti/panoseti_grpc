@@ -15,21 +15,44 @@ service Telemetry {
 }
 
 message StatusRequest {
-  // 1. ADDRESSING
-  // e.g., device_type="weather", device_id="mast_01"
-  string device_type = 1;
-  string device_id = 2;
-
-  // 2. TIMING
+  string device_type = 1; // e.g. "gnss", "dew", "test"
+  string device_id = 2;   // e.g. "dome_a"
   google.protobuf.Timestamp timestamp = 3;
 
-  // 3. PAYLOAD
-  // We use Struct for maximum flexibility.
-  // Validation happens on the server side via Pydantic.
-  google.protobuf.Struct data = 4;
+  oneof payload {
+    // Mode A: Pure R&D (No schema validation)
+    google.protobuf.Struct flexible = 10;
+
+    // Mode B: Strict Production Types
+    GnssPayload gnss = 11;
+    DewPayload dew = 12;
+    TestPayload test = 13; // For CI/Healthchecks
+  }
+}
+
+message GnssPayload {
+  int32 satellites = 1;
+  double lat = 2;
+  double lon = 3;
+  string fix_mode = 4;
+  // Hook for future experimentation
+  google.protobuf.Struct extra_data = 15;
+}
+
+message DewPayload {
+  double temp_c = 1;
+  double humidity = 2;
+  google.protobuf.Struct extra_data = 15;
+}
+
+message TestPayload {
+  int32 iteration = 1;
+  double value = 2;
+  string message = 3;
+  bool active = 4;
 }
 
 message StatusResponse {
   bool success = 1;
-  string message = 2; // Contains validation errors if success is false
+  string message = 2;
 }

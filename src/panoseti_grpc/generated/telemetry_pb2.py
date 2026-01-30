@@ -26,7 +26,7 @@ from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0ftelemetry.proto\x12\x12panoseti.telemetry\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8d\x01\n\rStatusRequest\x12\x13\n\x0b\x64\x65vice_type\x18\x01 \x01(\t\x12\x11\n\tdevice_id\x18\x02 \x01(\t\x12-\n\ttimestamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12%\n\x04\x64\x61ta\x18\x04 \x01(\x0b\x32\x17.google.protobuf.Struct\"2\n\x0eStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t2d\n\tTelemetry\x12W\n\x0cReportStatus\x12!.panoseti.telemetry.StatusRequest\x1a\".panoseti.telemetry.StatusResponse\"\x00\x42\x39\n\x1aio.grpc.panoseti.telemetryB\x0eTelemetryProtoP\x01\xa2\x02\x08PANO_TLMb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0ftelemetry.proto\x12\x12panoseti.telemetry\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xaf\x02\n\rStatusRequest\x12\x13\n\x0b\x64\x65vice_type\x18\x01 \x01(\t\x12\x11\n\tdevice_id\x18\x02 \x01(\t\x12-\n\ttimestamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12+\n\x08\x66lexible\x18\n \x01(\x0b\x32\x17.google.protobuf.StructH\x00\x12/\n\x04gnss\x18\x0b \x01(\x0b\x32\x1f.panoseti.telemetry.GnssPayloadH\x00\x12-\n\x03\x64\x65w\x18\x0c \x01(\x0b\x32\x1e.panoseti.telemetry.DewPayloadH\x00\x12/\n\x04test\x18\r \x01(\x0b\x32\x1f.panoseti.telemetry.TestPayloadH\x00\x42\t\n\x07payload\"z\n\x0bGnssPayload\x12\x12\n\nsatellites\x18\x01 \x01(\x05\x12\x0b\n\x03lat\x18\x02 \x01(\x01\x12\x0b\n\x03lon\x18\x03 \x01(\x01\x12\x10\n\x08\x66ix_mode\x18\x04 \x01(\t\x12+\n\nextra_data\x18\x0f \x01(\x0b\x32\x17.google.protobuf.Struct\"[\n\nDewPayload\x12\x0e\n\x06temp_c\x18\x01 \x01(\x01\x12\x10\n\x08humidity\x18\x02 \x01(\x01\x12+\n\nextra_data\x18\x0f \x01(\x0b\x32\x17.google.protobuf.Struct\"P\n\x0bTestPayload\x12\x11\n\titeration\x18\x01 \x01(\x05\x12\r\n\x05value\x18\x02 \x01(\x01\x12\x0f\n\x07message\x18\x03 \x01(\t\x12\x0e\n\x06\x61\x63tive\x18\x04 \x01(\x08\"2\n\x0eStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t2d\n\tTelemetry\x12W\n\x0cReportStatus\x12!.panoseti.telemetry.StatusRequest\x1a\".panoseti.telemetry.StatusResponse\"\x00\x42\x39\n\x1aio.grpc.panoseti.telemetryB\x0eTelemetryProtoP\x01\xa2\x02\x08PANO_TLMb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -35,9 +35,15 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\n\032io.grpc.panoseti.telemetryB\016TelemetryProtoP\001\242\002\010PANO_TLM'
   _globals['_STATUSREQUEST']._serialized_start=103
-  _globals['_STATUSREQUEST']._serialized_end=244
-  _globals['_STATUSRESPONSE']._serialized_start=246
-  _globals['_STATUSRESPONSE']._serialized_end=296
-  _globals['_TELEMETRY']._serialized_start=298
-  _globals['_TELEMETRY']._serialized_end=398
+  _globals['_STATUSREQUEST']._serialized_end=406
+  _globals['_GNSSPAYLOAD']._serialized_start=408
+  _globals['_GNSSPAYLOAD']._serialized_end=530
+  _globals['_DEWPAYLOAD']._serialized_start=532
+  _globals['_DEWPAYLOAD']._serialized_end=623
+  _globals['_TESTPAYLOAD']._serialized_start=625
+  _globals['_TESTPAYLOAD']._serialized_end=705
+  _globals['_STATUSRESPONSE']._serialized_start=707
+  _globals['_STATUSRESPONSE']._serialized_end=757
+  _globals['_TELEMETRY']._serialized_start=759
+  _globals['_TELEMETRY']._serialized_end=859
 # @@protoc_insertion_point(module_scope)

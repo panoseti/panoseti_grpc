@@ -46,7 +46,8 @@ dependencies = [
     "watchfiles",
     "aiofiles",
     "pygnssutils",
-    "pydantic"
+    "pydantic",
+    "tomli"
 ]
 
 [project.optional-dependencies]

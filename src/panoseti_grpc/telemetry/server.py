@@ -15,46 +15,57 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
 
     async def ReportStatus(self, request, context):
         try:
-            # 1. Validation: Check if device is registered
+            # 1. Determine Payload Source
+            if request.HasField("gnss"):
+                raw_data = MessageToDict(request.gnss)
+            elif request.HasField("dew"):
+                raw_data = MessageToDict(request.dew)
+            elif request.HasField("test"):
+                raw_data = MessageToDict(request.test)
+            elif request.HasField("flexible"):
+                raw_data = MessageToDict(request.flexible)
+            else:
+                return telemetry_pb2.StatusResponse(success=False, message="No payload provided")
+
+            # 2. Validation & Config Lookup
             try:
                 redis_key = self.config.get_redis_key(request.device_type, request.device_id)
-            except ValueError as e:
-                await context.abort(grpc.StatusCode.FAILED_PRECONDITION, str(e))
+                validated_data = self.config.validate_and_flatten(request.device_type, raw_data)
+            except (ValueError, ValidationError) as e:
+                # Differentiate user error from server error
+                return telemetry_pb2.StatusResponse(success=False, message=str(e))
 
-            # 2. Validation: Check Data Integrity (Pydantic)
-            raw_data = MessageToDict(request.data)
-            try:
-                validated_data = self.config.validate_payload(request.device_type, raw_data)
-            except ValidationError as e:
-                error_msg = f"Schema Validation Failed: {e.errors()}"
-                logger.warning(f"Bad data from {request.device_id}: {error_msg}")
-                # Return success=False so client script crashes/logs explicitly
-                return telemetry_pb2.StatusResponse(success=False, message=error_msg)
-
-            # 3. Write to Redis (Async)
-            # Inject timestamp
+            # 3. Add Timestamp
             validated_data['Computer_UTC'] = request.timestamp.ToDatetime().timestamp()
 
-            # Use asyncio.to_thread for the blocking redis call
-            # (Or use aioredis if you want pure async)
-            await asyncio.to_thread(self.redis.hset, redis_key, mapping={k: str(v) for k, v in validated_data.items()})
+            # 4. Redis Write (Ensure unambigous types for storeInfluxDB)
+            # We cast bools to int (0/1) or specific strings because standard Python
+            # bool stringification ("True") can be ambiguous if not handled perfectly.
+            redis_data = {}
+            for k, v in validated_data.items():
+                if isinstance(v, bool):
+                    redis_data[k] = 1 if v else 0
+                else:
+                    redis_data[k] = str(v)
+
+            await asyncio.to_thread(self.redis.hset, redis_key, mapping=redis_data)
 
             return telemetry_pb2.StatusResponse(success=True)
 
         except Exception as e:
-            logger.error(f"Server error: {e}")
-            await context.abort(grpc.StatusCode.INTERNAL, "Internal Server Error")
+            logger.exception("Internal Server Error")
+            await context.abort(grpc.StatusCode.INTERNAL, str(e))
 
 
-async def serve(config_path, redis_host='localhost'):
+async def serve(config_path, redis_host='localhost', port=50051):
     server = grpc.aio.server()
-    # Assuming redis connection is created here
     import redis
-    r = redis.Redis(host=redis_host, decode_responses=True)
+    # Using decode_responses=True ensures we get strings back from Redis
+    r = redis.Redis(host=redis_host, port=6379, decode_responses=True)
 
     telemetry_pb2_grpc.add_TelemetryServicer_to_server(
         TelemetryServicer(config_path, r), server
     )
-    server.add_insecure_port('[::]:50051')
+    server.add_insecure_port(f'[::]:{port}')
     await server.start()
     await server.wait_for_termination()

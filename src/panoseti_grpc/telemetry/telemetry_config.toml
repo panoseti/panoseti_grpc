@@ -1,7 +1,14 @@
-[devices.gps]
-type = "gps"
+[devices.gnss]
+type = "gnss"
 redis_prefix = "UBLOX_ZED-F9T_"
+description = "Main GNSS Timing modules"
 
-[devices.weather]
-type = "weather"
-redis_prefix = "WEATHER_MAST_"
+[devices.dew]
+type = "dew"
+redis_prefix = "WEATHER_DEW_"
+description = "Dew point sensors"
+
+[devices.test]
+type = "test"
+redis_prefix = "TEST_INTEGRATION_"
+description = "CI/CD Health checks"

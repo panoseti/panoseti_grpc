@@ -1,35 +1,51 @@
-import toml
-from pydantic import BaseModel, ValidationError, Field
-from typing import Dict, Type, Optional
+import tomli
+from pydantic import BaseModel, Field, field_validator
+from typing import Dict, Type, Optional, Any
+from importlib import resources
 
 
-# --- 1. Define Data Schemas ---
+# --- 1. Pydantic Models ---
+
 class GnssModel(BaseModel):
-    satellites: int = Field(ge=0, le=32)
-    lat: float
-    lon: float
+    satellites: int = Field(ge=0, le=100)
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
     fix_mode: str
+    extra_data: Optional[Dict[str, Any]] = {}
 
 
-class WeatherModel(BaseModel):
-    temperature_c: float
+class DewModel(BaseModel):
+    temp_c: float = Field(ge=-50, le=100)
     humidity: float = Field(ge=0, le=100)
-    pressure_mbar: float
+    extra_data: Optional[Dict[str, Any]] = {}
 
 
-# Registry of schemas
+class TestModel(BaseModel):
+    iteration: int
+    value: float
+    message: str
+    active: bool
+
+    @field_validator('message')
+    def must_be_uppercase(cls, v):
+        if not v.isupper():
+            raise ValueError('Message must be uppercase')
+        return v
+
+
 SCHEMA_MAP: Dict[str, Type[BaseModel]] = {
-    "gps": GnssModel,
-    "weather": WeatherModel,
-    "generic": dict  # Fallback for untyped
+    "gnss": GnssModel,
+    "dew": DewModel,
+    "test": TestModel,
+    "generic": dict
 }
 
 
-# --- 2. Define Device Registry ---
-# This matches your storeInfluxDB regex logic but explicitly
+# --- 2. Registry Configuration ---
+
 class DeviceConfig(BaseModel):
     type: str
-    redis_prefix: str  # e.g., "UBLOX_ZED-F9T_"
+    redis_prefix: str
     description: Optional[str] = ""
 
 
@@ -38,21 +54,41 @@ class TelemetryConfig(BaseModel):
 
     @classmethod
     def load(cls, path="telemetry_config.toml"):
-        with open(path, "r") as f:
-            return cls(**toml.load(f))
+        try:
+            with open(path, "r") as f:
+                return cls(**tomli.load(f))
+        except FileNotFoundError:
+            with resources.path("panoseti.telemetry", path) as f:
+                return cls(**tomli.load(f))
 
     def get_redis_key(self, device_type: str, device_id: str) -> str:
-        """Constructs the Redis key: PREFIX + ID"""
+        """Validates ID existence and returns formatted Redis Key."""
+        # 1. Check if type exists
         if device_type not in self.devices:
             raise ValueError(f"Unknown device type: {device_type}")
+
+        # 2. Whitelist Check:
+        # In this implementation, we allow any ID if the TYPE is registered.
+        # To strictly whitelist IDs, we would need a list of allowed IDs in DeviceConfig.
+        # For now, we rely on the prefix to format the key.
         prefix = self.devices[device_type].redis_prefix
         return f"{prefix}{device_id}"
 
-    def validate_payload(self, device_type: str, data: dict) -> dict:
-        """Validates dictionary against Pydantic schema."""
-        if device_type not in SCHEMA_MAP:
-            return data  # Or raise error if strict
+    def validate_and_flatten(self, device_type: str, data: dict) -> dict:
+        """
+        Validates data against schema and flattens 'extra_data' for Redis.
+        """
+        # 1. Validate
+        if device_type in SCHEMA_MAP and SCHEMA_MAP[device_type] is not dict:
+            model = SCHEMA_MAP[device_type](**data)
+            clean_data = model.model_dump()
+        else:
+            clean_data = data
 
-        # Pydantic validation magic
-        model = SCHEMA_MAP[device_type](**data)
-        return model.model_dump()
+        # 2. Flatten 'extra_data' if present (Redis doesn't like nested dicts)
+        if 'extra_data' in clean_data and clean_data['extra_data']:
+            extras = clean_data.pop('extra_data')
+            for k, v in extras.items():
+                clean_data[f"extra_{k}"] = v
+
+        return clean_data
