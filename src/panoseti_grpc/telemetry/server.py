@@ -8,6 +8,7 @@ Features:
 - Graceful Shutdown & Signal Handling
 """
 
+import time
 import asyncio
 import signal
 import os
@@ -37,6 +38,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
         self.redis = redis_client
         self._load_config()
         logger.info(f"TelemetryServicer initialized with config: [bold cyan]{self.config_path}[/]")
+        logger.info(f"[bold green]Telemetry Server Online[/]", extra={"markup": True})
 
     def _load_config(self):
         """Loads or reloads the configuration."""
@@ -61,6 +63,13 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
         )
 
     async def ReportStatus(self, request, context):
+        start_time = time.perf_counter()
+
+        # Metadata for logging
+        device_type = "unknown"
+        device_id = "unknown"
+        payload_size = request.ByteSize()
+
         try:
             # 1. Determine Payload Source
             if request.HasField("gnss"):
@@ -76,13 +85,20 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
                 logger.warning(f"Invalid Request: {msg}")
                 return telemetry_pb2.StatusResponse(success=False, message=msg)
 
+            # Extract ID for logging if available
+            device_id = request.device_id or raw_data.get("device_id", "N/A")
+            # Update device_type from request for accurate logging
+            if request.device_type:
+                device_type = request.device_type
+
             # 2. Validation & Config Lookup
             # We defer to the loaded TelemetryConfig for business logic
             try:
                 redis_key = self.config.get_redis_key(request.device_type, request.device_id)
                 validated_data = self.config.validate_and_flatten(request.device_type, raw_data)
             except (ValueError, ValidationError) as e:
-                logger.warning(f"Validation Error for {request.device_type}: {e}")
+                logger.error(f"Validation failed for [cyan]{device_type}[/] (ID: {device_id}): {e}",
+                             extra={"markup": True})
                 return telemetry_pb2.StatusResponse(success=False, message=str(e))
 
             # 3. Add Timestamp (Server Receipt Time)
@@ -96,7 +112,16 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
             # If using synchronous redis, wrap in asyncio.to_thread
             await self.redis.hset(redis_key, mapping=redis_data)
 
-            logger.debug(f"Stored data for [green]{redis_key}[/]")
+            # Calculate duration for observability
+            duration_ms = (time.perf_counter() - start_time) * 1000
+
+            # Log at DEBUG level to prevent flooding, but include perf metrics
+            logger.debug(
+                f"Stored [bold cyan]{device_type}[/] for [yellow]{device_id}[/] "
+                f"({payload_size} bytes) in {duration_ms:.2f}ms",
+                extra={"markup": True}
+            )
+
             return telemetry_pb2.StatusResponse(success=True)
 
         except Exception as e:

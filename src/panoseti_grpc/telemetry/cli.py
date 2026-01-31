@@ -4,13 +4,15 @@ import time
 import random
 import logging
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
 from rich.logging import RichHandler
+from rich.table import Table
 
 from panoseti_grpc.telemetry.client import TelemetryClient
 
 # Setup Rich Console
 console = Console()
+logger = logging.getLogger("telemetry.cli")
 
 
 def setup_logging(level_name):
@@ -69,6 +71,7 @@ def generate_payload(payload_type, iteration):
                 "status": "nominal"
             }
         }
+    return None, {}
 
 
 def run_sender(args):
@@ -81,33 +84,96 @@ def run_sender(args):
     else:
         types_to_send = [args.type]
 
+    # Metrics
+    success_count = 0
+    fail_count = 0
+    total_latency_ms = 0
+    min_latency = float('inf')
+    max_latency = 0
+
     try:
         with Progress(
                 SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
+                TextColumn("[bold blue]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TimeRemainingColumn(),
+                TextColumn("[dim cyan]({task.fields[latency]} ms/req)"),
                 console=console
         ) as progress:
-            task = progress.add_task(f"Sending {args.count} messages...", total=args.count)
+
+            task = progress.add_task(f"Sending {args.count} messages...", total=args.count, latency="0.0")
 
             for i in range(args.count):
                 # Pick a type (round-robin if mixed)
                 current_type = types_to_send[i % len(types_to_send)]
-
                 method_name, kwargs = generate_payload(current_type, i)
 
-                # Dynamic dispatch to client methods
-                method = getattr(client, method_name)
-                method(**kwargs)
+                # Log payload at DEBUG level
+                logger.debug(f"Payload #{i}: {kwargs}")
 
-                progress.update(task, advance=1, description=f"Sent [cyan]{current_type}[/] message #{i + 1}")
+                start_time = time.perf_counter()
+                try:
+                    # Dynamic dispatch to client methods
+                    method = getattr(client, method_name)
+                    method(**kwargs)
+
+                    # If we get here, call was successful (client.py raises on failure)
+                    success_count += 1
+                    status_symbol = "[green]✔[/]"
+
+                except Exception as e:
+                    fail_count += 1
+                    status_symbol = "[red]✘[/]"
+                    logger.error(f"Failed to send message #{i}: {e}")
+
+                # Metrics Calculation
+                end_time = time.perf_counter()
+                latency_ms = (end_time - start_time) * 1000
+                total_latency_ms += latency_ms
+                min_latency = min(min_latency, latency_ms)
+                max_latency = max(max_latency, latency_ms)
+                avg_latency = total_latency_ms / (i + 1)
+
+                # Update Progress Bar
+                progress.update(
+                    task,
+                    advance=1,
+                    description=f"{status_symbol} Sending [bold cyan]{current_type}[/]",
+                    latency=f"{latency_ms:.1f}"
+                )
 
                 if args.delay > 0:
                     time.sleep(args.delay)
 
     except KeyboardInterrupt:
-        console.print("[yellow]Stopping due to user interrupt[/]")
+        console.print("\n[yellow]Stopping due to user interrupt[/]")
     except Exception as e:
-        console.print(f"[bold red]Error:[/bold red] {e}")
+        console.print(f"[bold red]Fatal Error:[/bold red] {e}")
+    finally:
+        # Print Summary Table
+        print_summary(args, success_count, fail_count, min_latency, max_latency, total_latency_ms)
+
+
+def print_summary(args, success, fail, min_lat, max_lat, total_lat):
+    """Prints a pretty summary table of the run statistics."""
+    total = success + fail
+    avg_lat = (total_lat / total) if total > 0 else 0.0
+
+    table = Table(title="Telemetry Run Summary", show_header=True, header_style="bold magenta")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="white")
+
+    table.add_row("Total Messages", str(total))
+    table.add_row("Success", f"[green]{success}[/]")
+    table.add_row("Failed", f"[red]{fail}[/]")
+    table.add_row("Avg Latency", f"{avg_lat:.2f} ms")
+    table.add_row("Min Latency", f"{min_lat:.2f} ms")
+    table.add_row("Max Latency", f"{max_lat:.2f} ms")
+    table.add_row("Target Host", f"{args.host}:{args.port}")
+
+    console.print("\n")
+    console.print(table)
 
 
 def main():
