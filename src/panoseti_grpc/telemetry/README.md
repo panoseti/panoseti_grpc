@@ -19,11 +19,11 @@ The **PANOSETI Telemetry Service** is a high-throughput, distributed aggregation
 
 ## 🛠️ Configuration & Data Modes
 
-The system's behavior is controlled by `telemetry_config.toml`. Every device type is categorized into one of two modes:
+The system's behavior is controlled by [telemetry/telemetry_config.toml](telemetry_config.toml). Every device type is categorized into one of two modes:
 
 ### 1. Production Mode (Strict)
-* **Use Case:** Critical hardware (GNSS, Chillers, DAQ).
-* **Validation:** Payloads MUST match the Pydantic schemas defined in `src/panoseti_grpc/telemetry/config.py`.
+* **Use Case:** Established/Important hardware (GNSS, White Rabbit, etc.).
+* **Validation:** Payloads MUST match the Pydantic schemas defined in [telemetry/config.py](config.py).
 * **Storage:** Permanent (TTL = 0).
 * **Naming:** Redis keys use a specific hardware prefix (e.g., `UBLOX_ZED-F9T_`).
 
@@ -55,20 +55,16 @@ ttl_seconds = 86400  # Auto-delete after 1 day
 
 ### 1. Running the Service
 
-The service is typically run via Docker Compose, but can be run manually for development.
+The service should be run as a module on the Headnode. It will automatically connect to the Redis server.
 
 ```bash
 # Start Server (Default Port: 50051)
 python -m panoseti_grpc.telemetry.server
-
-# Start Archiver (Bridges Redis -> InfluxDB)
-python -m panoseti_grpc.telemetry.archiver
-
 ```
 
-### 2. Using the Client Library
+### 2. Using the Client API: `TelemetryClient`
 
-The Python client automatically handles the nuances of the underlying gRPC protocol.
+`TelemetryClient` automatically handles the nuances of the underlying gRPC protocol.
 
 ```python
 from panoseti_grpc.telemetry.client import TelemetryClient
@@ -116,7 +112,7 @@ python -m panoseti_grpc.telemetry.cli --type gnss --delay 0.1
 
 ### Adding a New Production Device
 
-1. **Define Schema:** Add a Pydantic model to `src/panoseti_grpc/telemetry/config.py`.
+1. **Define Schema:** Add a Pydantic model to [src/panoseti_grpc/telemetry/config.py](config.py).
 ```python
 class ChillerModel(BaseModel):
     water_temp: float
@@ -136,7 +132,6 @@ class ChillerModel(BaseModel):
 [devices.my_test]
 mode = "experimental"
 redis_prefix = "DEV_TEST_"
-
 ```
 
 

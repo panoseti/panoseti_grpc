@@ -32,7 +32,9 @@ from panoseti_grpc.telemetry.client import TelemetryClient
 
 # Connect to a running Telemetry Service
 client = TelemetryClient("localhost", 50051)
-client.log_flexible("dev", "weather-01", {"status": "Online"})
+
+# Upload metadata
+client.log_flexible("dev", "weather-01", {"status": "Online", "is-raining": True})
 ```
 
 ---
@@ -51,7 +53,7 @@ conda create -n grpc-py39 python=3.9
 conda activate grpc-py39
 
 # 2. Install in editable mode with development dependencies
-pip install -e .[dev]
+pip install -e .
 ```
 
 ## 🧪 Testing
