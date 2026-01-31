@@ -16,7 +16,7 @@ COPY pyproject.toml LICENSE README.md /app/
 COPY src ./src/
 
 # Install dependencies including test tools
-RUN pip install .[dev]
+RUN pip install .
 
 # Stage 2: Runner
 FROM python:3.9-slim

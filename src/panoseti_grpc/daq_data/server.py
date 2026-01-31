@@ -13,8 +13,6 @@ import logging
 import json
 import time
 import urllib.parse
-from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import AsyncIterator, List, Dict, Optional
 import signal
 
@@ -27,14 +25,12 @@ from google.protobuf.empty_pb2 import Empty
 # Protoc-generated imports
 from panoseti_grpc.generated import daq_data_pb2, daq_data_pb2_grpc
 from panoseti_grpc.generated.daq_data_pb2 import InitHpIoResponse, StreamImagesResponse, PanoImage
-from tests.ublox_control.conftest import server_config
 
 # Package imports
 from .resources import make_rich_logger, CFG_DIR, is_daq_active, load_package_json, daq_data_anchor_package
 from .testing import is_os_posix
 from .managers import ClientManager, HpIoTaskManager
 from .state import ReaderState, CachedPanoImage
-from .hp_io_manager import HpIoManager
 
 
 class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):

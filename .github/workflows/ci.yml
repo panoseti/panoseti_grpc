@@ -2,7 +2,7 @@ name: PANOSETI gRPC CI
 
 on:
   push:
-    branches: [ main, tests, dev]
+    branches: [ main, tests, dev, telemetry-service]
   pull_request:
     branches: [ main ]
 

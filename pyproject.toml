@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "panoseti-grpc"
-version = "0.2.6"
+version = "0.2.9"
 description = "gRPC for the PANOSETI project."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -25,10 +25,12 @@ classifiers = [
 ]
 
 dependencies = [
-    "grpcio>=1.76.0",
-    "grpcio-reflection>=1.76.0",
-    "grpcio-tools>=1.76.0",
-    "protobuf>=6.33.4,<7.0.0",
+    "grpcio==1.70.0",          # Stable, widely used
+    "grpcio-tools==1.70.0",    # Matches the runtime
+    "grpcio-reflection==1.70.0",
+
+    # Pin Protobuf to the v5 series (Stable)
+    "protobuf>=5.26.1,<6.0.0",
     "coverage>=7.10.7",
     "cython",
     "wheel",
