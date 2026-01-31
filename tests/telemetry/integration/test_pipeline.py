@@ -4,25 +4,36 @@ from concurrent.futures import ThreadPoolExecutor
 
 
 def test_flexible_struct_flow(grpc_client, redis_client):
+    """
+    Verifies that 'flexible' logging works for configured EXPERIMENTAL devices.
+    """
     device_id = "device_01"
     rnd_data = {"voltage": 5.1, "fan_speed": 1200, "status": "OK"}
 
-    # FIX: Use "test_flex" device type (mapped to 'generic' in toml)
-    # The server will skip Pydantic validation for 'generic' types.
+    # Use "test_flex" which is defined as experimental in config
     grpc_client.log_flexible("test_flex", device_id, rnd_data)
 
     time.sleep(0.5)
 
-    expected_key = f"TEST_FLEX_{device_id}"
+    # CHECK: Expect DEV_ prefix as per config
+    expected_key = f"DEV_TEST-FLEX_{device_id}"
+
     assert redis_client.exists(expected_key)
+    # Check data content
     assert redis_client.hget(expected_key, "voltage") == "5.1"
+
+    # Check TTL (Should be > 0 for experimental)
+    ttl = redis_client.ttl(expected_key)
+    assert ttl > 0 and ttl <= 3600  # Config says 3600s
 
 
 def test_strict_gps_with_extras(grpc_client, redis_client):
+    """
+    Verifies that 'strict' logging works for configured PRODUCTION devices.
+    """
     device_id = "dome_test_gps"
 
-    # This should pass now that server.py uses preserving_proto_field_name=True
-    grpc_client.log("gnss", device_id, {
+    grpc_client.log_strict("gnss", device_id, {
         "satellites": 8,
         "lat": 37.0,
         "lon": -122.0,
@@ -31,18 +42,32 @@ def test_strict_gps_with_extras(grpc_client, redis_client):
     })
 
     time.sleep(0.5)
+
+    # CHECK: Expect Production prefix
     expected_key = f"UBLOX_ZED-F9T_{device_id}"
 
-    assert redis_client.hget(expected_key, "fix_mode") == "3D"
+    assert redis_client.hget(expected_key, "satellites") == "8"
     assert redis_client.hget(expected_key, "extra_dilution_of_precision") == "1.2"
+
+    # Check TTL (Should be -1 aka Permanent for production)
+    assert redis_client.ttl(expected_key) == -1
 
 
 def test_invalid_schema_rejection(grpc_client):
-    device_id = "bad_sensor"
-    bad_data = {"temp_c": 20.0, "humidity": 150.0}
+    """
+    Verifies that strict mode actually enforces schema.
+    """
+    # Missing required field 'satellites'
+    invalid_data = {
+        "satellites": 999,  # Invalid: must be <= 100
+        "lat": 37.0,
+        "lon": -122.0,
+        "fix_mode": "3D"
+    }
 
+    # Should raise ValueError from client wrapper
     with pytest.raises(ValueError) as excinfo:
-        grpc_client.log("dew", device_id, bad_data)
+        grpc_client.log_strict("gnss", "bad_device", invalid_data)
 
     assert "Server rejected data" in str(excinfo.value)
 
@@ -76,7 +101,7 @@ def test_concurrent_clients(grpc_client, redis_client):
 
     time.sleep(1.0)
     # Check last write
-    key = f"TEST_INTEGRATION_worker_0"
+    key = f"TEST-STRICT_worker_0"
     assert redis_client.exists(key)
     assert redis_client.hget(key, "message") == "STRESS_TEST"
 
@@ -104,7 +129,7 @@ def test_time_series_integrity(grpc_client, redis_client):
     # Give server a moment to drain the queue
     time.sleep(0.5)
 
-    key = f"TEST_INTEGRATION_{device_id}"
+    key = f"TEST-STRICT_{device_id}"
 
     # Verify Redis holds the FINAL state
     final_iteration = redis_client.hget(key, "iteration")
@@ -123,8 +148,8 @@ def test_interleaved_clients_same_type(grpc_client, redis_client):
     dev_b = "dome_b"
 
     # A is at Equator, B is at North Pole
-    grpc_client.log("gnss", dev_a, {"satellites": 10, "lat": 0.0, "lon": 0.0, "fix_mode": "3D"})
-    grpc_client.log("gnss", dev_b, {"satellites": 5, "lat": 90.0, "lon": 0.0, "fix_mode": "2D"})
+    grpc_client.log_strict("gnss", dev_a, {"satellites": 10, "lat": 0.0, "lon": 0.0, "fix_mode": "3D"})
+    grpc_client.log_strict("gnss", dev_b, {"satellites": 5, "lat": 90.0, "lon": 0.0, "fix_mode": "2D"})
 
     time.sleep(0.2)
 
@@ -150,7 +175,7 @@ def test_rapid_reconnect_simulation(grpc_client, redis_client):
         time.sleep(0.05)
 
     time.sleep(0.2)
-    key = f"TEST_FLEX_{device_id}"
+    key = f"DEV_TEST-FLEX_{device_id}"
 
     # Cast to float to handle Proto Struct behavior (4 -> 4.0)
     val = redis_client.hget(key, "boot_count")
@@ -170,7 +195,7 @@ def test_huge_payload(grpc_client, redis_client):
     grpc_client.log_flexible("test_flex", device_id, data)
 
     time.sleep(0.5)
-    key = f"TEST_FLEX_{device_id}"
+    key = f"DEV_TEST-FLEX_{device_id}"
 
     val = redis_client.hget(key, "blob")
     assert len(val) == 100_000
@@ -205,8 +230,26 @@ def test_concurrent_field_merging(grpc_client, redis_client):
         exc.submit(client_pressure)
 
     time.sleep(0.5)
-    key = f"TEST_FLEX_{device_id}"
+    key = f"DEV_TEST-FLEX_{device_id}"
 
     # Verify BOTH fields exist and have the last values
     assert float(redis_client.hget(key, "temp")) == 9.0
     assert float(redis_client.hget(key, "pressure")) == 109.0
+
+
+def test_unknown_experimental_device(grpc_client, redis_client):
+    """
+    Verifies that a completely unknown device type goes to SANDBOX.
+    """
+    device_id = "mystery_box"
+    data = {"foo": "bar"}
+
+    # Using a type not in TOML
+    grpc_client.log_flexible("alien_tech", device_id, data)
+
+    time.sleep(0.2)
+    expected_key = f"SANDBOX:alien_tech:{device_id}"
+
+    assert redis_client.exists(expected_key)
+    # Sandbox should also have a default TTL
+    assert redis_client.ttl(expected_key) > 0

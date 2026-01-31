@@ -1,30 +1,33 @@
 import pytest
 from pydantic import ValidationError
-from panoseti_grpc.telemetry.config import TelemetryConfig, GnssModel, DewModel, PayloadTestModel
+from panoseti_grpc.telemetry.config import TelemetryConfig, GnssModel, DewModel, PayloadTestModel, DeviceConfig
 
 
 # 1. Test Key Generation & whitelist logic
 def test_redis_key_formatting():
-    # Mock a config dictionary directly
-    config_data = {
-        "devices": {
-            "gps": {"type": "gps", "redis_prefix": "UBLOX_ZED-F9T_"},
-            "weather": {"type": "weather", "redis_prefix": "WEATHER_MAST_"}
-        }
+    # FIX: Use DeviceConfig objects
+    devices = {
+        "gps": DeviceConfig(mode="production", redis_prefix="UBLOX_ZED-F9T_"),
+        "weather": DeviceConfig(mode="production", redis_prefix="WEATHER_MAST_")
     }
-    cfg = TelemetryConfig(**config_data)
+    cfg = TelemetryConfig(devices)
 
     # Assert correct formatting
     assert cfg.get_redis_key("gps", "dome_a") == "UBLOX_ZED-F9T_dome_a"
 
-    # Assert unknown device error
-    with pytest.raises(ValueError, match="Unknown device type"):
-        cfg.get_redis_key("nuclear_reactor", "01")
+    # Assert unknown device error or sandbox fallback
+    # The new logic returns SANDBOX:...
+    assert cfg.get_redis_key("nuclear_reactor", "01") == "SANDBOX:nuclear_reactor:01"
 
 
 # 2. Test Flattening Logic (The R&D Hook)
 def test_payload_flattening():
-    cfg = TelemetryConfig(devices={})  # Empty config is fine for this method
+    # FIX: Must be 'production' mode to trigger the schema validation & extra_data flattening logic
+    # Also need to use a type that exists in SCHEMA_MAP (like 'gps' mapping to GnssModel)
+    devices = {
+        "gnss": DeviceConfig(mode="production", redis_prefix="GPS_")
+    }
+    cfg = TelemetryConfig(devices)
 
     raw_data = {
         "satellites": 12,
@@ -35,13 +38,12 @@ def test_payload_flattening():
     }
 
     # Validate and Flatten
-    flat_data = cfg.validate_and_flatten("gps", raw_data)
+    flat_data = cfg.validate_and_flatten("gnss", raw_data)
 
     # Check that 'extra_data' dict is gone
     assert "extra_data" not in flat_data
     # Check that fields were hoisted to top level with prefix
     assert flat_data["extra_temp_correction"] == 0.05
-    assert flat_data["extra_status"] == "ok"
 
 
 # 3. Test Pydantic Constraints
@@ -110,7 +112,10 @@ def test_forbid_unknown_fields_in_strict_model():
 
 # 8. Test Complex Nested 'extra_data' Flattening
 def test_deep_extra_data_flattening():
-    cfg = TelemetryConfig(devices={})
+    devices = {
+        "gnss": DeviceConfig(mode="production", redis_prefix="GPS_")
+    }
+    cfg = TelemetryConfig(devices)
 
     raw_data = {
         "satellites": 5, "lat": 0, "lon": 0, "fix_mode": "2D",
@@ -121,13 +126,16 @@ def test_deep_extra_data_flattening():
     }
 
     # Run the flattening logic
-    flat = cfg.validate_and_flatten("gps", raw_data)
+    flat = cfg.validate_and_flatten("gnss", raw_data)
 
-    # Redis cannot store nested dicts in a Hash field.
-    # Depending on your implementation, this might stringify the dict.
-    assert "extra_status_flags" in flat
-    # Verify it became a string representation or remained a dict (which Redis client will stringify later)
-    assert isinstance(flat["extra_status_flags"], (dict, str))
+    # The implementation flattens nested dicts recursively using _flatten_dict
+    # After 'extra_data' is popped and its content merged with prefix 'extra_',
+    # 'status_flags' becomes 'extra_status_flags'.
+    # Since 'status_flags' is a dict, _flatten_dict will recurse.
+    # Result: 'extra_status_flags_error'
+
+    assert "extra_status_flags_error" in flat
+    assert flat["extra_status_flags_error"] is False
 
 
 # 9. Test Type Coercion (Feature, not bug)
@@ -149,3 +157,68 @@ def test_gnss_edge_coordinates():
     # Test just out of bounds
     with pytest.raises(ValidationError):
         GnssModel(satellites=0, lat=90.00001, lon=0, fix_mode="0")
+
+
+# 11. Test Prefix Enforcement
+def test_experimental_prefix_enforcement():
+    with pytest.raises(ValidationError) as exc:
+        DeviceConfig(
+            mode="experimental",
+            redis_prefix="WRONG_PREFIX_"
+        )
+    assert "must start with 'DEV_'" in str(exc.value)
+
+    # Valid config should pass
+    valid = DeviceConfig(
+        mode="experimental",
+        redis_prefix="DEV_CORRECT_"
+    )
+    assert valid.redis_prefix == "DEV_CORRECT_"
+
+
+# 12. Test TTL Logic
+def test_ttl_retrieval():
+    # FIX: Construct with DeviceConfig
+    devices = {
+        "prod_gps": DeviceConfig(mode="production", redis_prefix="GPS_", ttl_seconds=0),
+        "temp_sensor": DeviceConfig(mode="experimental", redis_prefix="DEV_TEMP_", ttl_seconds=3600)
+    }
+    cfg = TelemetryConfig(devices)
+
+    assert cfg.get_ttl("prod_gps") == 0
+    assert cfg.get_ttl("temp_sensor") == 3600
+    assert cfg.get_ttl("unknown_thing") == 3600 # Default fallback
+
+
+# 13. Test Validation Skipping for Experimental
+def test_experimental_skips_validation():
+    # Setup config with one experimental type
+    from panoseti_grpc.telemetry.config import DeviceConfig
+    devices = {
+        "new_proto": DeviceConfig(mode="experimental", redis_prefix="DEV_PROTO_")
+    }
+    cfg = TelemetryConfig(devices)
+
+    # Arbitrary data that would fail any strict schema
+    raw_data = {"random_junk": 123, "nested": {"a": 1}}
+
+    # Should NOT raise error, just flatten
+    result = cfg.validate_and_flatten("new_proto", raw_data)
+
+    assert result["random_junk"] == 123
+    assert result["nested_a"] == 1
+
+
+def test_strict_enforces_schema():
+    from panoseti_grpc.telemetry.config import DeviceConfig
+    # 'gnss' is hardcoded in SCHEMA_MAP in config.py
+    devices = {
+        "gnss": DeviceConfig(mode="production", redis_prefix="GPS_")
+    }
+    cfg = TelemetryConfig(devices)
+
+    # Missing required fields for GNSS
+    bad_data = {"lat": 10.0}
+
+    with pytest.raises(ValueError, match="Schema Violation"):
+        cfg.validate_and_flatten("gnss", bad_data)

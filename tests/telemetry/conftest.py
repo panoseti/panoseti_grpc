@@ -4,14 +4,13 @@ import time
 import os
 import multiprocessing
 import socket
-from influxdb import InfluxDBClient
+import asyncio
 from panoseti_grpc.telemetry.client import TelemetryClient
 # Import the serve function
 from panoseti_grpc.telemetry.server import serve
 
 # Get Hosts from Env (set by Docker Compose)
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-INFLUX_HOST = os.getenv("INFLUX_HOST", "localhost")
 SERVER_PORT = 50051
 
 
@@ -26,28 +25,11 @@ def redis_client():
     r.flushall()
 
 
-@pytest.fixture(scope="session")
-def influx_client():
-    client = None
-    for _ in range(10):
-        try:
-            client = InfluxDBClient(host=INFLUX_HOST, port=8086, username='root', password='root', database='metadata')
-            client.create_database('metadata')
-            break
-        except Exception:
-            time.sleep(1)
-
-    if not client:
-        pytest.fail("Could not connect to InfluxDB")
-    return client
-
-
 def _run_server_process(redis_host, grpc_port):
     """
     Runs the server in a separate process.
-    Updated to match the new server.py signature.
     """
-    import asyncio
+    # NOTE: Config is loaded from default location (resources.py) or env var
     asyncio.run(serve(redis_host=redis_host, grpc_port=grpc_port))
 
 
@@ -69,7 +51,6 @@ def start_grpc_server():
     server_ready = False
     while time.time() - start_time < 10:
         if not proc.is_alive():
-            # If it dies, it likely printed the error to stderr already
             raise RuntimeError("gRPC Server process died immediately! Check container logs.")
 
         try:

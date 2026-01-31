@@ -32,7 +32,7 @@ from panoseti_grpc.telemetry.client import TelemetryClient
 
 # Connect to a running Telemetry Service
 client = TelemetryClient("localhost", 50051)
-client.log_flexible("test_device", "01", {"status": "Online"})
+client.log_flexible("dev", "weather-01", {"status": "Online"})
 ```
 
 ---

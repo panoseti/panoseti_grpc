@@ -5,13 +5,14 @@ from importlib import resources
 import os
 
 
-# --- 1. Pydantic Models ---
+# --- 1. Pydantic Models (Production Schemas) ---
 
 class GnssModel(BaseModel):
     satellites: int = Field(ge=0, le=100)
     lat: float = Field(ge=-90, le=90)
     lon: float = Field(ge=-180, le=180)
     fix_mode: str
+    # Core + Extensions Pattern: "extra_data" is the safe extension point
     extra_data: Optional[Dict[str, Any]] = {}
 
 
@@ -38,86 +39,119 @@ SCHEMA_MAP: Dict[str, Type[BaseModel]] = {
     "gnss": GnssModel,
     "dew": DewModel,
     "test": PayloadTestModel,
-    "generic": dict
+    # "dev" types don't need a model here; handled via 'experimental' mode
 }
 
 
 # --- 2. Registry Configuration ---
 
 class DeviceConfig(BaseModel):
-    type: str
+    """
+    Represents a single device entry in telemetry_config.toml
+    """
+    mode: str = Field(default="production", pattern="^(production|experimental)$")
     redis_prefix: str
+    ttl_seconds: int = Field(default=0, ge=0)
     description: Optional[str] = ""
 
+    @field_validator('redis_prefix')
+    def validate_prefix(cls, v, info):
+        # We need access to the 'mode' field to validate this rule.
+        # Pydantic v2 validation allows access to other fields via 'info' context if needed,
+        # but simple cross-field validation is often easier in the model_validator or by check logic.
+        # For simple robustness, we enforce the "DEV_" rule if mode is experimental.
+        if 'mode' in info.data and info.data['mode'] == 'experimental':
+            if not v.startswith("DEV_"):
+                raise ValueError(f"Experimental prefix '{v}' must start with 'DEV_'")
+        return v
 
-class TelemetryConfig(BaseModel):
-    devices: Dict[str, DeviceConfig]
+
+class TelemetryConfig:
+    def __init__(self, devices: Dict[str, DeviceConfig]):
+        self.devices = devices
 
     @classmethod
-    def load(cls, path="telemetry_config.toml"):
-        """
-        Loads configuration from a local file or falls back to package resources.
-        """
-        config_dict = None
-
-        # 1. Try Local File (Primary)
-        # We check existence explicitly to avoid race conditions with open()
-        if os.path.exists(path):
+    def load(cls, path: str):
+        """Loads TOML config and parses into DeviceConfig objects."""
+        if not os.path.exists(path):
+            # Fallback for installed package resources
             try:
-                with open(path, "rb") as f:
-                    config_dict = tomli.load(f)
-            except Exception as e:
-                print(f"Error reading local config '{path}': {e}")
+                from . import resources as r
+                path = r.get_config_path()
+            except ImportError:
+                pass
 
-        # 2. Try Package Resource (Fallback)
-        if config_dict is None:
-            print(f"Config '{path}' not found locally, checking package resources...")
+        # If still missing, try generic fallback or fail
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Config file not found: {path}")
+
+        with open(path, "rb") as f:
+            data = tomli.load(f)
+
+        parsed_devices = {}
+        raw_devices = data.get("devices", {})
+
+        for name, cfg in raw_devices.items():
             try:
-                # FIX: Correct package name 'panoseti_grpc.telemetry'
-                # resources.path is a context manager that yields a pathlib.Path
-                with resources.path("panoseti_grpc.telemetry", path) as p:
-                    if p.exists():
-                        with open(p, "rb") as f:
-                            config_dict = tomli.load(f)
-            except (ModuleNotFoundError, FileNotFoundError, TypeError) as e:
-                print(f"Package resource lookup failed: {e}")
+                # This validates the TOML fields (mode, prefix, etc.)
+                parsed_devices[name] = DeviceConfig(**cfg)
+            except ValidationError as e:
+                # We log but continue so one bad config doesn't kill the server
+                print(f"⚠️  Config Error for '[devices.{name}]': {e}")
 
-        # 3. Final Check
-        if config_dict is None:
-            raise FileNotFoundError(
-                f"Could not load '{path}' from local dir or package 'panoseti_grpc.telemetry'"
-            )
-
-        return cls(**config_dict)
+        return cls(parsed_devices)
 
     def get_redis_key(self, device_type: str, device_id: str) -> str:
-        """Validates ID existence and returns formatted Redis Key."""
-        # 1. Check if type exists
+        """Returns the Redis key. Falls back to SANDBOX if unknown."""
         if device_type not in self.devices:
-            raise ValueError(f"Unknown device type: {device_type}")
+            # Unknown types go to a quarantine namespace
+            return f"SANDBOX:{device_type}:{device_id}"
 
-        # 2. Whitelist Check:
-        # In this implementation, we allow any ID if the TYPE is registered.
-        # To strictly whitelist IDs, we would need a list of allowed IDs in DeviceConfig.
-        # For now, we rely on the prefix to format the key.
         prefix = self.devices[device_type].redis_prefix
         return f"{prefix}{device_id}"
 
+    def get_ttl(self, device_type: str) -> int:
+        """Returns the TTL in seconds. 0 means permanent."""
+        if device_type not in self.devices:
+            return 3600  # Unknown types die after 1 hour
+        return self.devices[device_type].ttl_seconds
+
     def validate_and_flatten(self, device_type: str, data: dict) -> dict:
         """
-        Validates data against schema and flattens 'extra_data' for Redis.
+        Validates data if Production. Flattens data for Redis.
         """
-        # 1. Validate
-        if device_type in SCHEMA_MAP and SCHEMA_MAP[device_type] is not dict:
-            model = SCHEMA_MAP[device_type](**data)
-            clean_data = model.model_dump()
-        else:
-            clean_data = data
+        device_cfg = self.devices.get(device_type)
 
-        # 2. Flatten 'extra_data' if present (Redis doesn't like nested dicts)
+        # 1. Unknown or Experimental? SKIP Validation.
+        if not device_cfg or device_cfg.mode == "experimental":
+            return self._flatten_dict(data)
+
+        # 2. Production? Enforce Schema.
+        if device_type in SCHEMA_MAP:
+            try:
+                # Pydantic validation
+                model = SCHEMA_MAP[device_type](**data)
+                clean_data = model.model_dump()
+            except ValidationError as e:
+                raise ValueError(f"Schema Violation for {device_type}: {e}")
+        else:
+            # Should not happen if config and code are synced
+            raise ValueError(f"No schema defined for production type '{device_type}'")
+
+        # 3. Flatten (Handling nested 'extra_data')
         if 'extra_data' in clean_data and clean_data['extra_data']:
             extras = clean_data.pop('extra_data')
             for k, v in extras.items():
                 clean_data[f"extra_{k}"] = v
 
-        return clean_data
+        return self._flatten_dict(clean_data)
+
+    def _flatten_dict(self, d: Dict, parent_key: str = '', sep: str = '_') -> Dict:
+        items = []
+        for k, v in d.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else k
+            if isinstance(v, dict):
+                items.extend(self._flatten_dict(v, new_key, sep=sep).items())
+            else:
+                items.append((new_key, v))
+        return dict(items)

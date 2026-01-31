@@ -26,20 +26,26 @@ def setup_logging(level_name):
 
 
 def generate_payload(payload_type, iteration):
-    """Generates dummy data based on the requested type."""
+    """
+    Generates dummy data and selects the correct client method
+    based on the Strict/Experimental policy.
+    """
     device_id = f"cli_device_{random.randint(1, 99):02d}"
 
+    # --- PRODUCTION TYPES (Strict) ---
     if payload_type == "test":
+        # Uses specific log_test method for CI
         return "log_test", {
             "device_id": device_id,
             "iteration": iteration,
             "value": random.uniform(0, 100),
-            "message": f"CLI_MSG_{iteration}",
+            "message": "MSG_OK",  # Must be upper case per schema
             "active": True
         }
 
     elif payload_type == "gnss":
-        return "log", {
+        # Uses log_strict
+        return "log_strict", {
             "device_type": "gnss",
             "device_id": device_id,
             "data": {
@@ -47,12 +53,13 @@ def generate_payload(payload_type, iteration):
                 "lat": 37.3 + random.uniform(-0.1, 0.1),
                 "lon": -121.8 + random.uniform(-0.1, 0.1),
                 "fix_mode": "3D",
-                "extra_data": {"hdop": 1.5}
+                "extra_data": {"hdop": 1.5}  # Extension field
             }
         }
 
     elif payload_type == "dew":
-        return "log", {
+        # Uses log_strict
+        return "log_strict", {
             "device_type": "dew",
             "device_id": device_id,
             "data": {
@@ -61,9 +68,11 @@ def generate_payload(payload_type, iteration):
             }
         }
 
+    # --- EXPERIMENTAL TYPES (Flexible) ---
     elif payload_type == "flex":
+        # Uses log_flexible (No validation, TTL enforced)
         return "log_flexible", {
-            "device_type": "test_flex",
+            "device_type": "test_flex",  # Must match [devices.test_flex] in TOML
             "device_id": device_id,
             "data": {
                 "cpu_load": random.randint(10, 90),
@@ -71,6 +80,7 @@ def generate_payload(payload_type, iteration):
                 "status": "nominal"
             }
         }
+
     return None, {}
 
 
@@ -110,7 +120,7 @@ def run_sender(args):
                 method_name, kwargs = generate_payload(current_type, i)
 
                 # Log payload at DEBUG level
-                logger.debug(f"Payload #{i}: {kwargs}")
+                logger.debug(f"Payload #{i} ({method_name}): {kwargs}")
 
                 start_time = time.perf_counter()
                 try:
@@ -118,13 +128,14 @@ def run_sender(args):
                     method = getattr(client, method_name)
                     method(**kwargs)
 
-                    # If we get here, call was successful (client.py raises on failure)
+                    # If we get here, call was successful
                     success_count += 1
                     status_symbol = "[green]✔[/]"
 
                 except Exception as e:
                     fail_count += 1
                     status_symbol = "[red]✘[/]"
+                    # Don't crash the CLI, just log the error
                     logger.error(f"Failed to send message #{i}: {e}")
 
                 # Metrics Calculation

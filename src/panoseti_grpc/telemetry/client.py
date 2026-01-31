@@ -6,6 +6,11 @@ from panoseti_grpc.generated import telemetry_pb2, telemetry_pb2_grpc
 
 
 class TelemetryClient:
+    """
+    Client for the PANOSETI Telemetry Service.
+    Supports both Strict (Production) and Flexible (Experimental) logging.
+    """
+
     def __init__(self, host="localhost", port=50051):
         self.channel = grpc.insecure_channel(f'{host}:{port}')
         self.stub = telemetry_pb2_grpc.TelemetryStub(self.channel)
@@ -25,7 +30,11 @@ class TelemetryClient:
 
     def log_flexible(self, device_type: str, device_id: str, data: dict):
         """
-        R&D Mode: Wraps data in the 'flexible' Struct field.
+        Experimental Mode Logging.
+
+        Use this for R&D, debugging, or prototyping new sensors.
+        NOTE: Data logged via this method is subject to TTL (e.g. 24h) and
+        will be automatically deleted from the server.
         """
         s = Struct()
         s.update(data)
@@ -34,13 +43,14 @@ class TelemetryClient:
             device_type=device_type,
             device_id=device_id,
             timestamp=self._get_timestamp(),
-            flexible=s  # Correct field for oneof payload
+            flexible=s
         )
         self._send(req)
 
     def log_test(self, device_id: str, iteration: int, value: float, message: str, active: bool):
         """
-        Test Mode: Wraps data in the 'TestPayload' message.
+        Strict Mode: Test Payload.
+        Used for CI/CD pipeline health checks.
         """
         payload = telemetry_pb2.TestPayload(
             iteration=iteration,
@@ -57,9 +67,17 @@ class TelemetryClient:
         )
         self._send(req)
 
-    def log(self, device_type: str, device_id: str, data: dict):
+    def log_strict(self, device_type: str, device_id: str, data: dict):
         """
-        Strict Mode: Dispatches dictionary to specific Protobuf message types.
+        Production Mode Logging.
+
+        Dispatches dictionary to specific Protobuf message types.
+        Data logged here is PERMANENT (TTL=0) and STRICTLY VALIDATED.
+
+        Args:
+            device_type: "gnss", "dew", etc.
+            device_id: Unique hardware identifier.
+            data: Dictionary matching the schema defined in config.py.
         """
         req = telemetry_pb2.StatusRequest(
             device_type=device_type,
@@ -68,7 +86,6 @@ class TelemetryClient:
         )
 
         if device_type == "gnss":
-            # Automatically converts dict (including nested 'extra_data') into GnssPayload
             payload = telemetry_pb2.GnssPayload()
             ParseDict(data, payload)
             req.gnss.CopyFrom(payload)
@@ -80,6 +97,8 @@ class TelemetryClient:
 
         else:
             raise ValueError(
-                f"Unsupported strict device_type: '{device_type}'. Use log_flexible() for unstructured data.")
+                f"Unsupported strict device_type: '{device_type}'. "
+                f"Check telemetry_config.toml or use log_flexible() for R&D."
+            )
 
         self._send(req)

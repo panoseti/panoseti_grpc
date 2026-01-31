@@ -2,10 +2,11 @@
 """
 The Python implementation of the PANOSETI Telemetry gRPC Server.
 Features:
-- Validated Strict Logging (Pydantic)
-- Flexible JSON Logging (Redis Hash)
+- Validated Strict Logging (Production)
+- Flexible JSON Logging (Experimental with TTL)
 - High-Performance Redis Caching
 - Graceful Shutdown & Signal Handling
+- Descriptive Error Reporting
 """
 
 import time
@@ -20,7 +21,7 @@ from panoseti_grpc.generated import telemetry_pb2, telemetry_pb2_grpc
 from google.protobuf.json_format import MessageToDict
 
 # Local Imports
-from .config import TelemetryConfig, ValidationError
+from .config import TelemetryConfig
 from .resources import make_rich_logger, get_config_path
 
 # Create the main logger
@@ -68,57 +69,98 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
         # Metadata for logging
         device_type = "unknown"
         device_id = "unknown"
+        payload_source = "unknown"
         payload_size = request.ByteSize()
 
         try:
-            # 1. Determine Payload Source
+            # 1. Determine Payload Source & Type
             if request.HasField("gnss"):
+                payload_source = "gnss"
                 raw_data = self._proto_to_dict(request.gnss)
             elif request.HasField("dew"):
+                payload_source = "dew"
                 raw_data = self._proto_to_dict(request.dew)
             elif request.HasField("test"):
+                payload_source = "test"
                 raw_data = self._proto_to_dict(request.test)
             elif request.HasField("flexible"):
+                payload_source = "flexible"
                 raw_data = self._proto_to_dict(request.flexible)
             else:
-                msg = "No known payload field provided in request."
-                logger.warning(f"Invalid Request: {msg}")
+                msg = "Invalid Request: No payload field provided (gnss, dew, flexible, etc)."
+                logger.warning(msg)
                 return telemetry_pb2.StatusResponse(success=False, message=msg)
 
-            # Extract ID for logging if available
+            # Update identifiers
             device_id = request.device_id or raw_data.get("device_id", "N/A")
-            # Update device_type from request for accurate logging
             if request.device_type:
                 device_type = request.device_type
 
+            # --- DIAGNOSTICS & WARNINGS ---
+            # Check for configuration mismatches before processing
+            if device_type not in self.config.devices:
+                # Warning for unregistered devices (Sandbox Flow)
+                logger.warning(
+                    f"[bold yellow]Unregistered Type:[/bold yellow] '{device_type}' not found in TOML. "
+                    f"Routing to SANDBOX (TTL=1h). Check `telemetry_config.toml`.",
+                    extra={"markup": True}
+                )
+            else:
+                # Check for Mode vs Payload Mismatches
+                mode = self.config.devices[device_type].mode
+                if mode == "production" and payload_source == "flexible":
+                    logger.warning(
+                        f"[bold orange3]Protocol Mismatch:[/bold orange3] Production device '{device_type}' "
+                        f"sent via 'log_flexible'. Schema will be STRICTLY enforced.",
+                        extra={"markup": True}
+                    )
+
             # 2. Validation & Config Lookup
-            # We defer to the loaded TelemetryConfig for business logic
             try:
-                redis_key = self.config.get_redis_key(request.device_type, request.device_id)
-                validated_data = self.config.validate_and_flatten(request.device_type, raw_data)
-            except (ValueError, ValidationError) as e:
-                logger.error(f"Validation failed for [cyan]{device_type}[/] (ID: {device_id}): {e}",
-                             extra={"markup": True})
-                return telemetry_pb2.StatusResponse(success=False, message=str(e))
+                redis_key = self.config.get_redis_key(device_type, device_id)
+                validated_data = self.config.validate_and_flatten(device_type, raw_data)
+            except (ValueError, Exception) as e:
+                err_str = str(e)
+
+                # Make Pydantic errors human-readable
+                if "Field required" in err_str:
+                    friendly_msg = f"Missing Required Fields for '{device_type}'. {err_str}"
+                elif "Input should be" in err_str:
+                    friendly_msg = f"Invalid Data Types for '{device_type}'. {err_str}"
+                elif "Schema Violation" in err_str:
+                    friendly_msg = f"Strict Schema Violation for '{device_type}': {err_str}"
+                else:
+                    friendly_msg = f"Validation Error: {err_str}"
+
+                logger.error(f"[bold red]REJECTED:[/bold red] {friendly_msg} (ID: {device_id})", extra={"markup": True})
+                return telemetry_pb2.StatusResponse(success=False, message=friendly_msg)
 
             # 3. Add Timestamp (Server Receipt Time)
             validated_data['Computer_UTC'] = request.timestamp.ToDatetime().timestamp()
 
-            # 4. Write to Redis
+            # 4. Write to Redis (Async)
             # Cast all values to strings to ensure Redis compatibility
             redis_data = {k: str(v) for k, v in validated_data.items()}
 
-            # Use await directly (Redis-py 4.2+ supports async natively)
-            # If using synchronous redis, wrap in asyncio.to_thread
-            await self.redis.hset(redis_key, mapping=redis_data)
+            async with self.redis.pipeline() as pipe:
+                pipe.hset(redis_key, mapping=redis_data)
 
-            # Calculate duration for observability
+                # 5. LIFETIME MANAGEMENT
+                ttl = self.config.get_ttl(device_type)
+                if ttl > 0:
+                    pipe.expire(redis_key, ttl)
+                else:
+                    pipe.persist(redis_key)
+
+                await pipe.execute()
+
+            # Observability
             duration_ms = (time.perf_counter() - start_time) * 1000
 
-            # Log at DEBUG level to prevent flooding, but include perf metrics
+            # Debug Log (Silent unless verbose)
             logger.debug(
                 f"Stored [bold cyan]{device_type}[/] for [yellow]{device_id}[/] "
-                f"({payload_size} bytes) in {duration_ms:.2f}ms",
+                f"({payload_size}b) in {duration_ms:.2f}ms [dim](TTL: {ttl}s)[/]",
                 extra={"markup": True}
             )
 
@@ -153,14 +195,12 @@ async def serve(redis_host='localhost', redis_port=6379, grpc_port=50051, uds_pa
     telemetry_pb2_grpc.add_TelemetryServicer_to_server(servicer, server)
 
     # 3. Bind Ports (TCP and Optional UDS)
-    # Standard TCP Port
     server.add_insecure_port(f'[::]:{grpc_port}')
     logger.info(f"gRPC Server listening on TCP port [bold]{grpc_port}[/]")
 
-    # Unix Domain Socket (for local speed)
     if uds_path:
         if os.path.exists(uds_path):
-            os.unlink(uds_path)  # cleanup stale socket
+            os.unlink(uds_path)
         server.add_insecure_port(f'unix://{uds_path}')
         logger.info(f"gRPC Server listening on UDS [bold]{uds_path}[/]")
 
@@ -179,7 +219,6 @@ async def serve(redis_host='localhost', redis_port=6379, grpc_port=50051, uds_pa
     await server.start()
     logger.info("Server started. Press Ctrl+C to stop.")
 
-    # Wait until a signal is received
     await shutdown_event.wait()
 
     # 6. Shutdown Sequence
@@ -193,13 +232,10 @@ async def serve(redis_host='localhost', redis_port=6379, grpc_port=50051, uds_pa
 
 
 if __name__ == "__main__":
-    # Environment variables are a good way to configure dockerized apps
     REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
     GRPC_PORT = int(os.getenv("GRPC_PORT", 50051))
 
     try:
         asyncio.run(serve(redis_host=REDIS_HOST, grpc_port=GRPC_PORT))
     except KeyboardInterrupt:
-        # This catch is usually redundant due to signal handlers, 
-        # but good as a final fallback.
         pass
