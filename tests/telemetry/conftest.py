@@ -1,56 +1,105 @@
 import pytest
-import pytest_asyncio
 import redis
 import time
-import asyncio
-from influxdb import InfluxDBClient
-from panoseti_grpc.telemetry.server import serve
-from panoseti_grpc.telemetry.client import TelemetryClient
-import threading
 import os
+import multiprocessing
+import socket
+from influxdb import InfluxDBClient
+from panoseti_grpc.telemetry.client import TelemetryClient
+# We import the serve function, but we will run it in a wrapper
+from panoseti_grpc.telemetry.server import serve
 
 # Get Hosts from Env (set by Docker Compose)
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 INFLUX_HOST = os.getenv("INFLUX_HOST", "localhost")
+SERVER_PORT = 50051
+
 
 @pytest.fixture(scope="session")
 def redis_client():
     r = redis.Redis(host=REDIS_HOST, port=6379, decode_responses=True)
+    try:
+        r.ping()
+    except redis.ConnectionError:
+        pytest.fail(f"Could not connect to Redis at {REDIS_HOST}")
     yield r
     r.flushall()
+
 
 @pytest.fixture(scope="session")
 def influx_client():
     # Retry logic for InfluxDB startup
+    client = None
     for _ in range(10):
         try:
             client = InfluxDBClient(host=INFLUX_HOST, port=8086, username='root', password='root', database='metadata')
             client.create_database('metadata')
-            return client
-        except:
+            break
+        except Exception:
             time.sleep(1)
-    raise ConnectionError("Could not connect to InfluxDB")
+
+    if not client:
+        pytest.fail("Could not connect to InfluxDB")
+
+    return client
 
 
-@pytest_asyncio.fixture(scope="session")
-async def start_grpc_server():
-    task = asyncio.create_task(serve("telemetry_config.toml", redis_host=REDIS_HOST))
+# --- HELPER: Wrapper to run async server in a separate process ---
+def _run_server_process(config_path, redis_host, port):
+    """
+    This runs in a completely separate OS process.
+    It creates its OWN asyncio loop, separate from pytest.
+    """
+    import asyncio
+    # Run the server
+    asyncio.run(serve(config_path, redis_host=redis_host, port=port))
 
-    # Robust wait: Ping the port until it is open
-    import socket
+
+@pytest.fixture(scope="session")
+def start_grpc_server():
+    """
+    Starts the gRPC server in a separate multiprocessing.Process.
+    This prevents the server from blocking the test runner's event loop.
+    """
+    config_path = "telemetry_config.toml"
+
+    # 1. Start Server Process
+    proc = multiprocessing.Process(
+        target=_run_server_process,
+        args=(config_path, REDIS_HOST, SERVER_PORT),
+        daemon=True  # Ensures process dies if main test process dies
+    )
+    proc.start()
+
+    # 2. Wait for Port to Open (Health Check)
     start_time = time.time()
-    while True:
+    server_ready = False
+    while time.time() - start_time < 10:
+        if not proc.is_alive():
+            raise RuntimeError("gRPC Server process died immediately! Check config loading.")
+
         try:
-            with socket.create_connection(("localhost", 50051), timeout=0.1):
+            # Try to connect to the TCP port
+            with socket.create_connection(("localhost", SERVER_PORT), timeout=0.1):
+                server_ready = True
                 break
         except (OSError, ConnectionRefusedError):
-            if time.time() - start_time > 5:
-                raise TimeoutError("gRPC server failed to start within 5 seconds")
-            await asyncio.sleep(0.1)
+            time.sleep(0.1)
+
+    if not server_ready:
+        proc.terminate()
+        raise TimeoutError(f"gRPC server failed to bind port {SERVER_PORT} within 10 seconds")
 
     yield
-    task.cancel()
+
+    # 3. Cleanup
+    proc.terminate()
+    proc.join(timeout=2)
+    if proc.is_alive():
+        proc.kill()
+
 
 @pytest.fixture(scope="session")
 def grpc_client(start_grpc_server):
-    return TelemetryClient(host="localhost", port=50051)
+    # This client is strictly synchronous, which is easier for testing
+    return TelemetryClient(host="localhost", port=SERVER_PORT)

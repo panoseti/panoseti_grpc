@@ -2,6 +2,7 @@ import tomli
 from pydantic import BaseModel, Field, field_validator, ValidationError
 from typing import Dict, Type, Optional, Any
 from importlib import resources
+import os
 
 
 # --- 1. Pydantic Models ---
@@ -20,7 +21,7 @@ class DewModel(BaseModel):
     extra_data: Optional[Dict[str, Any]] = {}
 
 
-class TestModel(BaseModel):
+class PayloadTestModel(BaseModel):
     iteration: int
     value: float
     message: str
@@ -36,7 +37,7 @@ class TestModel(BaseModel):
 SCHEMA_MAP: Dict[str, Type[BaseModel]] = {
     "gnss": GnssModel,
     "dew": DewModel,
-    "test": TestModel,
+    "test": PayloadTestModel,
     "generic": dict
 }
 
@@ -54,12 +55,40 @@ class TelemetryConfig(BaseModel):
 
     @classmethod
     def load(cls, path="telemetry_config.toml"):
-        try:
-            with open(path, "r") as f:
-                return cls(**tomli.load(f))
-        except FileNotFoundError:
-            with resources.path("panoseti.telemetry", path) as f:
-                return cls(**tomli.load(f))
+        """
+        Loads configuration from a local file or falls back to package resources.
+        """
+        config_dict = None
+
+        # 1. Try Local File (Primary)
+        # We check existence explicitly to avoid race conditions with open()
+        if os.path.exists(path):
+            try:
+                with open(path, "rb") as f:
+                    config_dict = tomli.load(f)
+            except Exception as e:
+                print(f"Error reading local config '{path}': {e}")
+
+        # 2. Try Package Resource (Fallback)
+        if config_dict is None:
+            print(f"Config '{path}' not found locally, checking package resources...")
+            try:
+                # FIX: Correct package name 'panoseti_grpc.telemetry'
+                # resources.path is a context manager that yields a pathlib.Path
+                with resources.path("panoseti_grpc.telemetry", path) as p:
+                    if p.exists():
+                        with open(p, "rb") as f:
+                            config_dict = tomli.load(f)
+            except (ModuleNotFoundError, FileNotFoundError, TypeError) as e:
+                print(f"Package resource lookup failed: {e}")
+
+        # 3. Final Check
+        if config_dict is None:
+            raise FileNotFoundError(
+                f"Could not load '{path}' from local dir or package 'panoseti_grpc.telemetry'"
+            )
+
+        return cls(**config_dict)
 
     def get_redis_key(self, device_type: str, device_id: str) -> str:
         """Validates ID existence and returns formatted Redis Key."""

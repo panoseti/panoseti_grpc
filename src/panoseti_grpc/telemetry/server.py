@@ -13,17 +13,25 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
         self.config = TelemetryConfig.load(config_path)
         self.redis = redis_client
 
+    def _proto_to_dict(self, message):
+        """Helper to safely convert Proto to Dict for Pydantic."""
+        return MessageToDict(
+            message,
+            preserving_proto_field_name=True,
+            always_print_fields_with_no_presence=True
+        )
+
     async def ReportStatus(self, request, context):
         try:
             # 1. Determine Payload Source
             if request.HasField("gnss"):
-                raw_data = MessageToDict(request.gnss)
+                raw_data = self._proto_to_dict(request.gnss)
             elif request.HasField("dew"):
-                raw_data = MessageToDict(request.dew)
+                raw_data = self._proto_to_dict(request.dew)
             elif request.HasField("test"):
-                raw_data = MessageToDict(request.test)
+                raw_data = self._proto_to_dict(request.test)
             elif request.HasField("flexible"):
-                raw_data = MessageToDict(request.flexible)
+                raw_data = self._proto_to_dict(request.flexible)
             else:
                 return telemetry_pb2.StatusResponse(success=False, message="No payload provided")
 
@@ -32,22 +40,16 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
                 redis_key = self.config.get_redis_key(request.device_type, request.device_id)
                 validated_data = self.config.validate_and_flatten(request.device_type, raw_data)
             except (ValueError, ValidationError) as e:
-                # Differentiate user error from server error
                 return telemetry_pb2.StatusResponse(success=False, message=str(e))
 
             # 3. Add Timestamp
             validated_data['Computer_UTC'] = request.timestamp.ToDatetime().timestamp()
 
-            # 4. Redis Write (Ensure unambigous types for storeInfluxDB)
-            # We cast bools to int (0/1) or specific strings because standard Python
-            # bool stringification ("True") can be ambiguous if not handled perfectly.
-            redis_data = {}
-            for k, v in validated_data.items():
-                if isinstance(v, bool):
-                    redis_data[k] = 1 if v else 0
-                else:
-                    redis_data[k] = str(v)
+            # 4. Write to Redis
+            # Cast all values to strings for Redis
+            redis_data = {k: str(v) for k, v in validated_data.items()}
 
+            # Using asyncio.to_thread for the blocking Redis IO
             await asyncio.to_thread(self.redis.hset, redis_key, mapping=redis_data)
 
             return telemetry_pb2.StatusResponse(success=True)

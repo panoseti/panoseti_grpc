@@ -2,7 +2,7 @@ name: PANOSETI gRPC CI
 
 on:
   push:
-    branches: [ main, tests, dev, restructure]
+    branches: [ main, tests, dev, telemetry-service]
   pull_request:
     branches: [ main ]
 
@@ -94,4 +94,23 @@ jobs:
             --env RUN_REAL_DATA_TESTS=${RUN_REAL_DATA_TESTS} \
             panoseti-grpc-test-real-daq:latest \
             python3 -m pytest -s -v --maxfail=2 tests/daq_data_hashpipe/
+
+  telemetry-service-build-and-test:
+    name: Telemetry Service Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # We can leverage the existing cache setup by building the test runner image via buildx first,
+      # but for simplicity and reliability with multi-container setups,
+      # we will let Docker Compose handle the build.
+
+      - name: Run Telemetry Docker Compose Tests
+        run: |
+          cd tests/telemetry
+          # Run the compose stack.
+          # --abort-on-container-exit: stops Redis/Influx once pytest finishes
+          # --exit-code-from test_runner: fails the CI job if pytest fails
+          docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from test_runner
 

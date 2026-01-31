@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from panoseti_grpc.telemetry.config import TelemetryConfig, GnssModel, DewModel, TestModel
+from panoseti_grpc.telemetry.config import TelemetryConfig, GnssModel, DewModel, PayloadTestModel
 
 
 # 1. Test Key Generation & whitelist logic
@@ -75,10 +75,77 @@ def test_gnss_validation():
 # 5. Test Custom Validator (Uppercase Message)
 def test_custom_validator():
     # Valid
-    valid = TestModel(iteration=1, value=1.0, message="HELLO", active=True)
+    valid = PayloadTestModel(iteration=1, value=1.0, message="HELLO", active=True)
     assert valid.message == "HELLO"
 
     # Invalid (Lower case)
     with pytest.raises(ValidationError) as exc:
-        TestModel(iteration=1, value=1.0, message="hello", active=True)
+        PayloadTestModel(iteration=1, value=1.0, message="hello", active=True)
     assert "Message must be uppercase" in str(exc.value)
+
+
+# 6. Test Empty/Null Data Handling
+def test_partial_payload_filling():
+    # Pydantic models usually require all fields unless marked Optional
+    # Let's verify that missing fields raise errors
+    with pytest.raises(ValidationError) as exc:
+        GnssModel(lat=34.0, lon=-118.0)  # Missing 'satellites', 'fix_mode'
+    assert "satellites" in str(exc.value)
+
+
+# 7. Test Extra Fields Behavior
+def test_forbid_unknown_fields_in_strict_model():
+    # By default, Pydantic might ignore extra fields, but we want to ensure
+    # users aren't sending typos thinking they are being recorded.
+    # Note: If your Config doesn't set extra='forbid', this test confirms they are ignored/allowed.
+
+    data = {
+        "satellites": 5, "lat": 1.0, "lon": 1.0, "fix_mode": "2D",
+        "typo_field": "oops"  # This is NOT in 'extra_data'
+    }
+    model = GnssModel(**data)
+    # Check that 'typo_field' is NOT in the dumped model (unless extra='allow')
+    assert "typo_field" not in model.model_dump()
+
+
+# 8. Test Complex Nested 'extra_data' Flattening
+def test_deep_extra_data_flattening():
+    cfg = TelemetryConfig(devices={})
+
+    raw_data = {
+        "satellites": 5, "lat": 0, "lon": 0, "fix_mode": "2D",
+        "extra_data": {
+            "sensor_temp": 45.2,
+            "status_flags": {"error": False, "calibrated": True}  # Nested Dict!
+        }
+    }
+
+    # Run the flattening logic
+    flat = cfg.validate_and_flatten("gps", raw_data)
+
+    # Redis cannot store nested dicts in a Hash field.
+    # Depending on your implementation, this might stringify the dict.
+    assert "extra_status_flags" in flat
+    # Verify it became a string representation or remained a dict (which Redis client will stringify later)
+    assert isinstance(flat["extra_status_flags"], (dict, str))
+
+
+# 9. Test Type Coercion (Feature, not bug)
+def test_type_coercion():
+    # Pydantic attempts to cast types. sending string "5" for an int field should work.
+    data = {"iteration": "5", "value": "10.5", "message": "OK", "active": "true"}
+    model = PayloadTestModel(**data)
+    assert model.iteration == 5
+    assert model.value == 10.5
+    assert model.active is True
+
+
+# 10. Test Validator Logic on Edge Cases
+def test_gnss_edge_coordinates():
+    # Test strictly valid coordinates
+    assert GnssModel(satellites=0, lat=90.0, lon=180.0, fix_mode="0").lat == 90.0
+    assert GnssModel(satellites=0, lat=-90.0, lon=-180.0, fix_mode="0").lat == -90.0
+
+    # Test just out of bounds
+    with pytest.raises(ValidationError):
+        GnssModel(satellites=0, lat=90.00001, lon=0, fix_mode="0")

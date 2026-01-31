@@ -12,3 +12,8 @@ description = "Dew point sensors"
 type = "test"
 redis_prefix = "TEST_INTEGRATION_"
 description = "CI/CD Health checks"
+
+[devices.test_flex]
+type = "generic"
+redis_prefix = "TEST_FLEX_"
+description = "R&D Flexible Logging"

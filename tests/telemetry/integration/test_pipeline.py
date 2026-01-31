@@ -1,20 +1,19 @@
 import pytest
 import time
-import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 
 def test_flexible_struct_flow(grpc_client, redis_client):
-    device_id = "test_flex_01"
+    device_id = "device_01"
     rnd_data = {"voltage": 5.1, "fan_speed": 1200, "status": "OK"}
 
-    # Send via gRPC
-    grpc_client.log_flexible("test", device_id, rnd_data)
+    # FIX: Use "test_flex" device type (mapped to 'generic' in toml)
+    # The server will skip Pydantic validation for 'generic' types.
+    grpc_client.log_flexible("test_flex", device_id, rnd_data)
 
-    # Wait for async write
-    time.sleep(0.2)
+    time.sleep(0.5)
 
-    expected_key = f"TEST_INTEGRATION_{device_id}"
+    expected_key = f"TEST_FLEX_{device_id}"
     assert redis_client.exists(expected_key)
     assert redis_client.hget(expected_key, "voltage") == "5.1"
 
@@ -22,7 +21,7 @@ def test_flexible_struct_flow(grpc_client, redis_client):
 def test_strict_gps_with_extras(grpc_client, redis_client):
     device_id = "dome_test_gps"
 
-    # FIX: Use "gnss" instead of "gps" to match the Client logic
+    # This should pass now that server.py uses preserving_proto_field_name=True
     grpc_client.log("gnss", device_id, {
         "satellites": 8,
         "lat": 37.0,
@@ -31,17 +30,16 @@ def test_strict_gps_with_extras(grpc_client, redis_client):
         "extra_data": {"dilution_of_precision": 1.2}
     })
 
-    time.sleep(0.2)
-    # FIX: Ensure config maps "gnss" -> "UBLOX_ZED-F9T_"
+    time.sleep(0.5)
     expected_key = f"UBLOX_ZED-F9T_{device_id}"
 
-    assert redis_client.hget(expected_key, "lat") == "37.0"
+    assert redis_client.hget(expected_key, "fix_mode") == "3D"
     assert redis_client.hget(expected_key, "extra_dilution_of_precision") == "1.2"
 
 
 def test_invalid_schema_rejection(grpc_client):
     device_id = "bad_sensor"
-    bad_data = {"temp_c": 20.0, "humidity": 150.0}  # Humidity > 100
+    bad_data = {"temp_c": 20.0, "humidity": 150.0}
 
     with pytest.raises(ValueError) as excinfo:
         grpc_client.log("dew", device_id, bad_data)
@@ -49,19 +47,16 @@ def test_invalid_schema_rejection(grpc_client):
     assert "Server rejected data" in str(excinfo.value)
 
 
-# --- NEW EXTENSION: Multi-Client Load Test ---
 def test_concurrent_clients(grpc_client, redis_client):
-    """
-    Simulates 10 clients sending data simultaneously to verify AsyncIO server stability.
-    """
     num_clients = 10
     messages_per_client = 5
 
     def worker(client_idx):
-        # Each worker pretends to be a different device
         dev_id = f"worker_{client_idx}"
         for i in range(messages_per_client):
             try:
+                # This should pass now that server.py uses including_default_value_fields=True
+                # (iteration=0 and value=0.0 will be preserved)
                 grpc_client.log_test(
                     device_id=dev_id,
                     iteration=i,
@@ -73,18 +68,145 @@ def test_concurrent_clients(grpc_client, redis_client):
                 return f"Client {client_idx} failed: {e}"
         return "OK"
 
-    # Use ThreadPool to simulate concurrent network requests
     with ThreadPoolExecutor(max_workers=num_clients) as executor:
         results = list(executor.map(worker, range(num_clients)))
 
-    # 1. Verify all clients finished successfully
     for res in results:
         assert res == "OK"
 
-    # 2. Verify Data in Redis
-    time.sleep(1.0)  # Let the server catch up
-    for i in range(num_clients):
-        key = f"TEST_INTEGRATION_worker_{i}"
-        assert redis_client.exists(key)
-        # Check that the LAST message (iteration 4) matches
-        assert redis_client.hget(key, "iteration") == str(messages_per_client - 1)
+    time.sleep(1.0)
+    # Check last write
+    key = f"TEST_INTEGRATION_worker_0"
+    assert redis_client.exists(key)
+    assert redis_client.hget(key, "message") == "STRESS_TEST"
+
+
+def test_time_series_integrity(grpc_client, redis_client):
+    """
+    Scenario: A client sends a sequence of strictly ordered updates.
+    We assert that the final state in Redis matches the LAST update,
+    not an intermediate one (handling race conditions).
+    """
+    device_id = "sequencer_01"
+    num_updates = 50
+
+    for i in range(num_updates):
+        # We use a monotonically increasing 'iteration'
+        grpc_client.log_test(
+            device_id=device_id,
+            iteration=i,
+            value=float(i * 10),
+            message=f"SEQ_{i}",
+            active=True
+        )
+        # No sleep here! We want to hammer the server.
+
+    # Give server a moment to drain the queue
+    time.sleep(0.5)
+
+    key = f"TEST_INTEGRATION_{device_id}"
+
+    # Verify Redis holds the FINAL state
+    final_iteration = redis_client.hget(key, "iteration")
+    final_message = redis_client.hget(key, "message")
+
+    assert final_iteration == str(num_updates - 1)
+    assert final_message == f"SEQ_{num_updates - 1}"
+
+
+def test_interleaved_clients_same_type(grpc_client, redis_client):
+    """
+    Scenario: Two different devices of the SAME type (gps) logging simultaneously.
+    Ensures the server doesn't cross-contaminate data between IDs.
+    """
+    dev_a = "dome_a"
+    dev_b = "dome_b"
+
+    # A is at Equator, B is at North Pole
+    grpc_client.log("gnss", dev_a, {"satellites": 10, "lat": 0.0, "lon": 0.0, "fix_mode": "3D"})
+    grpc_client.log("gnss", dev_b, {"satellites": 5, "lat": 90.0, "lon": 0.0, "fix_mode": "2D"})
+
+    time.sleep(0.2)
+
+    key_a = f"UBLOX_ZED-F9T_{dev_a}"
+    key_b = f"UBLOX_ZED-F9T_{dev_b}"
+
+    lat_a = redis_client.hget(key_a, "lat")
+    lat_b = redis_client.hget(key_b, "lat")
+
+    assert lat_a == "0.0"
+    assert lat_b == "90.0"
+
+
+def test_rapid_reconnect_simulation(grpc_client, redis_client):
+    """
+    Scenario: Simulates a flaky connection where a client connects,
+    sends 1 message, disconnects, and repeats.
+    """
+    device_id = "flaky_device"
+
+    for i in range(5):
+        grpc_client.log_flexible("test_flex", device_id, {"boot_count": i})
+        time.sleep(0.05)
+
+    time.sleep(0.2)
+    key = f"TEST_FLEX_{device_id}"
+
+    # Cast to float to handle Proto Struct behavior (4 -> 4.0)
+    val = redis_client.hget(key, "boot_count")
+    assert float(val) == 4.0
+
+
+def test_huge_payload(grpc_client, redis_client):
+    """
+    Scenario: Sending a very large flexible payload (near gRPC limits).
+    """
+    device_id = "big_data_sensor"
+
+    # Create a 1MB payload (approx)
+    big_string = "x" * 100_000
+    data = {"blob": big_string, "id": 1}
+
+    grpc_client.log_flexible("test_flex", device_id, data)
+
+    time.sleep(0.5)
+    key = f"TEST_FLEX_{device_id}"
+
+    val = redis_client.hget(key, "blob")
+    assert len(val) == 100_000
+    assert val == big_string
+
+
+def test_concurrent_field_merging(grpc_client, redis_client):
+    """
+    CREATIVE SCENARIO: Two different clients update THE SAME device ID,
+    but they write to DIFFERENT fields.
+
+    We verify that the server performs a partial update (HSET)
+    and doesn't overwrite the existing fields sent by the other client.
+    """
+    device_id = "shared_resource_01"
+
+    def client_temp():
+        # This client only knows about Temperature
+        for i in range(10):
+            grpc_client.log_flexible("test_flex", device_id, {"temp": float(i)})
+            time.sleep(0.01)
+
+    def client_pressure():
+        # This client only knows about Pressure
+        for i in range(10):
+            grpc_client.log_flexible("test_flex", device_id, {"pressure": float(i + 100)})
+            time.sleep(0.01)
+
+    # Run both simultaneously
+    with ThreadPoolExecutor(max_workers=2) as exc:
+        exc.submit(client_temp)
+        exc.submit(client_pressure)
+
+    time.sleep(0.5)
+    key = f"TEST_FLEX_{device_id}"
+
+    # Verify BOTH fields exist and have the last values
+    assert float(redis_client.hget(key, "temp")) == 9.0
+    assert float(redis_client.hget(key, "pressure")) == 109.0

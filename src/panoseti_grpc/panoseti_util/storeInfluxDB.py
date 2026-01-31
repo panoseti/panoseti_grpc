@@ -16,7 +16,7 @@ import redis
 import time
 from datetime import datetime
 import re
-from utils import util, config_file
+from panoseti_grpc.panoseti_util import util, config_file
 from utils.redis_utils import *
 
 OBSERVATORY = config_file.get_obs_config()["name"]

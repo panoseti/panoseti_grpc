@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y gcc build-essential && rm -rf /var/lib/
 WORKDIR /app
 
 # Install test dependencies
-RUN pip install pytest pytest-asyncio influxdb redis
+RUN pip install pytest pytest-asyncio pytest-timeout influxdb redis
 
 # Copy relevant files for panoseti-grpc package
 COPY pyproject.toml LICENSE README.md /app/
@@ -30,6 +30,5 @@ COPY --from=builder /app/src /app/src
 # Copy Configs and Tests
 COPY src/panoseti_grpc/telemetry/telemetry_config.toml .
 COPY tests ./tests
-#COPY utils ./utils
 
 CMD ["python", "-m", "pytest", "-v", "tests/telemetry"]

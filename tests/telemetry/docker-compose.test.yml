@@ -24,4 +24,4 @@ services:
     depends_on:
       - redis
       - influxdb
-    command: ["pytest", "-v", "tests/telemetry/integration", "tests/telemetry/unit"]
+    command: ["pytest", "--timeout=20", "-v", "tests/telemetry/integration", "tests/telemetry/unit"]
