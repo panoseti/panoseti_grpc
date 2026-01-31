@@ -3,10 +3,10 @@ Common resources for the Telemetry service.
 Handles configuration loading, logging setup, and path management.
 """
 import logging
-import os
+#import os
 from pathlib import Path
 from rich.logging import RichHandler
-import importlib.resources as pkg_resources
+from importlib import resources
 
 # Define the package anchor for resource loading
 TELEMETRY_ANCHOR_PACKAGE = "panoseti_grpc.telemetry"
@@ -44,7 +44,7 @@ def get_config_path() -> Path:
     try:
         from importlib.resources import files
         pkg_path = files(TELEMETRY_ANCHOR_PACKAGE).joinpath(CONFIG_FILENAME)
-        with importlib.resources.as_file(pkg_path) as path:
+        with resources.as_file(pkg_path) as path:
             if path.exists():
                 return path
     except (ImportError, TypeError):
