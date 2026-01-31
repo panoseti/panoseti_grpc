@@ -2,8 +2,8 @@
 ![PyPI Version](https://img.shields.io/pypi/v/panoseti-grpc)
 # PANOSETI gRPC Services
 
-This repository contains the microservice architecture for the PANOSETI observatory. It provides gRPC interfaces for high-speed data acquisition, hardware control, and telemetry logging.
-Contains gRPC code for the PANOSETI project. See [here](https://github.com/panoseti/panoseti) for the main software repo.
+This repository contains the microservice architecture for the PANOSETI observatory. It provides gRPC interfaces for real-time data access, observatory control, and general telemetry logging.
+See [here](https://github.com/panoseti/panoseti) for the main software repo.
 
 ## Service Directory
 

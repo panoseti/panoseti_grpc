@@ -6,7 +6,7 @@ import multiprocessing
 import socket
 from influxdb import InfluxDBClient
 from panoseti_grpc.telemetry.client import TelemetryClient
-# We import the serve function, but we will run it in a wrapper
+# Import the serve function
 from panoseti_grpc.telemetry.server import serve
 
 # Get Hosts from Env (set by Docker Compose)
@@ -28,7 +28,6 @@ def redis_client():
 
 @pytest.fixture(scope="session")
 def influx_client():
-    # Retry logic for InfluxDB startup
     client = None
     for _ in range(10):
         try:
@@ -40,34 +39,28 @@ def influx_client():
 
     if not client:
         pytest.fail("Could not connect to InfluxDB")
-
     return client
 
 
-# --- HELPER: Wrapper to run async server in a separate process ---
-def _run_server_process(config_path, redis_host, port):
+def _run_server_process(redis_host, grpc_port):
     """
-    This runs in a completely separate OS process.
-    It creates its OWN asyncio loop, separate from pytest.
+    Runs the server in a separate process.
+    Updated to match the new server.py signature.
     """
     import asyncio
-    # Run the server
-    asyncio.run(serve(config_path, redis_host=redis_host, port=port))
+    asyncio.run(serve(redis_host=redis_host, grpc_port=grpc_port))
 
 
 @pytest.fixture(scope="session")
 def start_grpc_server():
     """
     Starts the gRPC server in a separate multiprocessing.Process.
-    This prevents the server from blocking the test runner's event loop.
     """
-    config_path = "telemetry_config.toml"
-
     # 1. Start Server Process
     proc = multiprocessing.Process(
         target=_run_server_process,
-        args=(config_path, REDIS_HOST, SERVER_PORT),
-        daemon=True  # Ensures process dies if main test process dies
+        args=(REDIS_HOST, SERVER_PORT),
+        daemon=True
     )
     proc.start()
 
@@ -76,10 +69,10 @@ def start_grpc_server():
     server_ready = False
     while time.time() - start_time < 10:
         if not proc.is_alive():
-            raise RuntimeError("gRPC Server process died immediately! Check config loading.")
+            # If it dies, it likely printed the error to stderr already
+            raise RuntimeError("gRPC Server process died immediately! Check container logs.")
 
         try:
-            # Try to connect to the TCP port
             with socket.create_connection(("localhost", SERVER_PORT), timeout=0.1):
                 server_ready = True
                 break
@@ -101,5 +94,4 @@ def start_grpc_server():
 
 @pytest.fixture(scope="session")
 def grpc_client(start_grpc_server):
-    # This client is strictly synchronous, which is easier for testing
     return TelemetryClient(host="localhost", port=SERVER_PORT)
