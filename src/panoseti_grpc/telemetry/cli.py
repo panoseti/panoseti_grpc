@@ -2,6 +2,7 @@
 import argparse
 import time
 import random
+import math
 import logging
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
@@ -25,58 +26,79 @@ def setup_logging(level_name):
     )
 
 
+def generate_waveforms(i):
+    """
+    Generates predictable waveforms for visualization.
+    i: current iteration count
+    """
+    # Sine Wave (Period = 100 ticks)
+    sine_val = 50 + 40 * math.sin(i * 0.0628)
+
+    # Square Wave (Period = 50 ticks)
+    square_val = 100 if (i % 50) < 25 else 0
+
+    # Sawtooth (Period = 100 ticks)
+    saw_val = i % 100
+
+    return sine_val, square_val, saw_val
+
+
 def generate_payload(payload_type, iteration):
     """
     Generates dummy data and selects the correct client method
     based on the Strict/Experimental policy.
     """
-    device_id = f"cli_device_{random.randint(1, 99):02d}"
+    # Use fixed device IDs so Grafana panels are stable
+    device_id_prod = "cli_prod_01"
+    device_id_flex = "cli_flex_01"
+
+    sine, square, saw = generate_waveforms(iteration)
 
     # --- PRODUCTION TYPES (Strict) ---
     if payload_type == "test":
         # Uses specific log_test method for CI
+        # Maps to 'metadata' DB
         return "log_test", {
-            "device_id": device_id,
+            "device_id": device_id_prod,
             "iteration": iteration,
-            "value": random.uniform(0, 100),
-            "message": "MSG_OK",  # Must be upper case per schema
+            "value": sine,  # Graph this!
+            "message": "MSG_OK",
             "active": True
         }
 
     elif payload_type == "gnss":
-        # Uses log_strict
         return "log_strict", {
             "device_type": "gnss",
-            "device_id": device_id,
+            "device_id": device_id_prod,
             "data": {
-                "satellites": random.randint(4, 12),
-                "lat": 37.3 + random.uniform(-0.1, 0.1),
-                "lon": -121.8 + random.uniform(-0.1, 0.1),
+                "satellites": int(8 + 4 * math.sin(iteration * 0.1)),
+                "lat": 37.338 + (0.001 * sine / 100),
+                "lon": -121.88 + (0.001 * square / 100),
                 "fix_mode": "3D",
-                "extra_data": {"hdop": 1.5}  # Extension field
+                "extra_data": {"hdop": 1.0 + (saw / 100)}
             }
         }
 
     elif payload_type == "dew":
-        # Uses log_strict
         return "log_strict", {
             "device_type": "dew",
-            "device_id": device_id,
+            "device_id": device_id_prod,
             "data": {
-                "temp_c": random.uniform(10, 30),
-                "humidity": random.uniform(20, 80)
+                "temp_c": 20 + (sine / 10),  # 20C +/- 4C
+                "humidity": 50 + (square / 4)  # 50% or 75%
             }
         }
 
     # --- EXPERIMENTAL TYPES (Flexible) ---
     elif payload_type == "flex":
         # Uses log_flexible (No validation, TTL enforced)
+        # Maps to 'dev_metadata' DB
         return "log_flexible", {
-            "device_type": "test_flex",  # Must match [devices.test_flex] in TOML
-            "device_id": device_id,
+            "device_type": "test_flex",
+            "device_id": device_id_flex,
             "data": {
-                "cpu_load": random.randint(10, 90),
-                "fan_rpm": random.randint(1000, 5000),
+                "cpu_load": saw,  # 0-100 Ramp
+                "fan_rpm": 2000 + (sine * 20),  # Varying RPM
                 "status": "nominal"
             }
         }
@@ -135,7 +157,6 @@ def run_sender(args):
                 except Exception as e:
                     fail_count += 1
                     status_symbol = "[red]✘[/]"
-                    # Don't crash the CLI, just log the error
                     logger.error(f"Failed to send message #{i}: {e}")
 
                 # Metrics Calculation
@@ -144,7 +165,6 @@ def run_sender(args):
                 total_latency_ms += latency_ms
                 min_latency = min(min_latency, latency_ms)
                 max_latency = max(max_latency, latency_ms)
-                avg_latency = total_latency_ms / (i + 1)
 
                 # Update Progress Bar
                 progress.update(
@@ -162,7 +182,6 @@ def run_sender(args):
     except Exception as e:
         console.print(f"[bold red]Fatal Error:[/bold red] {e}")
     finally:
-        # Print Summary Table
         print_summary(args, success_count, fail_count, min_latency, max_latency, total_latency_ms)
 
 
@@ -191,10 +210,10 @@ def main():
     parser = argparse.ArgumentParser(description="PANOSETI Telemetry CLI Data Generator")
     parser.add_argument("--host", default="localhost", help="gRPC Server Host")
     parser.add_argument("--port", type=int, default=50051, help="gRPC Server Port")
-    parser.add_argument("--type", choices=['test', 'gnss', 'dew', 'flex', 'mixed'], default='test',
+    parser.add_argument("--type", choices=['test', 'gnss', 'dew', 'flex', 'mixed'], default='mixed',
                         help="Type of payload to send. 'mixed' cycles through all.")
-    parser.add_argument("--count", type=int, default=10, help="Number of messages to send")
-    parser.add_argument("--delay", type=float, default=0.1, help="Delay between messages (seconds)")
+    parser.add_argument("--count", type=int, default=1000, help="Number of messages to send")
+    parser.add_argument("--delay", type=float, default=0.5, help="Delay between messages (seconds)")
     parser.add_argument("--log-level", default="info", choices=["debug", "info", "warning", "error"])
 
     args = parser.parse_args()
