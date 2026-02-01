@@ -42,6 +42,7 @@ message GnssPayload {
 message DewPayload {
   double temp_c = 1;
   double humidity = 2;
+  // Hook for future experimentation
   google.protobuf.Struct extra_data = 15;
 }
 
@@ -50,6 +51,8 @@ message TestPayload {
   double value = 2;
   string message = 3;
   bool active = 4;
+  // Hook for future experimentation
+  google.protobuf.Struct extra_data = 15;
 }
 
 message StatusResponse {

@@ -104,8 +104,8 @@ The following Python example demonstrates how to use an asynchronous client to c
 import asyncio
 import grpc
 import copy
-from ublox_control import ublox_control_pb2, ublox_control_pb2_grpc
-from ublox_control.resources import default_f9t_cfg  # Assumes a loaded config
+from panoseti_grpc.generated import ublox_control_pb2, ublox_control_pb2_grpc
+from panoseti_grpc.ublox_control.resources import default_f9t_cfg  # Assumes a loaded config
 from google.protobuf.json_format import ParseDict, MessageToDict
 from google.protobuf.struct_pb2 import Struct
 
@@ -120,7 +120,7 @@ async def main():
 
         # 1. Prepare the InitF9t request from the configuration file.
         # This example uses the first chip defined in the f9t_chips list.
-        chip_config = default_f9t_cfg['f9t_chips'][^2_0]
+        chip_config = default_f9t_cfg['f9t_chips']
         
         # Create a complete config for this specific chip
         f9t_config_for_rpc = copy.deepcopy(default_f9t_cfg)

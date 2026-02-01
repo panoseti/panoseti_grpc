@@ -34,7 +34,7 @@ from panoseti_grpc.telemetry.client import TelemetryClient
 client = TelemetryClient("localhost", 50051)
 
 # Upload metadata
-client.log_flexible("dev", "weather-01", {"status": "Online", "is-raining": True})
+client.log_flexible("example", "weather-01", {"status": "Online", "is-raining": True})
 ```
 
 ---

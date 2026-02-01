@@ -395,4 +395,5 @@ if __name__ == "__main__":
         stop_event = asyncio.Event()
         asyncio.run(serve(stop_event, in_main_thread=True))
     except KeyboardInterrupt:
+        # Allow clean exit on Ctrl+C without printing a stack trace.
         pass

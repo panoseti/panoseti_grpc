@@ -1,7 +1,9 @@
+"""
+Telemetry Service configuration classes for validation and
+"""
 import tomli
 from pydantic import BaseModel, Field, field_validator, ValidationError
 from typing import Dict, Type, Optional, Any
-from importlib import resources
 import os
 
 
@@ -13,13 +15,14 @@ class GnssModel(BaseModel):
     lon: float = Field(ge=-180, le=180)
     fix_mode: str
     # Core + Extensions Pattern: "extra_data" is the safe extension point
-    extra_data: Optional[Dict[str, Any]] = {}
+    # Use a default_factory (or default to None) to avoid cross-instance state leakage.
+    extra_data: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
 class DewModel(BaseModel):
     temp_c: float = Field(ge=-50, le=100)
     humidity: float = Field(ge=0, le=100)
-    extra_data: Optional[Dict[str, Any]] = {}
+    extra_data: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
 class PayloadTestModel(BaseModel):
@@ -27,6 +30,7 @@ class PayloadTestModel(BaseModel):
     value: float
     message: str
     active: bool
+    extra_data: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
     @field_validator('message')
     def must_be_uppercase(cls, v):
@@ -57,8 +61,7 @@ class DeviceConfig(BaseModel):
     @field_validator('redis_prefix')
     def validate_prefix(cls, v, info):
         # We need access to the 'mode' field to validate this rule.
-        # Pydantic v2 validation allows access to other fields via 'info' context if needed,
-        # but simple cross-field validation is often easier in the model_validator or by check logic.
+        # Pydantic v2 validation allows access to other fields via 'info' context if needed.
         # For simple robustness, we enforce the "DEV_" rule if mode is experimental.
         if 'mode' in info.data and info.data['mode'] == 'experimental':
             if not v.startswith("DEV_"):

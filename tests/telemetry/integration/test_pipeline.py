@@ -57,7 +57,7 @@ def test_invalid_schema_rejection(grpc_client):
     """
     Verifies that strict mode actually enforces schema.
     """
-    # Missing required field 'satellites'
+    # Invalid 'satellites' value: exceeds maximum allowed by schema
     invalid_data = {
         "satellites": 999,  # Invalid: must be <= 100
         "lat": 37.0,
