@@ -136,7 +136,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
                 return telemetry_pb2.StatusResponse(success=False, message=friendly_msg)
 
             # 3. Add Timestamp (Server Receipt Time)
-            validated_data['Computer_UTC'] = request.timestamp.ToDatetime().timestamp()
+            validated_data['Computer_UTC'] = time.time()
 
             # 4. Write to Redis (Async)
             # Cast all values to strings to ensure Redis compatibility
