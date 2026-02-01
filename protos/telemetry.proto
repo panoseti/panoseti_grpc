@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.grpc.panoseti.telemetry";
+option java_outer_classname = "TelemetryProto";
+option objc_class_prefix = "PANO_TLM";
+
+package panoseti.telemetry;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+service Telemetry {
+  rpc ReportStatus(StatusRequest) returns (StatusResponse) {}
+}
+
+message StatusRequest {
+  string device_type = 1; // e.g. "gnss", "dew", "test"
+  string device_id = 2;   // e.g. "dome_a"
+  google.protobuf.Timestamp timestamp = 3;
+
+  oneof payload {
+    // Mode A: Pure R&D (No schema validation)
+    google.protobuf.Struct flexible = 10;
+
+    // Mode B: Strict Production Types
+    GnssPayload gnss = 11;
+    DewPayload dew = 12;
+    TestPayload test = 13; // For CI/Healthchecks
+  }
+}
+
+message GnssPayload {
+  int32 satellites = 1;
+  double lat = 2;
+  double lon = 3;
+  string fix_mode = 4;
+  // Hook for future experimentation
+  google.protobuf.Struct extra_data = 15;
+}
+
+message DewPayload {
+  double temp_c = 1;
+  double humidity = 2;
+  // Hook for future experimentation
+  google.protobuf.Struct extra_data = 15;
+}
+
+message TestPayload {
+  int32 iteration = 1;
+  double value = 2;
+  string message = 3;
+  bool active = 4;
+  // Hook for future experimentation
+  google.protobuf.Struct extra_data = 15;
+}
+
+message StatusResponse {
+  bool success = 1;
+  string message = 2;
+}

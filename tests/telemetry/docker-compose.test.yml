@@ -1,0 +1,27 @@
+services:
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  influxdb:
+    image: influxdb:1.8
+    ports:
+      - "8086:8086"
+    environment:
+      - INFLUXDB_DB=metadata
+      - INFLUXDB_ADMIN_USER=root
+      - INFLUXDB_ADMIN_PASSWORD=root
+
+  test_runner:
+    build:
+      context: ../../
+      dockerfile: tests/telemetry/Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      - INFLUX_HOST=influxdb
+      - GRPC_PORT=50051
+    depends_on:
+      - redis
+      - influxdb
+    command: ["pytest", "--timeout=20", "-v", "tests/telemetry/integration", "tests/telemetry/unit"]
