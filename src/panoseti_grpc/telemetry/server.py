@@ -171,9 +171,12 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
             await context.abort(grpc.StatusCode.INTERNAL, str(e))
 
 
-async def serve(redis_host='localhost', redis_port=6379, grpc_port=50051, uds_path=None):
+async def serve(redis_host='localhost', redis_port=6379, grpc_port=50051, uds_path=None, config_path=None):
     """
     Main entry point for running the server.
+    Args:
+        config_path (str/Path): Explicit path to telemetry_config.toml.
+                                If None, falls back to library default.
     """
     # 1. Setup Redis (Async)
     import redis.asyncio as redis
@@ -189,8 +192,18 @@ async def serve(redis_host='localhost', redis_port=6379, grpc_port=50051, uds_pa
 
     # 2. Setup gRPC Server
     server = grpc.aio.server()
-    config_file = get_config_path()
-    servicer = TelemetryServicer(config_file, r)
+
+    # LOGIC CHANGE: specific path takes precedence over internal default
+    if config_path:
+        final_config_path = Path(config_path)
+        if not final_config_path.exists():
+            logger.warning(f"Provided config {final_config_path} not found. Falling back to default.")
+            final_config_path = get_config_path()  # Internal fallback
+    else:
+        final_config_path = get_config_path()  # Internal fallback
+
+    # Inject the path into the Servicer
+    servicer = TelemetryServicer(final_config_path, r)
 
     telemetry_pb2_grpc.add_TelemetryServicer_to_server(servicer, server)
 

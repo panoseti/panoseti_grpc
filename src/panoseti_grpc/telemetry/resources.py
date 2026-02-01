@@ -30,22 +30,24 @@ def make_rich_logger(name: str = "telemetry", level: int = logging.INFO) -> logg
 
 def get_config_path() -> Path:
     """
-    Robustly finds telemetry_config.toml.
+    Resolves the telemetry config path.
     Priority:
-    1. PROD: Explicit env var 'TELEMETRY_CONFIG_PATH'
-    2. DEV: The file inside the installed package (works with pip install -e .)
+    1. Env Var TELEMETRY_CONFIG_PATH (set by the ops daemon wrapper in the panoseti/panoseti repo)
+    2. Package Resource (default fallback)
     """
-    # 1. Check Env Var (Best for Production/Docker)
+    # 1. Check for Ops Override
     env_path = os.getenv("TELEMETRY_CONFIG_PATH")
     if env_path:
-        return Path(env_path)
+        p = Path(env_path)
+        if p.exists():
+            return p
+        print(f"Warning: Env var TELEMETRY_CONFIG_PATH={env_path} not found.")
 
-    # 2. Check Package Location (Best for pip install -e .)
-    # This finds where 'panoseti_grpc.telemetry' actually lives on disk.
+    # 2. Fallback to package default
     try:
+        # For Python 3.9+
         with resources.path("panoseti_grpc.telemetry", "telemetry_config.toml") as p:
             return p
     except (ImportError, FileNotFoundError):
-        # Fallback for older python or weird contexts
-        # Assumes this file (resources.py) is in the same dir as the toml
+        # Fallback for editable installs or older python
         return Path(__file__).parent / "telemetry_config.toml"
