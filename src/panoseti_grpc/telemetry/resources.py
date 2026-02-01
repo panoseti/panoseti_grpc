@@ -3,7 +3,7 @@ Common resources for the Telemetry service.
 Handles configuration loading, logging setup, and path management.
 """
 import logging
-#import os
+import os
 from pathlib import Path
 from rich.logging import RichHandler
 from importlib import resources
@@ -30,26 +30,22 @@ def make_rich_logger(name: str = "telemetry", level: int = logging.INFO) -> logg
 
 def get_config_path() -> Path:
     """
-    Locates the telemetry_config.toml file.
-    Prioritizes a local file for dev, falls back to installed package resource.
+    Robustly finds telemetry_config.toml.
+    Priority:
+    1. PROD: Explicit env var 'TELEMETRY_CONFIG_PATH'
+    2. DEV: The file inside the installed package (works with pip install -e .)
     """
-    # 1. Check local directory (Development mode)
-    local_path = Path(CONFIG_FILENAME)
-    if local_path.exists():
-        return local_path.resolve()
+    # 1. Check Env Var (Best for Production/Docker)
+    env_path = os.getenv("TELEMETRY_CONFIG_PATH")
+    if env_path:
+        return Path(env_path)
 
-    # 2. Check within the installed package (Production/Installed mode)
-    # Note: Accessing resources varies slightly by Python version;
-    # using importlib.resources.files (Python 3.9+)
+    # 2. Check Package Location (Best for pip install -e .)
+    # This finds where 'panoseti_grpc.telemetry' actually lives on disk.
     try:
-        from importlib.resources import files
-        pkg_path = files(TELEMETRY_ANCHOR_PACKAGE).joinpath(CONFIG_FILENAME)
-        with resources.as_file(pkg_path) as path:
-            if path.exists():
-                return path
-    except (ImportError, TypeError):
-        # Fallback for older python or if file not found in package
-        pass
-
-    # 3. Fallback to default/example path if needed
-    return Path(f"/app/{CONFIG_FILENAME}")
+        with resources.path("panoseti_grpc.telemetry", "telemetry_config.toml") as p:
+            return p
+    except (ImportError, FileNotFoundError):
+        # Fallback for older python or weird contexts
+        # Assumes this file (resources.py) is in the same dir as the toml
+        return Path(__file__).parent / "telemetry_config.toml"

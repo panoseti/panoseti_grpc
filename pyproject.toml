@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "panoseti-grpc"
-version = "0.2.11"
+version = "0.2.12"
 description = "gRPC for the PANOSETI project."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -35,7 +35,7 @@ dependencies = [
     "cython",
     "wheel",
     "rich",
-    "redis",
+    "redis>=7",
     "snakeviz",
     "json5",
     "pyserial",
