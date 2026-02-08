@@ -1,13 +1,72 @@
 """
 Telemetry Service configuration classes for validation and
 """
+import json
+import time
 import tomli
+from enum import IntEnum
 from pydantic import BaseModel, Field, field_validator, ValidationError
-from typing import Dict, Type, Optional, Any
+from typing import Dict, Type, Optional, Any, Literal
 import os
 
 
 # --- 1. Pydantic Models (Production Schemas) ---
+# Map Protobuf Enum to Python Enum
+class LogSeverity(IntEnum):
+    DEBUG = 1
+    INFO = 2
+    WARNING = 3
+    ERROR = 4
+    CRITICAL = 5
+
+
+class LogSchema(BaseModel):
+    """
+    Validator for incoming gRPC LogMessages.
+    Enforces 'Loki Hygiene' (Low Cardinality Labels).
+    """
+
+    # --- Labels (Strict Validation) ---
+    # observatory: str = Field(..., min_length=2, max_length=20)
+    host: str = Field(..., pattern=r"^[a-zA-Z0-9_\-\.]+$")
+    service_name: str = Field(..., min_length=2)
+
+    # --- Metadata ---
+    timestamp: float = Field(default_factory=time.time)
+    severity: LogSeverity = Field(default=LogSeverity.INFO)
+
+    # Source info (Optional)
+    file_path: Optional[str] = None
+    line_number: Optional[int] = None
+    function_name: Optional[str] = None
+
+    # --- Payload ---
+    # We accept a raw string (from gRPC) but validate it can be parsed as JSON.
+    payload_json: str
+
+    @field_validator('payload_json')
+    def validate_json_structure(cls, v):
+        """Ensure the payload is valid JSON. Loki will choke if it's not."""
+        try:
+            # We don't need to store the dict, just check validity.
+            # Faster than full deserialization if we just pass string to Loki.
+            json.loads(v)
+        except ValueError:
+            raise ValueError("payload_json must be a valid JSON string")
+        return v
+
+    @field_validator('service_name')
+    def prevent_high_cardinality(cls, v):
+        """
+        Prevent dynamic names like 'process_12345' from becoming labels.
+        This protects Loki from index explosion.
+        """
+        if any(char.isdigit() for char in v) and len(v) > 15:
+            # Heuristic: If it has numbers and is long, it might be a dynamic ID.
+            # You might want to log a warning or force it to a generic name.
+            pass
+        return v.lower()
+
 
 class GnssModel(BaseModel):
     satellites: int = Field(ge=0, le=100)

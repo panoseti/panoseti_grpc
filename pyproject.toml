@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "panoseti-grpc"
-version = "0.3.0"
+version = "0.3.1"
 description = "gRPC for the PANOSETI project."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -48,8 +48,9 @@ dependencies = [
     "watchfiles",
     "aiofiles",
     "pygnssutils",
-    "pydantic",
-    "tomli"
+    "pydantic>=2.12",
+    "tomli",
+    "requests"
 ]
 
 [project.optional-dependencies]

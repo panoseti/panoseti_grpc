@@ -21,12 +21,11 @@ from panoseti_grpc.generated import telemetry_pb2, telemetry_pb2_grpc
 from google.protobuf.json_format import MessageToDict
 
 # Local Imports
-from .config import TelemetryConfig
+from .config import TelemetryConfig, LogSchema
 from .resources import make_rich_logger, get_config_path
 
 # Create the main logger
 logger = make_rich_logger("telemetry_server")
-
 
 class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
     """
@@ -62,6 +61,44 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
             preserving_proto_field_name=True,
             always_print_fields_with_no_presence=True
         )
+
+    def Log(self, request, context):
+        """
+        Handles incoming LogMessages.
+        Validates schema and pushes to Redis List (Queue).
+        """
+        try:
+            # 1. Validate against Pydantic Schema (Hygiene check)
+            # We construct a dict from the gRPC message
+            log_data = {
+                "host": request.host,
+                "service_name": request.service_name,
+                "timestamp": request.timestamp.ToSeconds(),
+                "severity": request.severity,  # IntEnum mapping handled in config.py
+                "file_path": request.file_path,
+                "line_number": request.line_number,
+                "function_name": request.function_name,
+                "payload_json": request.payload_json
+            }
+
+            # This raises ValidationError if data is malformed
+            validated_log = LogSchema(**log_data)
+
+            # 2. Serialize for Redis
+            # We store it as a JSON string in the Redis List
+            redis_payload = validated_log.model_dump_json()
+
+            # 3. Push to Queue (Non-blocking I/O)
+            # We use the config-defined key, defaulting to 'logs:ingress'
+            queue_key = getattr(self.config, "logging", {}).get("redis_queue_key", "logs:ingress")
+            self.redis.rpush(queue_key, redis_payload)
+
+            return telemetry_pb2.LogResponse(success=True, message="Log Queued")
+
+        except Exception as e:
+            logger.error(f"Log Ingest Failed: {e}")
+            return telemetry_pb2.LogResponse(success=False, message=str(e))
+
 
     async def ReportStatus(self, request, context):
         start_time = time.perf_counter()

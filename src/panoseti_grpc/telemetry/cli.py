@@ -2,6 +2,7 @@
 import argparse
 import time
 import random
+import numpy as np
 import math
 import logging
 from rich.console import Console
@@ -9,7 +10,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRe
 from rich.logging import RichHandler
 from rich.table import Table
 
-from panoseti_grpc.telemetry.client import TelemetryClient
+from panoseti_grpc.telemetry.client import TelemetryClient, make_grpc_logger
 
 # Setup Rich Console
 console = Console()
@@ -106,13 +107,40 @@ def generate_payload(payload_type, iteration):
     return None, {}
 
 
+def generate_logs(logger_instance, count, delay):
+    """Generates random logs to test the pipeline."""
+    levels = [
+        (logging.DEBUG, "Debugging variable x=%s"),
+        (logging.INFO, "System state nominal. Cycle %s"),
+        (logging.WARNING, "High latency detected on sensor %s"),
+        (logging.ERROR, "Connection timeout to device %s"),
+        (logging.CRITICAL, "CORE MELTDOWN IMMINENT! Sequence %s")
+    ]
+
+    with Progress(
+            SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
+            BarColumn(), TimeRemainingColumn()
+    ) as progress:
+        task = progress.add_task("[cyan]Sending Logs...", total=count)
+
+        for i in range(count):
+            lvl, msg_template = random.choice(levels)
+            val = random.randint(1, 100)
+
+            # This triggers AsyncGrpcHandler -> Server -> Redis -> StoreLoki -> Loki
+            logger_instance.log(lvl, msg_template, val)
+
+            progress.advance(task)
+            time.sleep(delay)
+
+
 def run_sender(args):
     client = TelemetryClient(host=args.host, port=args.port)
     console.print(f"[bold green]Connected to Telemetry Server at {args.host}:{args.port}[/]")
 
     types_to_send = []
     if args.type == 'mixed':
-        types_to_send = ['test', 'gnss', 'dew', 'flex']
+        types_to_send = ['test', 'gnss', 'dew', 'flex', 'log']
     else:
         types_to_send = [args.type]
 
@@ -210,13 +238,21 @@ def main():
     parser = argparse.ArgumentParser(description="PANOSETI Telemetry CLI Data Generator")
     parser.add_argument("--host", default="localhost", help="gRPC Server Host")
     parser.add_argument("--port", type=int, default=50051, help="gRPC Server Port")
-    parser.add_argument("--type", choices=['test', 'gnss', 'dew', 'flex', 'mixed'], default='mixed',
-                        help="Type of payload to send. 'mixed' cycles through all.")
+    parser.add_argument("--type", choices=['test', 'gnss', 'dew', 'flex', 'mixed', 'log'],
+                        default='mixed', help="Type of payload to send.")
     parser.add_argument("--count", type=int, default=1000, help="Number of messages to send")
     parser.add_argument("--delay", type=float, default=0.5, help="Delay between messages (seconds)")
     parser.add_argument("--log-level", default="info", choices=["debug", "info", "warning", "error"])
 
     args = parser.parse_args()
+
+    if args.type == 'log':
+        # Create a specific logger hooked to gRPC
+        # We assume the CLI is running on a 'client' machine talking to 'host'
+        grpc_logger = make_grpc_logger("CLI_TESTER", headnode_ip=args.host, grpc_port=args.port)
+        generate_logs(grpc_logger, args.count, args.delay)
+        return
+
     setup_logging(args.log_level)
     run_sender(args)
 

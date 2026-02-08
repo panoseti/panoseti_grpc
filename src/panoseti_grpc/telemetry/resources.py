@@ -21,7 +21,7 @@ def make_rich_logger(name: str = "telemetry", level: int = logging.INFO) -> logg
         level=level,
         format="%(message)s",
         datefmt="[%X]",
-        handlers=[RichHandler(rich_tracebacks=True, markup=True)]
+        handlers=[RichHandler(rich_tracebacks=True, markup=False)]
     )
     logger = logging.getLogger(name)
     logger.setLevel(level)

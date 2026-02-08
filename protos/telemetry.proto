@@ -11,8 +11,48 @@ import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
 service Telemetry {
+  rpc Log (LogMessage) returns (StatusResponse) {}
   rpc ReportStatus(StatusRequest) returns (StatusResponse) {}
 }
+
+message LogMessage {
+  // --- INDEXING FIELDS (Loki Labels) ---
+  // These MUST be low cardinality (e.g., < 100 unique values).
+  // Used for routing and fast lookups: {service="gnss"}
+  string host = 1;          // e.g., "node_04"
+  string service_name = 2;  // e.g., "capture_gnss", "temp_sensor"
+
+  // --- METADATA (Searchable but not Indexed) ---
+  google.protobuf.Timestamp timestamp = 3;     // Unix Epoch seconds (Python time.time())
+  Severity severity = 4;    // Standardized level
+
+  // Code location (Optional, but incredibly useful for debugging)
+  string file_path = 5;
+  uint32 line_number = 6;
+  string function_name = 7;
+
+  // --- THE PAYLOAD (Loki Content) ---
+  // A serialized JSON object.
+  // Example: '{"temp": 45.2, "status": "OK", "array": [1, 2]}'
+  // The Receiver (storeLoki.py) will not parse this; it just writes it as text.
+  // Loki will parse this at query time using the "| json" operator.
+  string payload_json = 8;
+}
+
+message LogResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  DEBUG = 1;
+  INFO = 2;
+  WARNING = 3;
+  ERROR = 4;
+  CRITICAL = 5;
+}
+
 
 message StatusRequest {
   string device_type = 1; // e.g. "gnss", "dew", "test"
