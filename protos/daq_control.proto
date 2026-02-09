@@ -1,0 +1,52 @@
+syntax = "proto3";
+package panoseti.daq_control;
+
+service DaqControl {
+    /* start daq: start hashpipe on daq nodes */
+    rpc StartDaq (StartDaqRequest) returns (StartDaqResponse) {}
+    /* stop daq: stop hashpipe on daq nodes */
+    rpc StopDaq (StopDaqRequest) returns (StopDaqResponse) {}
+    /* status daq: get status data from daq nodes */
+    rpc StatusDaq (StatusDaqRequest) returns (StatusResponse) {}
+}
+
+/* start daq request and response */
+message StartDaqRequest {
+    string  root_dir = 1;
+    string  daq_ip_addr = 2;
+    string  bindhost = 3;
+    uint32  max_file_size_mb = 4;
+    bool    group_ph_frames = 5;
+    string  run_dir = 6;
+    string  obs = 7;
+    /* each daq node may support more that one telescopes */
+    repeated uint32  module_id = 8 [packed=true];
+}
+
+message StartDaqResponse {
+    bool    status = 1;
+}
+
+/* stop daq request and response. */
+message StopDaqRequest {
+    string  root_dir = 1;
+    string  run_dir = 2;
+}
+
+message StopDaqResponse {
+    bool    status = 1;
+}
+
+/* status daq request and response. */
+message StatusDaqRequest {
+    string  root_dir = 1;
+    bool    check_hashpipe_running = 2;
+    bool    check_disk_usage = 3;
+}
+
+message StatusResponse {
+    bool    hashpipe_running = 1;
+    uint64  total_disk_space = 2;
+    uint64  used_disk_space = 3;
+    uint64  free_disk_space = 4;
+}
