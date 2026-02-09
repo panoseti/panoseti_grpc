@@ -13,6 +13,8 @@ service DaqControl {
 /* start daq request and response */
 message StartDaqRequest {
     string  root_dir = 1;
+    /* daq_ip_addr is not necessary */
+    /* we just want it to be compatiable with the old code */
     string  daq_ip_addr = 2;
     string  bindhost = 3;
     uint32  max_file_size_mb = 4;

@@ -1,0 +1,13 @@
+{
+    "root_dir": "/mnt/panoseti",
+    "daq_ip_addr": "192.168.0.228",
+    "bindhost": "enp171s0",
+    "max_file_size_mb": 10,
+    "group_ph_frames": true,
+    "run_dir": "test",
+    "obs": "ucb-lab",
+    "module_id": [
+        250,
+        251
+    ]
+}

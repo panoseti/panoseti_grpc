@@ -1,0 +1,5 @@
+{
+    "root_dir": "/mnt/panoseti",
+    "check_hashpipe_running": true,
+    "check_disk_usage": true
+}
