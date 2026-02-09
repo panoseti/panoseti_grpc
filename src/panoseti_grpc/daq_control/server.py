@@ -180,8 +180,6 @@ async def serve(grpc_port, level):
     await server.stop(5)
 
     logger.info("Cleaning up servicer resources...")
-    await servicer.shutdown()
-
     logger.info("Goodbye.")
     
 if __name__ == "__main__":
