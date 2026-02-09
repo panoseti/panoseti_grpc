@@ -9,6 +9,10 @@ services:
     ports:
       - "3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      # Mount our custom config over the default one
+      - ./loki-config.yaml:/etc/loki/local-config.yaml
+      - ./loki-data:/loki
     networks:
       - panoseti-net
 
@@ -30,6 +34,6 @@ services:
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     volumes:
       # Mount your provisioning files here if you have them
-      - ./grafana_provisioning:/Users/nico/panoseti/panoseti_grafana/grafana_provisioning/
+      - /Users/nico/panoseti/panoseti_grafana/grafana_provisioning/:/etc/grafana/provisioning
     networks:
       - panoseti-net

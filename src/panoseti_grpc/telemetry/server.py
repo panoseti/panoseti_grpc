@@ -62,7 +62,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
             always_print_fields_with_no_presence=True
         )
 
-    def Log(self, request, context):
+    async def Log(self, request, context):
         """
         Handles incoming LogMessages.
         Validates schema and pushes to Redis List (Queue).
@@ -91,7 +91,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
             # 3. Push to Queue (Non-blocking I/O)
             # We use the config-defined key, defaulting to 'logs:ingress'
             queue_key = getattr(self.config, "logging", {}).get("redis_queue_key", "logs:ingress")
-            self.redis.rpush(queue_key, redis_payload)
+            await self.redis.rpush(queue_key, redis_payload)
 
             return telemetry_pb2.LogResponse(success=True, message="Log Queued")
 
@@ -208,7 +208,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
             await context.abort(grpc.StatusCode.INTERNAL, str(e))
 
 
-async def serve(redis_host='localhost', redis_port=6379, grpc_port=50051, uds_path=None, config_path=None):
+async def serve(redis_host='localhost', redis_port=6379, port=50051, uds_path=None, config_path=None):
     """
     Main entry point for running the server.
     Args:
@@ -245,8 +245,8 @@ async def serve(redis_host='localhost', redis_port=6379, grpc_port=50051, uds_pa
     telemetry_pb2_grpc.add_TelemetryServicer_to_server(servicer, server)
 
     # 3. Bind Ports (TCP and Optional UDS)
-    server.add_insecure_port(f'[::]:{grpc_port}')
-    logger.info(f"gRPC Server listening on TCP port [bold]{grpc_port}[/]")
+    server.add_insecure_port(f'[::]:{port}')
+    logger.info(f"gRPC Server listening on TCP port [bold]{port}[/]")
 
     if uds_path:
         if os.path.exists(uds_path):
@@ -286,6 +286,6 @@ if __name__ == "__main__":
     GRPC_PORT = int(os.getenv("GRPC_PORT", 50051))
 
     try:
-        asyncio.run(serve(redis_host=REDIS_HOST, grpc_port=GRPC_PORT))
+        asyncio.run(serve(redis_host=REDIS_HOST, port=GRPC_PORT))
     except KeyboardInterrupt:
         pass

@@ -249,7 +249,7 @@ def main():
     if args.type == 'log':
         # Create a specific logger hooked to gRPC
         # We assume the CLI is running on a 'client' machine talking to 'host'
-        grpc_logger = make_grpc_logger("CLI_TESTER", headnode_ip=args.host, grpc_port=args.port)
+        grpc_logger = make_grpc_logger("CLI_TESTER")
         generate_logs(grpc_logger, args.count, args.delay)
         return
 

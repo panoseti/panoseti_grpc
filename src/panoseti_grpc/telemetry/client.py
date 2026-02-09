@@ -3,6 +3,7 @@ import json
 import logging
 import queue
 import threading
+import socket
 from queue import Queue, Full
 from rich.logging import RichHandler
 import traceback
@@ -14,7 +15,7 @@ from google.protobuf.json_format import ParseDict
 from panoseti_grpc.generated import telemetry_pb2, telemetry_pb2_grpc
 
 # Default to "headnode" (Hosts file or DNS name)
-DEFAULT_HEADNODE = "headnode.local"
+DEFAULT_HEADNODE = "localhost"
 DEFAULT_GRPC_PORT = 50051
 
 class TelemetryClient:
@@ -23,9 +24,9 @@ class TelemetryClient:
     Supports both Strict (Production) and Flexible (Experimental) logging.
     """
 
-    def __init__(self, host=None, grpc_port=None):
+    def __init__(self, host=None, port=None):
         self.host = host or os.getenv("HEADNODE_IP", DEFAULT_HEADNODE)
-        self.grpc_port = grpc_port or int(os.getenv("HEADNODE_GRPC_PORT", DEFAULT_GRPC_PORT))
+        self.grpc_port = port or int(os.getenv("HEADNODE_GRPC_PORT", DEFAULT_GRPC_PORT))
 
         self.channel = grpc.insecure_channel(f'{self.host}:{self.grpc_port}')
         self.stub = telemetry_pb2_grpc.TelemetryStub(self.channel)
@@ -128,7 +129,7 @@ class TelemetryClient:
             ts.GetCurrentTime()
 
         req = telemetry_pb2.LogMessage(
-            host=self.host,  # Client host, usually localhost or container ID
+            host=socket.gethostname(),  # Client host, usually localhost or container ID
             service_name=service,
             timestamp=ts,
             severity=severity,
@@ -187,7 +188,6 @@ class AsyncGrpcHandler(logging.Handler):
             try:
                 payload = self.queue.get(timeout=0.5)
 
-                # --- NEW: JSON SERIALIZATION ---
                 # The Server expects 'payload_json' to be a valid JSON string.
                 # We wrap the message in a JSON string.
                 if isinstance(payload['msg'], (dict, list)):
@@ -215,25 +215,42 @@ class AsyncGrpcHandler(logging.Handler):
                 print(f"Log Worker Error: {e}")
 
 def make_grpc_logger(
-        name: str,
-        headnode_ip: str = None,
-        grpc_port: int = None,
+        service_name: str,
+        grpc_client: TelemetryClient = None,
         queue_size: int = 1000,
         level: int = logging.INFO,
 ) -> logging.Logger:
     """
-    Creates a configured logger using RichHandler and gRPC for log aggregation.
+    Configures the root logger to send data to:
+    1. The Console (Rich pretty print)
+    2. The Telemetry Service (Async gRPC)
+
+    Important: define the following environment variables to enable this logger to auto create the grpc connection.
+        - HEADNODE_IP
+        - HEADNODE_GRPC_PORT
+
+    Usage:
+        import logging
+        from client import setup_panoseti_logging
+
+        logger = setup_panoseti_logging("Quabo_Control")
+        logger.info("System Ready")
     """
-    grpc_client = TelemetryClient(headnode_ip, grpc_port)
-    logging.basicConfig(
-        level=level,
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=[
-            RichHandler(rich_tracebacks=True, markup=True),
-            AsyncGrpcHandler(grpc_client, service_name=name, queue_size=queue_size),
-        ]
-    )
-    logger = logging.getLogger(name)
+    if grpc_client is None:
+        grpc_client = TelemetryClient()
+
+    logger = logging.getLogger(service_name)
     logger.setLevel(level)
+
+    # Remove existing handlers to avoid duplicates (e.g. during tests)
+    logger.handlers = []
+
+    # 1. Console Handler
+    console = RichHandler(rich_tracebacks=True, markup=True)
+    logger.addHandler(console)
+
+    # 2. gRPC Handler
+    grpc_handler = AsyncGrpcHandler(grpc_client, service_name, queue_size)
+    logger.addHandler(grpc_handler)
+
     return logger

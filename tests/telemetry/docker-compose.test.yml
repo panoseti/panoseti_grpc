@@ -13,6 +13,14 @@ services:
       - INFLUXDB_ADMIN_USER=root
       - INFLUXDB_ADMIN_PASSWORD=root
 
+  # NEW: Add Loki for integration tests
+  loki:
+    image: grafana/loki:2.9.0
+    ports:
+      - "3100:3100"
+    # Mount config if necessary, or use defaults for testing
+    command: -config.file=/etc/loki/local-config.yaml
+
   test_runner:
     build:
       context: ../../
@@ -20,8 +28,13 @@ services:
     environment:
       - REDIS_HOST=redis
       - INFLUX_HOST=influxdb
+      - LOKI_URL=http://loki:3100
       - GRPC_PORT=50051
+      # Ensure client connects to the separate process started by conftest
+      - HEADNODE_IP=localhost
     depends_on:
       - redis
       - influxdb
+      - loki
+    # Run integration first, then unit
     command: ["pytest", "--timeout=20", "-v", "tests/telemetry/integration", "tests/telemetry/unit"]
