@@ -23,7 +23,7 @@ def setup_logging(level_name):
 
 def load_config(configfn):
     with open(configfn, 'r') as f:
-        return json.laod(f)
+        return json.load(f)
 
 def human(n):
     for unit in ["B", "KB", "MB", "GB", "TB"]:

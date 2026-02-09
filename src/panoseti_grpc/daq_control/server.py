@@ -112,9 +112,11 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             return daq_control_pb2.StopDaqResponse(status=True)
     
     async def StatusDaq(self, request, context):
+        self.logger.info('Checking Daq Node status...')
         self.rootdir = request.rootdir
         # check hashpipe status
         if request.check_hashpipe_running:
+            self.logger.debug('Checking HASHPIPE status...')
             if self.hashpipe_pid == -1:
                 hashpipe_running = False
             else:
@@ -123,6 +125,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             hashpipe_status = False
         # check free space
         if request.check_disk_usage:
+            self.logger.debug('Checking disk usage...')
             usage = shutil.disk_usage("rootdir")
             total_disk_space = usage.total
             used_disk_space = usage.used

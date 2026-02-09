@@ -84,7 +84,7 @@ class DaqControlClient:
         request.check_hashpipe_running = parameters['check_hashpipe_running']
         request.check_disk_usage = parameters['check_disk_usage']
         try:
-            resp = self.stub.StopDaq(request)
+            resp = self.stub.StatusDaq(request)
             if not resp.success:
                 raise ValueError(f"Server rejected data: {resp.message}")
             status = {}
