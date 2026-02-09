@@ -2,6 +2,7 @@ import pytest
 import time
 import json
 import logging
+from unittest.mock import MagicMock
 from panoseti_grpc.telemetry.client import make_grpc_logger, TelemetryClient, AsyncGrpcHandler
 
 LOG_KEY = "logs:ingress"
@@ -64,3 +65,47 @@ def test_huge_payload_logging(redis_client):
     data = json.loads(log_json)
     payload = json.loads(data["payload_json"])
     assert len(payload["text"]) == 50_000
+
+
+def test_handler_survives_queue_overflow():
+    """
+    Verifies that the AsyncGrpcHandler swallows the queue.Full exception
+    and protects the main application thread from crashing when under load.
+    """
+    # 1. Setup Client
+    mock_client = MagicMock(spec=TelemetryClient)
+
+    # 2. Setup Handler with a TINY queue (size=1)
+    # This makes it instant to overflow.
+    handler = AsyncGrpcHandler(mock_client, "CRASH_TEST", queue_size=1)
+
+    # 3. Create dummy records
+    # Note: We must populate process/threadName because client.py now expects them
+    record = logging.LogRecord(
+        name="test", level=logging.INFO, pathname=__file__, lineno=10,
+        msg="Spam", args=(), exc_info=None
+    )
+    record.process = 1234
+    record.threadName = "MainThread"
+
+    # 4. Fill the queue
+    # We do NOT start the worker thread logic (or we assume it's slow).
+    # Since queue_size=1, the first put works.
+    handler.emit(record)
+    assert handler.queue.full(), "Queue should be full after 1 item"
+
+    # 5. CRITICAL STEP: Attempt to overflow
+    try:
+        # This call should normally block or raise Full.
+        # Your AsyncGrpcHandler uses queue.put_nowait() inside a try/except.
+        handler.emit(record)
+        success = True
+    except Exception as e:
+        pytest.fail(f"Handler crashed the app on overflow! Error: {e}")
+
+    # 6. Assertions
+    assert success is True
+    assert handler.queue.full()
+
+    # Clean up
+    handler._stop_event.set()

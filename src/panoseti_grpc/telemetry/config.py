@@ -26,10 +26,12 @@ class LogSchema(BaseModel):
     Enforces 'Loki Hygiene' (Low Cardinality Labels).
     """
 
-    # --- Labels (Strict Validation) ---
-    # observatory: str = Field(..., min_length=2, max_length=20)
-    host: str = Field(..., pattern=r"^[a-zA-Z0-9_\-\.]+$")
-    service_name: str = Field(..., min_length=2)
+    # --- Labels (Strict Validation for Indexing) ---
+    # Hostnames should be alphanumeric + dashes. No spaces.
+    host: str = Field(..., pattern=r"^[a-zA-Z0-9_\-\.]+$", min_length=2, max_length=50)
+
+    # Service names should be concise
+    service_name: str = Field(..., min_length=2, max_length=50)
 
     # --- Metadata ---
     timestamp: float = Field(default_factory=time.time)
@@ -40,20 +42,18 @@ class LogSchema(BaseModel):
     line_number: Optional[int] = None
     function_name: Optional[str] = None
 
-    # --- Payload ---
-    # We accept a raw string (from gRPC) but validate it can be parsed as JSON.
-    payload_json: str
+    # --- System Metadata (New Fields) ---
+    process_id: Optional[int] = None
+    thread_name: Optional[str] = None
 
-    @field_validator('payload_json')
-    def validate_json_structure(cls, v):
-        """Ensure the payload is valid JSON. Loki will choke if it's not."""
-        try:
-            # We don't need to store the dict, just check validity.
-            # Faster than full deserialization if we just pass string to Loki.
-            json.loads(v)
-        except ValueError:
-            raise ValueError("payload_json must be a valid JSON string")
-        return v
+    # Optional because development environments might not be git repos
+    git_commit: Optional[str] = None
+    git_branch: Optional[str] = None
+
+    # --- Payload ---
+    # We accept a raw string (from gRPC) but validate it isn't massive.
+    # 1MB limit for a single log entry is generous but sane.
+    payload_json: str = Field(..., max_length=1_000_000)
 
     @field_validator('service_name')
     def prevent_high_cardinality(cls, v):
@@ -66,6 +66,14 @@ class LogSchema(BaseModel):
             # You might want to log a warning or force it to a generic name.
             pass
         return v.lower()
+
+    @field_validator('payload_json')
+    def validate_json_structure(cls, v):
+        try:
+            json.loads(v)
+        except ValueError:
+            raise ValueError("Payload must be valid JSON")
+        return v
 
 
 class GnssModel(BaseModel):

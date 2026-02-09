@@ -78,6 +78,10 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
                 "file_path": request.file_path,
                 "line_number": request.line_number,
                 "function_name": request.function_name,
+                "process_id": request.process_id,
+                "thread_name": request.thread_name,
+                "git_commit": request.git_commit,
+                "git_branch": request.git_branch,
                 "payload_json": request.payload_json
             }
 

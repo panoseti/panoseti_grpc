@@ -50,7 +50,8 @@ dependencies = [
     "pygnssutils",
     "pydantic>=2.12",
     "tomli",
-    "requests"
+    "requests",
+    "GitPython"
 ]
 
 [project.optional-dependencies]

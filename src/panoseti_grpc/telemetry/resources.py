@@ -51,3 +51,24 @@ def get_config_path() -> Path:
     except (ImportError, FileNotFoundError):
         # Fallback for editable installs or older python
         return Path(__file__).parent / "telemetry_config.toml"
+
+
+def get_sw_info():
+    try:
+        import git
+    except ImportError:
+        return "GitPython not installed"
+    try:
+        repo = git.Repo(search_parent_directories=True)
+        commit = repo.head.commit.hexsha
+        author = repo.head.commit.author.name
+        branch = repo.active_branch.name
+        commit_date = repo.head.commit.committed_datetime.strftime("%Y-%m-%d %H:%M:%S")
+        sw_info = {
+            'commit': commit,
+            'branch': branch,
+         }
+        return sw_info
+    except Exception:
+        # Return None or specific error string, handled below
+        return "No Git Info"

@@ -16,27 +16,30 @@ service Telemetry {
 }
 
 message LogMessage {
-  // --- INDEXING FIELDS (Loki Labels) ---
-  // These MUST be low cardinality (e.g., < 100 unique values).
-  // Used for routing and fast lookups: {service="gnss"}
-  string host = 1;          // e.g., "node_04"
-  string service_name = 2;  // e.g., "capture_gnss", "temp_sensor"
+  // --- Indexing ---
+  string host = 1;
+  string service_name = 2;
 
-  // --- METADATA (Searchable but not Indexed) ---
-  google.protobuf.Timestamp timestamp = 3;     // Unix Epoch seconds (Python time.time())
-  Severity severity = 4;    // Standardized level
+  // --- Metadata ---
+  google.protobuf.Timestamp timestamp = 3;
+  // Severity enum (1=DEBUG, 2=INFO, etc) matches Python logging
+  int32 severity = 4;
 
-  // Code location (Optional, but incredibly useful for debugging)
+  // --- Context ---
   string file_path = 5;
   uint32 line_number = 6;
   string function_name = 7;
 
-  // --- THE PAYLOAD (Loki Content) ---
-  // A serialized JSON object.
-  // Example: '{"temp": 45.2, "status": "OK", "array": [1, 2]}'
-  // The Receiver (storeLoki.py) will not parse this; it just writes it as text.
-  // Loki will parse this at query time using the "| json" operator.
-  string payload_json = 8;
+  // --- Runtime Metadata ---
+  int64 process_id = 8;
+  string thread_name = 9;
+
+  // --- Software Versioning (NEW) ---
+  string git_commit = 10;
+  string git_branch = 11;
+
+  // --- Payload ---
+  string payload_json = 12;
 }
 
 message LogResponse {

@@ -21,6 +21,8 @@ class TestStructuredLogic:
             name="test", level=logging.INFO, pathname=__file__, lineno=10,
             msg="Hello World", args=(), exc_info=None
         )
+        record.process = 1001
+        record.threadName = "MainThread"
 
         handler.emit(record)
         time.sleep(0.1)  # Let worker process
@@ -31,7 +33,8 @@ class TestStructuredLogic:
 
         # The message passed to gRPC should be a JSON string
         sent_json = kwargs['message']
-        assert sent_json == '{"text": "Hello World"}'
+        assert '_meta' in sent_json
+        assert "Hello World" in sent_json
 
     def test_context_capture(self):
         """

@@ -1,4 +1,6 @@
 import pytest
+import os
+import threading
 import logging
 import time
 from unittest.mock import MagicMock
@@ -23,6 +25,8 @@ class TestAsyncHandler:
             name="test", level=logging.INFO, pathname=__file__, lineno=10,
             msg="Test Message", args=(), exc_info=None
         )
+        record.process = os.getpid()
+        record.threadName = threading.current_thread().name
 
         # 1. Fill the queue (size=1)
         handler.emit(record)
@@ -61,7 +65,10 @@ class TestAsyncHandler:
             'timestamp': 1234567890.0,
             'file_path': '/tmp/test.py',
             'line_number': 42,
-            'function_name': 'test_func'
+            'function_name': 'test_func',
+            # NEW REQUIRED FIELDS
+            'process': 1234,
+            'thread': 'TestWorkerThread'
         }
         handler.queue.put(test_item)
 

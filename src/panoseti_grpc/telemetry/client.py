@@ -12,11 +12,28 @@ import grpc
 from google.protobuf.timestamp_pb2 import Timestamp
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import ParseDict
+
 from panoseti_grpc.generated import telemetry_pb2, telemetry_pb2_grpc
+from panoseti_grpc.telemetry.resources import get_sw_info
 
 # Default to "headnode" (Hosts file or DNS name)
 DEFAULT_HEADNODE = "localhost"
 DEFAULT_GRPC_PORT = 50051
+
+# Cache hostname and Git info to avoid system calls on every log
+HOSTNAME = socket.gethostname()
+PID = os.getpid()
+
+_RAW_SW_INFO = get_sw_info()
+# Normalize the data for Protobuf (Strings only, no dicts/Nones)
+if isinstance(_RAW_SW_INFO, dict):
+    CACHED_COMMIT = _RAW_SW_INFO.get('commit', 'unknown')
+    CACHED_BRANCH = _RAW_SW_INFO.get('branch', 'unknown')
+else:
+    CACHED_COMMIT = "unknown"
+    CACHED_BRANCH = "unknown"
+
+
 
 class TelemetryClient:
     """
@@ -25,9 +42,14 @@ class TelemetryClient:
     """
 
     def __init__(self, host=None, port=None):
+        """
+        Initialize the client connection to the Headnode Telemetry Service server.
+        Args:
+            host: HEADNOE Hostname or IP address
+            port: HEADNOE gRPC Port number
+        """
         self.host = host or os.getenv("HEADNODE_IP", DEFAULT_HEADNODE)
         self.grpc_port = port or int(os.getenv("HEADNODE_GRPC_PORT", DEFAULT_GRPC_PORT))
-
         self.channel = grpc.insecure_channel(f'{self.host}:{self.grpc_port}')
         self.stub = telemetry_pb2_grpc.TelemetryStub(self.channel)
 
@@ -120,8 +142,8 @@ class TelemetryClient:
         self._send(req)
 
     def send_log_sync(self, service, severity, message, timestamp=None,
-                      file_path="", line_number=0, function_name=""):
-        """Synchronous wrapper for sending a log (runs in worker thread)."""
+                      file_path="", line_number=0, function_name="",
+                      thread_name=""):
         ts = Timestamp()
         if timestamp:
             ts.FromSeconds(int(timestamp))
@@ -129,17 +151,21 @@ class TelemetryClient:
             ts.GetCurrentTime()
 
         req = telemetry_pb2.LogMessage(
-            host=socket.gethostname(),  # Client host, usually localhost or container ID
+            host=HOSTNAME,
             service_name=service,
             timestamp=ts,
             severity=severity,
             file_path=file_path,
             line_number=line_number,
             function_name=function_name,
-            payload_json=message  # Simple string message for now
+            process_id=PID,
+            thread_name=thread_name,
+            git_commit=CACHED_COMMIT,
+            git_branch=CACHED_BRANCH,
+            payload_json=str(message),
         )
-        # We use a short timeout. If server is busy, drop the log.
-        self.stub.Log(req, timeout=1)
+
+        self.stub.Log(req, timeout=1.0)
 
 
 class AsyncGrpcHandler(logging.Handler):
@@ -151,17 +177,16 @@ class AsyncGrpcHandler(logging.Handler):
 
         # Start the background worker
         self._stop_event = threading.Event()
-        self.worker = threading.Thread(target=self._worker, daemon=True)
+        self.worker = threading.Thread(target=self._worker, daemon=True, name="LogShipper")
         self.worker.start()
 
     def emit(self, record):
         try:
-            # 1. Format the message (apply formatter if exists)
             msg = self.format(record)
 
-            # 2. Construct Payload
-            # We map Python LogLevels to gRPC Severity (1=DEBUG, 2=INFO...)
-            # Python: DEBUG=10, INFO=20... -> (level // 10) roughly works
+            # --- METADATA ENRICHMENT ---
+            # Python's LogRecord already captures these!
+
             severity = int(record.levelno / 10)
             if severity < 1: severity = 1
             if severity > 5: severity = 5
@@ -172,14 +197,13 @@ class AsyncGrpcHandler(logging.Handler):
                 'timestamp': record.created,
                 'file_path': record.pathname,
                 'line_number': record.lineno,
-                'function_name': record.funcName
+                'function_name': record.funcName,
+                'process': record.process,  # PID
+                'thread': record.threadName  # Thread Name
             }
-
-            # 3. Non-blocking Put
             self.queue.put_nowait(payload)
         except Full:
-            # Fail silently to avoid crashing app
-            print(f"AsyncGrpcHandler Buffer Full! Dropping log: {record.getMessage()}")
+            pass  # Dropping logs is better than crashing observations
         except Exception:
             self.handleError(record)
 
@@ -188,19 +212,40 @@ class AsyncGrpcHandler(logging.Handler):
             try:
                 payload = self.queue.get(timeout=0.5)
 
-                # The Server expects 'payload_json' to be a valid JSON string.
-                # We wrap the message in a JSON string.
-                if isinstance(payload['msg'], (dict, list)):
-                    json_payload = json.dumps(payload['msg'])
-                else:
-                    # Even simple strings must be valid JSON values (quoted)
-                    # or wrapped in a structure. Let's wrap it for safety.
-                    json_payload = json.dumps({"text": str(payload['msg'])})
+                # Unwrap and Enrich JSON
+                raw_msg = payload['msg']
+                final_json_str = ""
+
+                # Check if the message is already JSON
+                is_json = False
+                if isinstance(raw_msg, str) and raw_msg.strip().startswith('{'):
+                    try:
+                        # Validate it's actually JSON
+                        json_obj = json.loads(raw_msg)
+                        # Inject Metadata into the JSON payload itself for easier querying in Grafana
+                        json_obj['_meta'] = {
+                            "pid": payload['process'],
+                            "thread": payload['thread']
+                        }
+                        final_json_str = json.dumps(json_obj)
+                        is_json = True
+                    except json.JSONDecodeError:
+                        pass
+
+                if not is_json:
+                    # Wrap text and add metadata
+                    final_json_str = json.dumps({
+                        "text": str(raw_msg),
+                        "_meta": {
+                            "pid": payload['process'],
+                            "thread": payload['thread']
+                        }
+                    })
 
                 self.grpc_client.send_log_sync(
                     service=self.service_name,
                     severity=payload['level'],
-                    message=json_payload,  # <--- PASS THE JSON STRING
+                    message=final_json_str,
                     timestamp=payload['timestamp'],
                     file_path=payload['file_path'],
                     line_number=payload['line_number'],
@@ -210,20 +255,30 @@ class AsyncGrpcHandler(logging.Handler):
             except queue.Empty:
                 continue
             except Exception as e:
-                # If network fails, we just print locally and move on
-                # Ideally, we might backoff, but for logs, we prefer dropping over blocking
-                print(f"Log Worker Error: {e}")
+                # Use sys.stderr to avoid recursive logging loops if we used logger
+                import sys
+                print(f"Log Worker Error: {e}", file=sys.stderr)
 
 def make_grpc_logger(
         service_name: str,
         grpc_client: TelemetryClient = None,
         queue_size: int = 1000,
         level: int = logging.INFO,
+        attach_to_root: bool = False,
 ) -> logging.Logger:
     """
     Configures the root logger to send data to:
     1. The Console (Rich pretty print)
     2. The Telemetry Service (Async gRPC)
+
+    Args:
+        service_name (str): The service name
+        grpc_client (TelemetryClient, optional): The gRPC client
+        queue_size (int, optional): The queue size
+        level (int, optional): The logging level
+        attach_to_root (bool, optional): If True, adds the gRPC handler to the ROOT logger.
+                           This captures logs from ALL libraries and other modules.
+                           If False, only captures logs for 'service_name'.
 
     Important: define the following environment variables to enable this logger to auto create the grpc connection.
         - HEADNODE_IP
@@ -239,18 +294,32 @@ def make_grpc_logger(
     if grpc_client is None:
         grpc_client = TelemetryClient()
 
-    logger = logging.getLogger(service_name)
-    logger.setLevel(level)
+        # 1. Create the Handler
+    grpc_handler = AsyncGrpcHandler(grpc_client, service_name)
 
-    # Remove existing handlers to avoid duplicates (e.g. during tests)
-    logger.handlers = []
-
-    # 1. Console Handler
+    # 2. Rich Console Handler (Visuals)
+    # We allow this to exist alongside file handlers
     console = RichHandler(rich_tracebacks=True, markup=True)
-    logger.addHandler(console)
 
-    # 2. gRPC Handler
-    grpc_handler = AsyncGrpcHandler(grpc_client, service_name, queue_size)
-    logger.addHandler(grpc_handler)
+    if attach_to_root:
+        # Get Root Logger
+        root = logging.getLogger()
+        root.setLevel(level)
 
-    return logger
+        # Add our handlers without removing existing FileHandlers
+        # Check if we already added them to avoid duplicates
+        if not any(isinstance(h, AsyncGrpcHandler) for h in root.handlers):
+            root.addHandler(grpc_handler)
+        if not any(isinstance(h, RichHandler) for h in root.handlers):
+            root.addHandler(console)
+
+        # Return the specific service logger, but it will propagate up to root
+        return logging.getLogger(service_name)
+    else:
+        # Isolated Logger
+        logger = logging.getLogger(service_name)
+        logger.setLevel(level)
+        logger.addHandler(grpc_handler)
+        logger.addHandler(console)
+        logger.propagate = False  # Do not bubble up to avoid double logging if root has handlers
+        return logger
