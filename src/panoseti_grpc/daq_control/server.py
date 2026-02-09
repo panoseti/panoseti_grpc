@@ -9,7 +9,7 @@ Features:
     * check if there is run in progress
     * check the free space on disk
 """
-
+import os
 import subprocess
 import logging
 import psutil
@@ -137,3 +137,57 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             used_disk_space = used_disk_space,
             free_disk_space = free_disk_space
         )
+
+async def serve(grpc_port, level):
+    """
+    Main entry point for running the server.
+    Args:
+        level: logging level.
+                logging.DEBUG, logging.INFO, logging.WARNING or logging.ERROR.
+    """
+    # 0. create logger
+    logger = make_rich_logger("daq_control_server", level)
+
+    # 1. setup gRPC server
+    server = grpc.aio.server()
+
+    # 2. add servicer to the server
+    servicer = DaqControlServicer(level)
+    daq_control_pb2_grpc.add_DaqControlServicer_to_server(servicer, server)
+
+    # 3. bind Ports
+    server.add_insecure_port(f'[::]:{grpc_port}')
+
+    logger.info(f"gRPC Server listening on TCP port [bold]{grpc_port}[/]")
+
+    # 4. graceful shutdown setup
+    shutdown_event = asyncio.Event()
+    def _handle_signal(*args):
+        logger.info("Signal received. Initiating shutdown...")
+        shutdown_event.set()
+    loop = asyncio.get_running_loop()
+    loop.add_signal_handler(signal.SIGINT, _handle_signal)
+    loop.add_signal_handler(signal.SIGTERM, _handle_signal)
+
+    # 5. start serving
+    await server.start()
+    logger.info("Server started. Press Ctrl+C to stop.")
+
+    await shutdown_event.wait()
+
+    # 6. shutdown sequence
+    logger.info("Stopping gRPC server (allowing 5s grace period)...")
+    await server.stop(5)
+
+    logger.info("Cleaning up servicer resources...")
+    await servicer.shutdown()
+
+    logger.info("Goodbye.")
+    
+if __name__ == "__main__":
+    GRPC_PORT = int(os.getenv("GRPC_PORT", 50051))
+
+    try:
+        asyncio.run(serve(GRPC_PORT, logging.DEBUG))
+    except KeyboardInterrupt:
+        pass

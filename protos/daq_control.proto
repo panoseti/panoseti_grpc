@@ -24,7 +24,8 @@ message StartDaqRequest {
 }
 
 message StartDaqResponse {
-    bool    status = 1;
+    bool    success = 1;
+    string  message = 2;
 }
 
 /* stop daq request and response. */
@@ -34,7 +35,8 @@ message StopDaqRequest {
 }
 
 message StopDaqResponse {
-    bool    status = 1;
+    bool    success = 1;
+    string  message = 2;
 }
 
 /* status daq request and response. */
@@ -45,8 +47,10 @@ message StatusDaqRequest {
 }
 
 message StatusResponse {
-    bool    hashpipe_running = 1;
-    uint64  total_disk_space = 2;
-    uint64  used_disk_space = 3;
-    uint64  free_disk_space = 4;
+    bool    success = 1;
+    bool    hashpipe_running = 2;
+    uint64  total_disk_space = 3;
+    uint64  used_disk_space = 4;
+    uint64  free_disk_space = 5;
+    string  message = 6;
 }
