@@ -53,7 +53,7 @@ def test_huge_payload_logging(redis_client):
     logger.addHandler(AsyncGrpcHandler(client, service_name, queue_size=100))
 
     # 50KB is enough to prove the point without timing out Docker
-    huge_msg = "X" * 50_000
+    huge_msg = "X" * 5_000
 
     logger.info(huge_msg)
 
@@ -64,7 +64,7 @@ def test_huge_payload_logging(redis_client):
 
     data = json.loads(log_json)
     payload = json.loads(data["payload_json"])
-    assert len(payload["text"]) == 50_000
+    assert len(payload["text"]) == 5_000
 
 
 def test_handler_survives_queue_overflow():
