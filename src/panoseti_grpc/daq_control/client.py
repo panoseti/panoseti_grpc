@@ -76,6 +76,7 @@ class DaqControlClient:
                     * data_dir(str) - root dir for PANOSETI data
                     * check_hashpipe_running(bool) - check if hashpipe is running
                     * check_disk_usage(bool) - check the disk usage
+                    * check_run_dirs(bool) - check the run dirs on daq node
         """
         # TODO: check if all of the parameters are reasonable
         #       We could use Pydantic for this. 
@@ -93,5 +94,27 @@ class DaqControlClient:
             status['disk_usage'] = resp.disk_usage
             status['run_dirs'] = resp.run_dirs
             return resp.success, status
+        except grpc.RpcError as e:
+            raise ConnectionError(f"gRPC failed: {e.details()}")
+    
+    def CleanupData(self, parameters):
+        """
+        Docstring for StatusDaq
+        
+        :param parameters: A dict contains all necessary parameters
+                    * data_dir(str) - root dir for PANOSETI data
+                    * run_dir(str) - the new directory for this run, 
+                                    which should be under data_dir
+                    * module_ids (list) - modules for this daq node
+        """
+        request = daq_control_pb2.CleanupDataRequest()
+        request.data_dir = parameters['data_dir']
+        request.run_dir = parameters['run_dir']
+        request.module_id.extend(parameters['module_id'])
+        try:
+            resp = self.stub.CleanupData(request)
+            if not resp.success:
+                raise ValueError(f"Server rejected data: {resp.message}")
+            return resp.success
         except grpc.RpcError as e:
             raise ConnectionError(f"gRPC failed: {e.details()}")

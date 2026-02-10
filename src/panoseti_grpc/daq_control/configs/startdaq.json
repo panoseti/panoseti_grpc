@@ -4,7 +4,7 @@
     "bindhost": "enp171s0",
     "max_file_size_mb": 10,
     "group_ph_frames": true,
-    "run_dir": "test",
+    "run_dir": "test.pffd",
     "obs": "ucb-lab",
     "module_id": [
         250,

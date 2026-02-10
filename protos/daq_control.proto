@@ -50,7 +50,7 @@ message StatusDaqRequest {
     string  data_dir = 1;
     bool    check_hashpipe_running = 2;
     bool    check_disk_usage = 3;
-    bool    check_run_dir = 4;
+    bool    check_run_dirs = 4;
 }
 
 message StatusDaqResponse {
@@ -68,7 +68,7 @@ message StatusDaqResponse {
 message CleanupDataRequest {
     string  data_dir = 1;
     string  run_dir = 2;
-    repeated uint32  module_ids = 3 [packed=true];
+    repeated uint32  module_id = 3 [packed=true];
 }
 
 message CleanupDataResponse {

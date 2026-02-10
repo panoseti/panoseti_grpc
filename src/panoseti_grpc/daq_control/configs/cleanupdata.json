@@ -1,7 +1,7 @@
 {
     "data_dir": "/mnt/panoseti",
-    "run_dir": "test",
-    "module_ids": [
+    "run_dir": "test.pffd",
+    "module_id": [
         250,
         251
     ]

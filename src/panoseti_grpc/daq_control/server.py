@@ -269,6 +269,11 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     
     async def CleanupData(self, request, context):
         self.logger.info('Cleanning up Data...')
+        if self.hashpipe_pid > 0:
+            self.logger.warning(f'Cleaning up data dir is not allowed')
+            msg = f'HASHPIPE is running, pid[{self.hashpipe_pid}]'
+            self.logger.warning(msg)
+            return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
         datadir = request.data_dir
         rundir = request.run_dir
         module_ids = request.module_ids
