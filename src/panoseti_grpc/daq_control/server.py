@@ -14,6 +14,7 @@ import subprocess
 import logging
 import psutil
 import shutil
+from pathlib import Path
 
 import asyncio
 import signal
@@ -37,18 +38,26 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         self.logger.info(f"[bold green]DaqControl Server Online[/]", extra={"markup": True})
         # This is used for recording the hashpipe pid
         self.hashpipe_pid = -1
-        self.rootdir = None
+        self.datadir = None
 
     def _create_module_config(self, module_id):
-        with open(f'{self.rootdir}/module.config', 'w') as f:
+        with open(f'{self.datadir}/module.config', 'w') as f:
             for id in module_id:
                 f.write(f'{id} ')
+
+    def _setup_data_directories(self, rundir, module_id):
+        # create directory for config files
+        Path(rundir).mkdir()
+        # create directory for data
+        for m in module_id:
+            dirname = f"{rundir}/module_{m}"
+            Path(dirname).mkdir()
 
     async def StartDaq(self, request, context):
         self.logger.info("Starting HASHPIPE instance...")
         # get the parameters from client
-        self.rootdir = request.root_dir
-        self.logger.debug(f"root_dir: {self.rootdir}")
+        self.datadir = request.data_dir
+        self.logger.debug(f"root_dir: {self.datadir}")
         daq_ip_addr = request.daq_ip_addr
         self.logger.debug(f"daq_ip_addr: {daq_ip_addr}")
         bindhost = request.bindhost
@@ -62,15 +71,18 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         obs = request.obs
         self.logger.debug(f"obs: {obs}")
         module_id = request.module_id
+        # get the full path for hashpipe.so, rundir and module.config
+        hashpipe_so = f"{self.datadir}/hashpipe.so"
+        rundir = f"{self.datadir}/{run_dir}"
+        configfn = f"{self.datadir}/module.config"
         # create module.config
         self._create_module_config(module_id)
-        # create cmdline for start HASHPIPE
-        hashpipe_so = f"{self.rootdir}/hashpipe.so"
-        rundir = f"{self.rootdir}/{run_dir}"
-        configfn = f"{self.rootdir}/module.config"
+        # setup data directories
+        self._setup_data_directories(rundir, module_id)
         # create log files for stdout and stderr
-        stdoutfd = open(f"{self.rootdir}/{run_dir}/hp_stdout_/{daq_ip_addr}", "w")
-        stderrfd = open(f"{self.rootdir}/{run_dir}/hp_stderr_/{daq_ip_addr}", "w")
+        stdoutfd = open(f"{self.datadir}/{run_dir}/hp_stdout_/{daq_ip_addr}", "w")
+        stderrfd = open(f"{self.datadir}/{run_dir}/hp_stderr_/{daq_ip_addr}", "w")
+        # create cmdline for start HASHPIPE
         proc = subprocess.Popen(
             ['hashpipe', 
              '-p', hashpipe_so, 
@@ -99,7 +111,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     
     async def StopDaq(self, request, context):
         self.logger.info("Stop HASHPIPE instance...")
-        self.rootdir = request.root_dir
+        self.datadir = request.data_dir
         run_dir = request.run_dir
         psutil.Process(self.hashpipe_pid).terminate()
         status = is_hashpipe_running(self.hashpipe_pid)
@@ -113,7 +125,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     
     async def StatusDaq(self, request, context):
         self.logger.info('Checking Daq Node status...')
-        self.rootdir = request.root_dir
+        self.datadir = request.data_dir
         # check hashpipe status
         if request.check_hashpipe_running:
             self.logger.debug('Checking HASHPIPE status...')
@@ -126,7 +138,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         # check free space
         if request.check_disk_usage:
             self.logger.debug('Checking disk usage...')
-            usage = shutil.disk_usage(self.rootdir)
+            usage = shutil.disk_usage(self.datadir)
             total_disk_space = usage.total
             used_disk_space = usage.used
             free_disk_space = usage.free
