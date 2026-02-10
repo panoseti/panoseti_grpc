@@ -20,8 +20,8 @@ See [client.py](daq_data/client.py) for the implementation and [daq_data_client_
 3. Follow the code patterns provided in [daq_data_client_demo.ipynb](daq_data_client_demo.ipynb) to stream images from the DAQ nodes to your visualization program.
 
 ```python
-from daq_data.client import DaqDataClient
-from daq_data.plot import PanoImagePreviewer
+from panoseti_grpc.daq_data.client import DaqDataClient
+from panoseti_grpc.daq_data.plot import PanoImagePreviewer
 
 # 0. Specify configuration file paths
 daq_config_path = 'path/to/your/daq_config.json'
@@ -57,7 +57,7 @@ This information is given by [daq_config.json](https://github.com/panoseti/panos
 Note that the client should always be used as a [context manager](https://book.pythontips.com/en/latest/context_managers.html) to ensure network resources are handled correctly.
 
 ```python
-from daq_data.client import DaqDataClient
+from panoseti_grpc.daq_data.client import DaqDataClient
 
 # Instantiate the client using a 'with' statement
 with DaqDataClient(daq_config_path, network_config_path) as client:
@@ -243,7 +243,7 @@ returns `StreamImagesResponse.PanoImage` as a Python dictionary with the followi
 This example demonstrates a complete workflow: initialize the server for a simulated run and then stream data from it. This pattern is shown in [daq_data_client_demo.ipynb](daq_data_client_demo.ipynb).
 
 ```python
-from daq_data.client import DaqDataClient
+from panoseti_grpc.daq_data.client import DaqDataClient
 
 # 0. Specify configuration file paths
 daq_config_path = 'daq_data/config/daq_config_grpc_simulate.json'
@@ -300,7 +300,7 @@ This example demonstrates how to use the AioDaqDataClient to initialize a simula
 
 ```python
 import asyncio
-from daq_data.client import AioDaqDataClient
+from panoseti_grpc.daq_data.client import AioDaqDataClient
 
 async def main():
     # 0. Specify configuration file paths
@@ -355,7 +355,7 @@ When a `stop_event` (an `asyncio.Event` object) is passed to the client's constr
 ```python
 import asyncio
 import signal
-from daq_data.client import AioDaqDataClient
+from panoseti_grpc.daq_data.client import AioDaqDataClient
 
 async def main():
     # 1. Create a shutdown event
@@ -443,7 +443,7 @@ Below is an example workflow for using `daq_data/client_cli.py` to view real-tim
 #### On each DAQ Node in `/path/to/daq_config.json`
 1. Set up the `grpc-py39` environment as described above.
 2. Set the working directory to `panoseti_grpc/`.
-3. Run `python -m daq_data.server`.
+3. Run `python -m panoseti_grpc.daq_data.server`.
 
 #### On Any Computer
 1. Update `hp_io_config.json` or create a new one (see docs below).
@@ -451,14 +451,14 @@ Below is an example workflow for using `daq_data/client_cli.py` to view real-tim
 3. Set up the `grpc-py39` environment as described above and activate it.
 4. `export DAQ_CFG=/path/to/daq_config.json`: (optional) create a convenient variable for `/path/to/daq_config.json`. If you don't want to do this, replace `$DAQ_CFG` in all following commands with `/path/to/daq_config.json`.
 5. `export NET_CFG=/path/to/network_config.json`: (optional) create a convenient variable for `/path/to/network_config.json`. If you don't want to do this, replace `$NET_CFG` in all following commands with `/path/to/network_config.json`.
-6. `python -m daq_data.cli -h`: see the available options.
-7. `python -m daq_data.cli $DAQ_CFG $NET_CFG --list-hosts`: find DAQ node hosts running valid DaqData gRPC servers. Hostname arguments `H` to `--host` should be in the list of valid hosts returned by this command.
+6. `python -m panoseti_grpc.daq_data.cli -h`: see the available options.
+7. `python -m panoseti_grpc.daq_data.cli $DAQ_CFG $NET_CFG --list-hosts`: find DAQ node hosts running valid DaqData gRPC servers. Hostname arguments `H` to `--host` should be in the list of valid hosts returned by this command.
 8. Initialize the `hp_io` thread on all DaqData servers:
-    - (Real data) `python -m daq_data.cli $DAQ_CFG $NET_CFG --init /path/to/hp_io_config.json`: initialize `hp_io` from `hp_io_config.json`. See [The hp_io_config.json File](#the-hp_io_configjson-file) for details about this config file.
-    - (Simulated data) `python -m daq_data.cli $DAQ_CFG $NET_CFG --init-sim`: initialize `hp_io` from `daq_data/config/hp_io_config_simulate.json`. This starts a stream of simulated data.
+    - (Real data) `python -m panoseti_grpc.daq_data.cli $DAQ_CFG $NET_CFG --init /path/to/hp_io_config.json`: initialize `hp_io` from `hp_io_config.json`. See [The hp_io_config.json File](#the-hp_io_configjson-file) for details about this config file.
+    - (Simulated data) `python -m panoseti_grpc.daq_data.cli $DAQ_CFG $NET_CFG --init-sim`: initialize `hp_io` from `daq_data/config/hp_io_config_simulate.json`. This starts a stream of simulated data.
 9. Start visualization apps:
-    - `python -m daq_data.cli $DAQ_CFG $NET_CFG --plot-phdist`: make a `StreamImages` request and launch a real-time pulse-height distribution app.
-    - `python -m daq_data.cli $DAQ_CFG $NET_CFG --plot-view`: make a `StreamImages` request and launch a real-time frame viewer app.
+    - `python -m panoseti_grpc.daq_data.cli $DAQ_CFG $NET_CFG --plot-phdist`: make a `StreamImages` request and launch a real-time pulse-height distribution app.
+    - `python -m panoseti_grpc.daq_data.cli $DAQ_CFG $NET_CFG --plot-view`: make a `StreamImages` request and launch a real-time frame viewer app.
 
 Commands organized below for convenience:
 ```bash
@@ -470,25 +470,25 @@ export DAQ_CFG=/path/to/daq_config.json
 export NET_CFG=/path/to/network_config.json
 
 # 6. see available options
-python -m daq_data.cli -h
+python -m panoseti_grpc.daq_data.cli -h
 
 # 7. check gRPC server status
-python -m daq_data.cli $DAQ_CFG $NET_CFG --list-hosts
+python -m panoseti_grpc.daq_data.cli $DAQ_CFG $NET_CFG --list-hosts
 
 # 8. Initialize the hp_io thread on all DaqData servers (choose one)
-python -m daq_data.cli $DAQ_CFG $NET_CFG --init /path/to/hp_io_config.json  # real run
-python -m daq_data.cli $DAQ_CFG $NET_CFG --init-sim                        # simulated run
+python -m panoseti_grpc.daq_data.cli $DAQ_CFG $NET_CFG --init /path/to/hp_io_config.json  # real run
+python -m panoseti_grpc.daq_data.cli $DAQ_CFG $NET_CFG --init-sim                        # simulated run
 
 # 9. Start visualization apps (choose one)
-python -m daq_data.cli $DAQ_CFG $NET_CFG --plot-phdist  # pulse-height distribution
-python -m daq_data.cli $DAQ_CFG $NET_CFG --plot-view    # frame viewer
+python -m panoseti_grpc.daq_data.cli $DAQ_CFG $NET_CFG --plot-phdist  # pulse-height distribution
+python -m panoseti_grpc.daq_data.cli $DAQ_CFG $NET_CFG --plot-view    # frame viewer
 ```
 
 
 Notes:
-- On Linux, the `Ctrl+P` keyboard shortcut loads commands from your command history. Useful for running the `python -m daq_data.cli` module with different options.
+- On Linux, the `Ctrl+P` keyboard shortcut loads commands from your command history. Useful for running the `python -m panoseti_grpc.daq_data.cli` module with different options.
 - `panoseti_grpc` has a package structure, so your working directory should be the repo root, `panoseti_grpc/`, when running modules in `panoseti_grpc/daq_data/`.
-- Each script (e.g. `server.py`) should be prefixed with **`python -m daq_data.`** and, because it is a module, be called without the `.py` extension. Following these guidelines gives the example command: **`python -m daq_data.server`**, instead of `daq_data/server.py` or  `python -m daq_data.server.py`.
+- Each script (e.g. `server.py`) should be prefixed with **`python -m daq_data.`** and, because it is a module, be called without the `.py` extension. Following these guidelines gives the example command: **`python -m panoseti_grpc.daq_data.server`**, instead of `daq_data/server.py` or  `python -m panoseti_grpc.daq_data.server.py`.
 
 # The DaqData Service
 See [daq_data.proto](protos/daq_data.proto) for the protobuf specification of this service.

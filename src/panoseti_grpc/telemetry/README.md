@@ -4,15 +4,19 @@ The **PANOSETI Telemetry Service** is a high-throughput, distributed aggregation
 
 ## 🚀 Key Features
 
-* **Hot/Cold Storage Architecture:**
-    * **Redis:** O(1) access to the *current* state of every device.
-    * **InfluxDB:** Time-series history for dashboards (Grafana).
+* **Centralized Logging (Loki):**
+  * Async gRPC logging handler that ships logs from all nodes to a central **Loki** instance.
+    * Automatic metadata injection (Git Commit, PID, Thread, Hostname).
+    * Non-blocking architecture to ensure logging never crashes observations.
+* **Observability:** Built-in latency tracking, rich logging, and CLI visualization tools.
 * **Hybrid Schema Strategy:**
     * **Production Mode:** Strictly validated schemas (Pydantic) for critical hardware.
     * **Experimental Mode:** Flexible JSON logging for R&D and rapid prototyping.
+* **Hot/Cold Storage Architecture:**
+  * **Redis:** O(1) access to the *current* state of every device.
+  * **InfluxDB:** Time-series history for dashboards (Grafana).
+  * **Loki:** Log database for log dashboards (Grafana).
 * **Automatic Hygiene:** Experimental data is auto-deleted (TTL) after 24 hours to prevent database pollution.
-* **Observability:** Built-in latency tracking, rich logging, and CLI visualization tools.
-
 
 
 ---
@@ -108,6 +112,98 @@ python -m panoseti_grpc.telemetry.cli --type gnss --delay 0.1
 
 ---
 
+## 📜 Centralized Logging (Loki)
+
+The Telemetry Service provides a high-performance logging pipeline. Instead of scattering text logs across 6 different distributed nodes, logs are shipped via gRPC to the Headnode, cached in Redis, and indexed by **Loki** for real-time analysis in Grafana.
+
+### 👨‍💻 Client Usage (Python)
+
+Do not manually construct gRPC messages. Use the provided helper function to attach the centralized logger to your existing scripts.
+
+**Basic Integration:**
+
+```python
+import logging
+from panoseti_grpc.telemetry.client import make_grpc_logger
+
+# Run this ONCE at startup. 
+# It attaches the gRPC handler to the Root Logger, capturing everything.
+logger = make_grpc_logger(
+    service_name="Dome_Control", 
+    level=logging.INFO,
+    attach_to_root=True
+)
+
+# Use standard logging as usual - it now goes to Loki!
+logger.info("Dome rotation started")
+
+# Exceptions are automatically formatted and shipped
+try:
+    x = 1 / 0
+except Exception:
+    logger.exception("Critical math failure")
+
+```
+
+**Structured Logging (Best Practice):**
+Pass a dictionary in the `extra` field. This becomes queryable JSON in Grafana.
+
+```python
+# In Python
+logger.info("Filter wheel moved", extra={"position": 2, "temp_c": 12.5})
+
+# In Loki Query
+# {service="Dome_Control"} | json | position = 2
+
+```
+
+### 🔍 Metadata & Context
+
+The system automatically enriches your logs with context to help debug distributed failures:
+
+* **`host`**: Which machine produced the log (e.g., `node-04`).
+* **`git_commit`**: The exact software version running (from `git`).
+* **`process_id` / `thread_name**`: Identifies specific runtime instances.
+* **`trace_id`**: Correlates actions across services (if provided).
+
+
+### 🐳 Infrastructure Setup
+
+The logging stack (Loki + Grafana) runs via Docker on the Headnode.
+The relevant Loki docker-compose file is [docker-compose.loki.yml](docker-compose.loki.yml)
+
+**1. Prepare Data Directory**
+Loki runs as user ID `10001`. You **must** set permissions correctly or the container will fail to start.
+
+```bash
+# Create directory and set ownership to the container user
+mkdir -p ./loki-data
+sudo chown -R 10001:10001 ./loki-data
+
+```
+
+**2. Start the Stack**
+
+```bash
+docker compose -f docker-compose.loki.yml up -d
+
+```
+
+**3. Verify Status**
+Visit `http://HEADNODE_IP:3100/ready` to check if Loki is accepting logs.
+
+---
+
+### Architecture
+
+1. **Client:** Python loggers use an `AsyncGrpcHandler` to ship logs + metadata to the Headnode.
+   * *Resilience:* Uses a background worker thread and gRPC `wait_for_ready` semantics. If the server is down, logs are buffered locally or queued in the gRPC channel until connectivity restores.
+
+2. **Server:** Validates schema and pushes logs to a Redis List (`logs:ingress`) using an async batcher (N log entries = 1 Redis write).
+3. **Storage:** A worker (`storeLoki.py`) consumes from Redis and pushes to Loki, indexing metadata (Trace ID, Host) while storing the payload compressed.
+
+---
+
 ## 👨‍💻 Developer Guide
 
 ### Adding a New Production Device
@@ -136,6 +232,19 @@ redis_prefix = "DEV_TEST_"
 
 
 2. **Code:** Use `client.log_flexible("my_test", ...)` immediately. No server restart required if you are just adding data.
+
+### Testing Logging
+
+You can simulate a stream of realistic telescope logs (errors, warnings, varying components) to verify the pipeline:
+
+```bash
+# fast log stream
+python -m panoseti_grpc.telemetry.cli --type log --delay 0.01
+
+# slow heartbeat
+python -m panoseti_grpc.telemetry.cli --type log --delay 1.0
+
+```
 
 ### Troubleshooting
 
