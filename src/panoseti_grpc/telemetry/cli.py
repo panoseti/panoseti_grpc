@@ -107,31 +107,78 @@ def generate_payload(payload_type, iteration):
     return None, {}
 
 
+class SimulatedException(Exception):
+    pass
+
+
 def generate_logs(logger_instance, count, delay):
-    """Generates random logs to test the pipeline."""
-    levels = [
-        (logging.DEBUG, "Debugging variable x=%s"),
-        (logging.INFO, "System state nominal. Cycle %s"),
-        (logging.WARNING, "High latency detected on sensor %s"),
-        (logging.ERROR, "Connection timeout to device %s"),
-        (logging.CRITICAL, "CORE MELTDOWN IMMINENT! Sequence %s")
-    ]
+    """
+    Generates a realistic stream of telescope observatory logs.
+    Includes structured metadata, state transitions, and simulated stack traces.
+    """
 
-    with Progress(
-            SpinnerColumn(), TextColumn("[progress.description]{task.description}"),
-            BarColumn(), TimeRemainingColumn()
-    ) as progress:
-        task = progress.add_task("[cyan]Sending Logs...", total=count)
+    # 1. Define Narrative Scenarios
+    components = ["DOMECTRL", "CAM_04", "CAM_05", "COOLING", "GNSS_MAIN"]
 
-        for i in range(count):
-            lvl, msg_template = random.choice(levels)
-            val = random.randint(1, 100)
+    # Probability weights for log levels: mostly INFO, some DEBUG, rare ERROR
+    levels = [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL]
+    weights = [0.3, 0.5, 0.15, 0.04, 0.01]
 
-            # This triggers AsyncGrpcHandler -> Server -> Redis -> StoreLoki -> Loki
-            logger_instance.log(lvl, msg_template, val)
+    # structured data generators
+    def get_cooling_data(i):
+        # Temperature drops over time then stabilizes
+        temp = max(-20, 25 - (i * 0.5)) + random.uniform(-0.5, 0.5)
+        return "Cooling system active", {"temp_c": round(temp, 2), "power_pct": 85 if temp > -19 else 40}
 
-            progress.advance(task)
-            time.sleep(delay)
+    def get_dome_data(i):
+        az = (i * 10) % 360
+        return f"Dome rotating to azimuth {az}", {"azimuth": az, "motor_current": round(random.uniform(2.0, 2.5), 2)}
+
+    def get_observation_data(i):
+        return "Frame captured", {"exposure_ms": 100, "gain": 200, "mean_adu": int(random.gauss(1400, 50))}
+
+    console.print(f"[bold green]Starting Log Simulation ({count} events)...[/]")
+
+
+    for i in range(count):
+        # Pick a random component and severity
+        comp = random.choice(components)
+        lvl = random.choices(levels, weights)[0]
+
+        # Default payload
+        msg = f"Routine health check for {comp}"
+        extra = {"component": comp, "iteration": i}
+
+        # --- Scenario Logic ---
+        if comp == "COOLING":
+            msg, data = get_cooling_data(i % 50)  # reset cycle every 50
+            extra.update(data)
+
+        elif comp == "DOMECTRL":
+            msg, data = get_dome_data(i)
+            extra.update(data)
+
+        elif comp.startswith("CAM") and lvl == logging.INFO:
+            msg, data = get_observation_data(i)
+            extra.update(data)
+
+        # --- Chaos Engineering (Simulate Errors) ---
+        if lvl >= logging.ERROR:
+            try:
+                # Raise a fake exception to generate a real stack trace
+                if random.random() > 0.95:
+                    x = 1 / 0
+                else:
+                    raise SimulatedException(f"Hardware timeout on {comp}")
+            except Exception:
+                # logger.exception automatically attaches the traceback
+                logger_instance.exception(f"CRITICAL FAILURE in {comp}", extra=extra)
+        else:
+            # Standard log with structured context
+            logger_instance.log(lvl, msg, extra=extra)
+
+        # Add jitter to the delay for realism
+        time.sleep(delay * random.uniform(0.5, 1.5))
 
 
 def run_sender(args):
@@ -140,7 +187,7 @@ def run_sender(args):
 
     types_to_send = []
     if args.type == 'mixed':
-        types_to_send = ['test', 'gnss', 'dew', 'flex', 'log']
+        types_to_send = ['test', 'gnss', 'dew', 'flex']
     else:
         types_to_send = [args.type]
 
