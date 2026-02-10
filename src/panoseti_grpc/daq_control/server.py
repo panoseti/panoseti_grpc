@@ -128,7 +128,12 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         self.logger.info("Stop HASHPIPE instance...")
         self.datadir = request.data_dir
         run_dir = request.run_dir
-        psutil.Process(self.hashpipe_pid).terminate()
+        if self.hashpipe_pid == -1:
+            self.logger.info('No HASHPIPE instance is running.')
+            return daq_control_pb2.StopDaqResponse(success=True)
+        p = psutil.Process(self.hashpipe_pid)
+        p.send_signal(signal.SIGINT)
+        await asyncio.get_running_loop().run_in_executor(None, p.wait)
         success = is_hashpipe_running(self.hashpipe_pid)
         if success:
             self.logger.warning("HASHPIPE is still running...")
