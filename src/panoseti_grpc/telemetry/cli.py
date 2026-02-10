@@ -122,7 +122,7 @@ def generate_logs(logger_instance, count, delay):
 
     # Probability weights for log levels: mostly INFO, some DEBUG, rare ERROR
     levels = [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL]
-    weights = [0.3, 0.5, 0.15, 0.04, 0.01]
+    weights = [0.3, 0.5, 0.19, 0.005, 0.005]
 
     # structured data generators
     def get_cooling_data(i):
@@ -166,7 +166,7 @@ def generate_logs(logger_instance, count, delay):
         if lvl >= logging.ERROR:
             try:
                 # Raise a fake exception to generate a real stack trace
-                if random.random() > 0.95:
+                if random.random() > 0.999:
                     x = 1 / 0
                 else:
                     raise SimulatedException(f"Hardware timeout on {comp}")

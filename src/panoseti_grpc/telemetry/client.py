@@ -1,9 +1,11 @@
+import sys
 import os
 import json
 import logging
 import queue
 import threading
 import socket
+import time
 from queue import Queue, Full
 from rich.logging import RichHandler
 import traceback
@@ -50,8 +52,44 @@ class TelemetryClient:
         """
         self.host = host or os.getenv("HEADNODE_IP", DEFAULT_HEADNODE)
         self.grpc_port = port or int(os.getenv("HEADNODE_GRPC_PORT", DEFAULT_GRPC_PORT))
-        self.channel = grpc.insecure_channel(f'{self.host}:{self.grpc_port}')
+        # --- Define Retry Policy (JSON) ---
+        # service_config = {
+        #     "methodConfig": [
+        #         {
+        #             # Apply this policy to the 'Log' method in the 'Telemetry' service
+        #             "name": [{"service": "panoseti.telemetry.Telemetry", "method": "Log"}],
+        #             "retryPolicy": {
+        #                 "maxAttempts": 2,
+        #                 "initialBackoff": "0.1s",
+        #                 "maxBackoff": "5s",
+        #                 "backoffMultiplier": 2,
+        #                 "retryableStatusCodes": ["UNAVAILABLE", "UNKNOWN", "DEADLINE_EXCEEDED"]
+        #             }
+        #         }
+        #     ]
+        # }
+        #
+        # # # --- Create Channel with Options ---
+        options = [
+            # Inject the JSON config
+            # ("grpc.service_config", json.dumps(service_config)),
+            # Keepalive: Detect broken connections proactively (every 30s)
+            ("grpc.keepalive_time_ms", 30000),
+            ("grpc.keepalive_timeout_ms", 10000),
+        ]
+
+
+        target = f'{self.host}:{self.grpc_port}'
+        self.channel = grpc.insecure_channel(target, options=options)
+        self.channel.subscribe(self._on_channel_state_change)
         self.stub = telemetry_pb2_grpc.TelemetryStub(self.channel)
+
+    def _on_channel_state_change(self, connectivity):
+        # This runs in a background thread whenever connection state changes
+        if connectivity == grpc.ChannelConnectivity.TRANSIENT_FAILURE:
+            print("⚠️ Telemetry Connection Lost - Retrying...")
+        elif connectivity == grpc.ChannelConnectivity.READY:
+            print("✅ Telemetry Connection Active / Restored")
 
     def _get_timestamp(self):
         ts = Timestamp()
@@ -141,9 +179,9 @@ class TelemetryClient:
 
         self._send(req)
 
-    def send_log_sync(self, service, severity, message, timestamp=None,
+    def send_log_future(self, service, severity, message, timestamp=None,
                       file_path="", line_number=0, function_name="",
-                      thread_name=""):
+                      process_id=0, thread_name=""):
         ts = Timestamp()
         if timestamp:
             ts.FromSeconds(int(timestamp))
@@ -158,14 +196,14 @@ class TelemetryClient:
             file_path=file_path,
             line_number=line_number,
             function_name=function_name,
-            process_id=PID,
+            process_id=process_id if process_id else PID,
             thread_name=thread_name,
             git_commit=CACHED_COMMIT,
             git_branch=CACHED_BRANCH,
             payload_json=str(message),
         )
 
-        self.stub.Log(req, timeout=1.0)
+        return self.stub.Log.future(req, timeout=10.0, wait_for_ready=True)
 
 
 class AsyncGrpcHandler(logging.Handler):
@@ -210,8 +248,11 @@ class AsyncGrpcHandler(logging.Handler):
     def _worker(self):
         while not self._stop_event.is_set():
             try:
+                # 1. Get from queue (Blocking wait for new logs)
                 payload = self.queue.get(timeout=0.5)
-
+            except queue.Empty:
+                continue
+            try:
                 # Unwrap and Enrich JSON
                 raw_msg = payload['msg']
                 final_json_str = ""
@@ -242,7 +283,7 @@ class AsyncGrpcHandler(logging.Handler):
                         }
                     })
 
-                self.grpc_client.send_log_sync(
+                future = self.grpc_client.send_log_future(
                     service=self.service_name,
                     severity=payload['level'],
                     message=final_json_str,
@@ -251,13 +292,28 @@ class AsyncGrpcHandler(logging.Handler):
                     line_number=payload['line_number'],
                     function_name=payload['function_name']
                 )
-                self.queue.task_done()
-            except queue.Empty:
-                continue
+                # 3. Attach a callback to handle success/failure in the background
+                # This ensures we don't block THIS thread waiting for the result.
+                future.add_done_callback(self._on_rpc_done)
+
             except Exception as e:
-                # Use sys.stderr to avoid recursive logging loops if we used logger
-                import sys
-                print(f"Log Worker Error: {e}", file=sys.stderr)
+                # Only happens if local object creation fails
+                print(f"Local Grpc Submit Error: {e}")
+
+            self.queue.task_done()
+
+    def _on_rpc_done(self, future):
+        """
+        Called by gRPC background thread when the request finishes (or times out).
+        """
+        try:
+            future.result()  # Will raise exception if RPC failed
+        except grpc.RpcError as e:
+            # Handle specific errors if needed, or just suppress typical "server down" noise
+            # status_code = e.code()
+            # if status_code != grpc.StatusCode.CANCELLED:
+            #     print(f"{status_code}: {e.details()}")
+            pass
 
 def make_grpc_logger(
         service_name: str,

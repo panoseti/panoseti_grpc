@@ -16,7 +16,7 @@ class TestAsyncHandler:
         mock_client = MagicMock(spec=TelemetryClient)
 
         # FIXED: Make the worker 'stuck' so the queue stays full for our assertion
-        mock_client.send_log_sync.side_effect = lambda *args, **kwargs: time.sleep(0.5)
+        mock_client.send_log_future.side_effect = lambda *args, **kwargs: time.sleep(0.5)
 
         # Create Handler with TINY queue
         handler = AsyncGrpcHandler(mock_client, "TEST_SERVICE", queue_size=1)
@@ -75,9 +75,9 @@ class TestAsyncHandler:
         # Allow worker to process
         time.sleep(0.1)
 
-        mock_client.send_log_sync.assert_called_once()
+        mock_client.send_log_future.assert_called_once()
 
-        args, kwargs = mock_client.send_log_sync.call_args
+        args, kwargs = mock_client.send_log_future.call_args
         assert kwargs['service'] == "TEST_SERVICE"
         assert kwargs['severity'] == 3
 

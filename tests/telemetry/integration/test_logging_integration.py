@@ -12,7 +12,7 @@ def test_basic_log_rpc(grpc_client, redis_client):
     msg = "Integration Test - Raw RPC"
     timestamp = time.time()
 
-    grpc_client.send_log_sync(
+    future = grpc_client.send_log_future(
         service="TEST_INTEGRATION_RPC",
         severity=2,
         message=json.dumps({"text": msg}),
@@ -21,6 +21,8 @@ def test_basic_log_rpc(grpc_client, redis_client):
         line_number=15,
         function_name="test_basic_log_rpc"
     )
+
+    future.result()
 
     time.sleep(0.5)
 

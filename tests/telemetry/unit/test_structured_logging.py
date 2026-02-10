@@ -28,8 +28,8 @@ class TestStructuredLogic:
         time.sleep(0.1)  # Let worker process
 
         # 2. Check Client Call
-        mock_client.send_log_sync.assert_called_once()
-        kwargs = mock_client.send_log_sync.call_args[1]
+        mock_client.send_log_future.assert_called_once()
+        kwargs = mock_client.send_log_future.call_args[1]
 
         # The message passed to gRPC should be a JSON string
         sent_json = kwargs['message']
@@ -54,6 +54,6 @@ class TestStructuredLogic:
         handler.emit(record)
         time.sleep(0.1)
 
-        kwargs = mock_client.send_log_sync.call_args[1]
+        kwargs = mock_client.send_log_future.call_args[1]
         assert kwargs['file_path'] == "/src/app/main.py"
         assert kwargs['line_number'] == 101

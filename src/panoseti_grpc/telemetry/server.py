@@ -27,6 +27,67 @@ from .resources import make_rich_logger, get_config_path
 # Create the main logger
 logger = make_rich_logger("telemetry_server")
 
+# --- Configuration ---
+BATCH_SIZE = 100         # Max items to send in one Redis command
+BATCH_INTERVAL = 0.5     # Max time to wait before flushing (seconds)
+LOG_REDIS_KEY = "logs:ingress"
+
+class RedisBatcher:
+    """
+    Accumulates logs in memory and flushes them to Redis in bulk.
+    This turns N network calls into 1.
+    """
+
+    def __init__(self, redis_client):
+        self.redis = redis_client
+        self.queue = asyncio.Queue()
+        self._shutdown = False
+        self._worker_task = asyncio.create_task(self._worker())
+
+    async def add(self, log_json: str):
+        """Adds a serialized log to the batch queue."""
+        await self.queue.put(log_json)
+
+    async def _worker(self):
+        """Background loop that flushes the queue to Redis."""
+        while not self._shutdown or not self.queue.empty():
+            try:
+                # Wait for the first item
+                logs = [await self.queue.get()]
+
+                # Drain the rest of the queue up to BATCH_SIZE (instant grab)
+                # This grabs everything currently available in RAM
+                while not self.queue.empty() and len(logs) < BATCH_SIZE:
+                    logs.append(self.queue.get_nowait())
+
+                # Bulk Push to Redis (One Network Call)
+                if logs:
+                    await self.redis.rpush(LOG_REDIS_KEY, *logs)
+
+                    # Mark tasks as done for the queue
+                    for _ in logs:
+                        self.queue.task_done()
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Redis Batcher Error: {e}")
+                # Backoff slightly on error to prevent CPU spin
+                await asyncio.sleep(1)
+
+    async def shutdown(self):
+        """Gracefully flushes remaining logs and stops worker."""
+        self._shutdown = True
+        # Wait for queue to empty
+        if not self.queue.empty():
+            logger.info(f"Flushing {self.queue.qsize()} remaining logs...")
+            await self.queue.join()
+        self._worker_task.cancel()
+        try:
+            await self._worker_task
+        except asyncio.CancelledError:
+            pass
+
 class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
     """
     Implements the Telemetry gRPC service.
@@ -37,6 +98,8 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
         self.config_path = config_path
         self.redis = redis_client
         self._load_config()
+        # Initialize the Batcher
+        self.batcher = RedisBatcher(redis_client)
         logger.info(f"TelemetryServicer initialized with config: [bold cyan]{self.config_path}[/]")
         logger.info(f"[bold green]Telemetry Server Online[/]", extra={"markup": True})
 
@@ -62,46 +125,46 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
             always_print_fields_with_no_presence=True
         )
 
-    async def Log(self, request, context):
+    async def Log(self, request, context) -> telemetry_pb2.StatusResponse:
         """
-        Handles incoming LogMessages.
-        Validates schema and pushes to Redis List (Queue).
+        High-throughput endpoint for Logging.
+        Validates schema and queues for Redis batch writing.
         """
         try:
-            # 1. Validate against Pydantic Schema (Hygiene check)
-            # We construct a dict from the gRPC message
+            # 1. Extract Data
+            # We map protobuf fields to our Pydantic Schema
             log_data = {
                 "host": request.host,
                 "service_name": request.service_name,
-                "timestamp": request.timestamp.ToSeconds(),
-                "severity": request.severity,  # IntEnum mapping handled in config.py
+                "timestamp": request.timestamp.seconds + request.timestamp.nanos / 1e9,
+                "severity": request.severity,
                 "file_path": request.file_path,
                 "line_number": request.line_number,
                 "function_name": request.function_name,
-                "process_id": request.process_id,
+                "process_id": request.process_id if request.process_id != 0 else None,
                 "thread_name": request.thread_name,
                 "git_commit": request.git_commit,
                 "git_branch": request.git_branch,
                 "payload_json": request.payload_json
             }
 
-            # This raises ValidationError if data is malformed
-            validated_log = LogSchema(**log_data)
+            # 2. Validate (Pydantic)
+            # This is the CPU-bound part. Pydantic is fast, but it happens inline.
+            validated = LogSchema(**log_data)
 
-            # 2. Serialize for Redis
-            # We store it as a JSON string in the Redis List
-            redis_payload = validated_log.model_dump_json()
+            # 3. Serialize & Queue (Async)
+            # model_dump_json is faster than json.dumps(model_dump())
+            json_str = validated.model_dump_json()
 
-            # 3. Push to Queue (Non-blocking I/O)
-            # We use the config-defined key, defaulting to 'logs:ingress'
-            queue_key = getattr(self.config, "logging", {}).get("redis_queue_key", "logs:ingress")
-            await self.redis.rpush(queue_key, redis_payload)
+            # Fire and Forget (Wait only for memory queue insertion, not Redis write)
+            await self.batcher.add(json_str)
 
-            return telemetry_pb2.LogResponse(success=True, message="Log Queued")
+            return telemetry_pb2.StatusResponse(success=True, message="Queued")
 
         except Exception as e:
-            logger.error(f"Log Ingest Failed: {e}")
-            return telemetry_pb2.LogResponse(success=False, message=str(e))
+            # We log the error locally so the server admin sees it
+            logger.warning(f"Log Ingest Rejected: {e}")
+            return telemetry_pb2.StatusResponse(success=False, message=str(e))
 
 
     async def ReportStatus(self, request, context):
