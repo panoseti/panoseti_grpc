@@ -1,4 +1,4 @@
 {
-    "root_dir": "/mnt/panoseti",
+    "data_dir": "/mnt/panoseti",
     "run_dir": "test"
 }

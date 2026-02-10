@@ -1,5 +1,5 @@
 {
-    "root_dir": "/mnt/panoseti",
+    "data_dir": "/mnt/panoseti",
     "daq_ip_addr": "192.168.0.228",
     "bindhost": "enp171s0",
     "max_file_size_mb": 10,

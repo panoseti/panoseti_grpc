@@ -53,7 +53,7 @@ def run_client(args):
             if p['check_hashpipe_running']:
                 print('* HASHPIPE Status: ', status['hashpipe_running'])
             if p['check_disk_usage']:
-                print(f"* Disk Usage {p['root_dir']}:")
+                print(f"* Disk Usage {p['data_dir']}:")
                 print("    - Total Disk Space: ", human(status['total_disk_space']))
                 print("    - Used Disk Space: ", human(status['used_disk_space']))
                 print("    - Free Disk Space: ", human(status['free_disk_space']))

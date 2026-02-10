@@ -20,6 +20,7 @@ import asyncio
 import signal
 
 # gRPC Imports 
+os.environ['GRPC_ENABLE_FORK_SUPPORT'] = '0'
 import grpc
 from panoseti_grpc.generated import daq_control_pb2, daq_control_pb2_grpc
 
@@ -41,23 +42,28 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         self.datadir = None
 
     def _create_module_config(self, module_id):
-        with open(f'{self.datadir}/module.config', 'w') as f:
+        mconfig = f'{self.datadir}/module.config'
+        self.logger.info(f'Create {mconfig}')
+        with open(mconfig, 'w') as f:
             for id in module_id:
                 f.write(f'{id} ')
 
-    def _setup_data_directories(self, rundir, module_id):
+    def _setup_data_directories(self, datadir, rundir, module_id):
         # create directory for config files
-        Path(rundir).mkdir()
+        cdirname = f"{datadir}/{rundir}"
+        self.logger.info(f'Setup rundir for configs: {cdirname}')
+        Path(cdirname).mkdir(parents=True, exist_ok=True)
         # create directory for data
         for m in module_id:
-            dirname = f"{rundir}/module_{m}"
-            Path(dirname).mkdir()
+            dirname = f"{datadir}/module_{m}/{rundir}"
+            self.logger.info(f'Setup rundir for data: {dirname}')
+            Path(dirname).mkdir(parents=True, exist_ok=True)
 
     async def StartDaq(self, request, context):
         self.logger.info("Starting HASHPIPE instance...")
         # get the parameters from client
         self.datadir = request.data_dir
-        self.logger.debug(f"root_dir: {self.datadir}")
+        self.logger.debug(f"data_dir: {self.datadir}")
         daq_ip_addr = request.daq_ip_addr
         self.logger.debug(f"daq_ip_addr: {daq_ip_addr}")
         bindhost = request.bindhost
@@ -73,55 +79,64 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         module_id = request.module_id
         # get the full path for hashpipe.so, rundir and module.config
         hashpipe_so = f"{self.datadir}/hashpipe.so"
-        rundir = f"{self.datadir}/{run_dir}"
         configfn = f"{self.datadir}/module.config"
         # create module.config
         self._create_module_config(module_id)
         # setup data directories
-        self._setup_data_directories(rundir, module_id)
+        self._setup_data_directories(self.datadir, run_dir, module_id)
         # create log files for stdout and stderr
-        stdoutfd = open(f"{self.datadir}/{run_dir}/hp_stdout_/{daq_ip_addr}", "w")
-        stderrfd = open(f"{self.datadir}/{run_dir}/hp_stderr_/{daq_ip_addr}", "w")
+        self.logger.debug('Create log files...')
+        stdoutfd = open(f"{self.datadir}/{run_dir}/hp_stdout_{daq_ip_addr}", "w")
+        stderrfd = open(f"{self.datadir}/{run_dir}/hp_stderr_{daq_ip_addr}", "w")
         # create cmdline for start HASHPIPE
-        proc = subprocess.Popen(
-            ['hashpipe', 
+        cmd = [
+             'hashpipe',
              '-p', hashpipe_so, 
              '-I', '0',
              '-o', f'BINDHOST={bindhost}',
              '-o', f'MAXFILESIZE={max_file_size_mb}',
              '-o', f'GROUPPHFRAMES={group_ph_frames}',
-             '-o', f'RUNDIR={rundir}',
+             '-o', f'RUNDIR={run_dir}',
              '-o', f'CONFIG={configfn}',
              '-o', f'OBS={obs}',
              'net_thread',
              'compute_thread',
              'output_thread'
-             ],
+             ]
+        # log the cmd
+        cmdstr = " ".join(cmd)
+        self.logger.debug('Create subprocess...')
+        self.logger.debug(f"cmd: {cmdstr}")
+        proc = await asyncio.create_subprocess_exec(
+             *cmd,
+             cwd = self.datadir,
              stdout=stdoutfd,
              stderr=stderrfd,
              start_new_session=True
         )
+
+        self.logger.debug('Subprocess created...')
         stdoutfd.close()
         stderrfd.close()
         # get the hashpipe pid
         self.hashpipe_pid = proc.pid
-        status = is_hashpipe_running(self.hashpipe_pid)
-        self.logger.info(f"HASHPIPE instance status: {status}; PID: {self.hashpipe_pid}")
-        return daq_control_pb2.StartDaqResponse(status=status)
+        success = is_hashpipe_running(self.hashpipe_pid)
+        self.logger.info(f"HASHPIPE instance status: {success}; PID: {self.hashpipe_pid}")
+        return daq_control_pb2.StartDaqResponse(success=success)
     
     async def StopDaq(self, request, context):
         self.logger.info("Stop HASHPIPE instance...")
         self.datadir = request.data_dir
         run_dir = request.run_dir
         psutil.Process(self.hashpipe_pid).terminate()
-        status = is_hashpipe_running(self.hashpipe_pid)
-        if status:
+        success = is_hashpipe_running(self.hashpipe_pid)
+        if success:
             self.logger.warning("HASHPIPE is still running...")
-            return daq_control_pb2.StopDaqResponse(status=False)
+            return daq_control_pb2.StopDaqResponse(success=False)
         else:
             self.hashpipe_pid = -1
             self.logger.info("HASHPIPE instance stopped successfully.")
-            return daq_control_pb2.StopDaqResponse(status=True)
+            return daq_control_pb2.StopDaqResponse(success=True)
     
     async def StatusDaq(self, request, context):
         self.logger.info('Checking Daq Node status...')

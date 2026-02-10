@@ -15,20 +15,20 @@ class DaqControlClient:
         Docstring for StartDaq
         
         :param parameters: A dict contains all necessary parameters
-                    * root_dir(str) - root dir for PANOSETI data
+                    * data_dir(str) - root dir for PANOSETI data
                     * daq_ip_addr(str) - ip address
                     * bindhost(str) - ethernet port for receiving packets
                     * max_file_size_mb(uint32) - max file size in MB
                     * group_ph_frames(bool) - set if group ph frames from 4 Qubaos
                     * run_dir(str) - the new directory for this run, 
-                                    which should be under root_dir
+                                    which should be under data_dir
                     * obs(str) - obs name
                     * module_id (list) - modules for this daq node
         """
         # TODO: check if all of the parameters are reasonable
         #       We could use Pydantic for this.
         request = daq_control_pb2.StartDaqRequest()
-        request.root_dir = parameters['root_dir']
+        request.data_dir = parameters['data_dir']
         request.daq_ip_addr = parameters['daq_ip_addr']
         request.bindhost = parameters['bindhost']
         request.max_file_size_mb = parameters['max_file_size_mb']
@@ -50,14 +50,14 @@ class DaqControlClient:
         Docstring for StopDaq
         
         :param parameters: A dict contains all necessary parameters
-                    * root_dir(str) - root dir for PANOSETI data
+                    * data_dir(str) - root dir for PANOSETI data
                     * run_dir(str) - the new directory for this run, 
-                                    which should be under root_dir
+                                    which should be under data_dir
         """
         # TODO: check if all of the parameters are reasonable
         #       We could use Pydantic for this.
         request = daq_control_pb2.StopDaqRequest()
-        request.root_dir = parameters['root_dir']
+        request.data_dir = parameters['data_dir']
         request.run_dir = parameters['run_dir']
         try:
             resp = self.stub.StopDaq(request)
@@ -73,14 +73,14 @@ class DaqControlClient:
         Docstring for StatusDaq
         
         :param parameters: A dict contains all necessary parameters
-                    * root_dir(str) - root dir for PANOSETI data
+                    * data_dir(str) - root dir for PANOSETI data
                     * check_hashpipe_running(bool) - check if hashpipe is running
                     * check_disk_usage(bool) - check the disk usage
         """
         # TODO: check if all of the parameters are reasonable
         #       We could use Pydantic for this. 
         request = daq_control_pb2.StatusDaqRequest()
-        request.root_dir = parameters['root_dir']
+        request.data_dir = parameters['data_dir']
         request.check_hashpipe_running = parameters['check_hashpipe_running']
         request.check_disk_usage = parameters['check_disk_usage']
         try:
