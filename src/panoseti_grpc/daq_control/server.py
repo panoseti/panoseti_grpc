@@ -276,11 +276,11 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
         datadir = request.data_dir
         rundir = request.run_dir
-        module_ids = request.module_ids
+        module_id = request.module_id
         # clean up the run dir in data dir
         self._cleanup_dir(f"{datadir}/{rundir}")
         # clean up the run dir in module_x dir
-        for id in module_ids:
+        for id in module_id:
             cleanupdir = f"{datadir}/module_{id}/{rundir}"
             if not self._cleanup_dir(cleanupdir):
                 msg = f"Fail to cleanup {cleanupdir}"
