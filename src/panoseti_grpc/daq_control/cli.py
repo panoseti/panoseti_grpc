@@ -49,14 +49,14 @@ def run_client(args):
         logger.debug('Getting Daq status...')
         success, status = client.StatusDaq(p)
         if success:
-            console.print(f"[bold green]Daq Status:[/]")
+            console.print(f"[bold blue]******** Daq Node Status ********[/]")
             if p['check_hashpipe_running']:
-                console.print(f"[bold green]* HASHPIPE Status: , {status['hashpipe_running']}[/]")
+                console.print(f"[bold orange]* HASHPIPE Status: , {status['hashpipe_running']}[/]")
             if p['check_disk_usage']:
-                console.print(f"[bold green]* Disk Usage {p['data_dir']}:[/]")
-                console.print(f"[bold green]    - Total Disk Space: {human(status['total_disk_space'])}[/]")
-                console.print(f"[bold green]    - Used  Disk Space: {human(status['used_disk_space'])}[/]")
-                console.print(f"[bold green]    - Free  Disk Space: {human(status['free_disk_space'])}[/]")
+                console.print(f"[bold pink]* Disk Usage ({p['data_dir']}):[/]")
+                console.print(f"[bold pink]    - Total Disk Space: {human(status['total_disk_space'])}[/]")
+                console.print(f"[bold pink]    - Used  Disk Space: {human(status['used_disk_space'])}[/]")
+                console.print(f"[bold pink]    - Free  Disk Space: {human(status['free_disk_space'])}[/]")
                 
 def main():
     parser = argparse.ArgumentParser(description="PANOSETI Daq Control CLI")
