@@ -10,7 +10,7 @@ Features:
     * check the free space on disk
 """
 import os
-import subprocess
+import functools
 import logging
 import psutil
 import shutil
@@ -31,6 +31,16 @@ from .resources import make_rich_logger
 from .util import is_hashpipe_running
 
 PROCESS = 'hashpipe'
+
+def grpc_error_handler(func):
+    @functools.wraps(func)
+    async def wrapper(self, request, context):
+        try:
+            return await func(self, request, context)
+        except Exception as e:
+            logging.exception(f"Error in {func.__name__}: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Internal server error: {str(e)}")
+    return wrapper
 
 class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     """
@@ -139,7 +149,8 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             else:
                 self.logger.debug(f"Cleanup failed")
                 return False
-            
+
+    @grpc_error_handler
     async def StartDaq(self, request, context):
         self.logger.info("Starting HASHPIPE instance...")
         # 1. check if we already have HASHPIPE running
@@ -216,6 +227,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         self.logger.info(f"HASHPIPE instance status: {success}; PID: {self.hashpipe_pid}")
         return daq_control_pb2.StartDaqResponse(success=success)
     
+    @grpc_error_handler
     async def StopDaq(self, request, context):
         self.logger.info("Stop HASHPIPE instance...")
         # data dir and run dir is not used in this method
@@ -236,6 +248,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             self.logger.info("HASHPIPE instance stopped successfully.")
             return daq_control_pb2.StopDaqResponse(success=True)
     
+    @grpc_error_handler
     async def StatusDaq(self, request, context):
         self.logger.info('Checking Daq Node status...')
         datadir = request.data_dir
@@ -267,6 +280,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             run_dirs = run_dirs
         )
     
+    @grpc_error_handler
     async def CleanupData(self, request, context):
         self.logger.info('Cleanning up Data...')
         if self.hashpipe_pid > 0:
