@@ -28,6 +28,8 @@ from panoseti_grpc.generated import daq_control_pb2, daq_control_pb2_grpc
 from .resources import make_rich_logger
 from .util import is_hashpipe_running
 
+PROCESS = 'hashpipe'
+
 class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     """
     Implements the Daq Control gRPC service.
@@ -38,8 +40,30 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         self.logger.info(f"DaqControlServicer initialized")
         self.logger.info(f"[bold green]DaqControl Server Online[/]", extra={"markup": True})
         # This is used for recording the hashpipe pid
-        self.hashpipe_pid = -1
+        n, hashpipe_pids = self._get_pids_by_name(PROCESS)
+        if n == 0:
+            self.hashpipe_pid = -1
+        elif n == 1:
+            self.hashpipe_pid = hashpipe_pids[0]
+            self.logger.warning(f"Found 1 HASHPIPE instance is already running, pid:{self.hashpipe_pid}")
+        else:
+            self.hashpipe_pid = -1
+            self.logger.warning(f"Found {n} HASHPIPE instances are running, pids: {hashpipe_pids}")
+            self.logger.warning(f"All of these HASHPIPE instances have been killed.")
+            self.kill_processes(hashpipe_pids)
         self.datadir = None
+
+    def _get_pids_by_name(self, name):
+        pids = []
+        for proc in psutil.process_iter(['pid', 'name']):
+            if proc.info['name'] == name:
+                pids.append(proc.info['pid'])
+        return len(pids), pids
+    
+    def kill_processes(self, pids):
+        for pid in pids:
+            p = psutil.Process(self.pid)
+            p.send_signal(signal.SIGINT)
 
     def _create_module_config(self, module_id):
         mconfig = f'{self.datadir}/module.config'
@@ -61,6 +85,11 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
     async def StartDaq(self, request, context):
         self.logger.info("Starting HASHPIPE instance...")
+        n, pids = self._get_pids_by_name(PROCESS)
+        if n > 0:
+            msg = f"Found {n} HASHPIPE instances running. pids: {pids}"
+            self.logger.warning(msg)
+            return daq_control_pb2.StartDaqResponse(success=False, message=msg)
         # get the parameters from client
         self.datadir = request.data_dir
         self.logger.debug(f"data_dir: {self.datadir}")
