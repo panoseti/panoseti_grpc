@@ -1,13 +1,17 @@
 syntax = "proto3";
 package panoseti.daq_control;
 
+import "google/protobuf/struct.proto";
+
 service DaqControl {
     /* start daq: start hashpipe on daq nodes */
     rpc StartDaq (StartDaqRequest) returns (StartDaqResponse) {}
     /* stop daq: stop hashpipe on daq nodes */
     rpc StopDaq (StopDaqRequest) returns (StopDaqResponse) {}
     /* status daq: get status data from daq nodes */
-    rpc StatusDaq (StatusDaqRequest) returns (StatusResponse) {}
+    rpc StatusDaq (StatusDaqRequest) returns (StatusDaqResponse) {}
+    /* CleanupData: Clean up data for the specific run */
+    rpc CleanupData (CleanupDataRequest) returns (CleanupDataResponse) {}
 }
 
 /* start daq request and response */
@@ -30,7 +34,7 @@ message StartDaqResponse {
     string  message = 2;
 }
 
-/* stop daq request and response. */
+/* stop daq request and response */
 message StopDaqRequest {
     string  data_dir = 1;
     string  run_dir = 2;
@@ -41,18 +45,33 @@ message StopDaqResponse {
     string  message = 2;
 }
 
-/* status daq request and response. */
+/* status daq request and response */
 message StatusDaqRequest {
     string  data_dir = 1;
     bool    check_hashpipe_running = 2;
     bool    check_disk_usage = 3;
+    bool    check_run_dir = 4;
 }
 
-message StatusResponse {
+message StatusDaqResponse {
     bool    success = 1;
+    /* response to check_hashpipe_running */
     bool    hashpipe_running = 2;
-    uint64  total_disk_space = 3;
-    uint64  used_disk_space = 4;
-    uint64  free_disk_space = 5;
-    string  message = 6;
+    /* response to check_disk_usage */
+    google.protobuf.Struct disk_usage = 3;
+    /* response to check_run_dir */
+    repeated string run_dirs = 4;
+    string  message = 5;
+}
+
+/* collect data request and response */
+message CleanupDataRequest {
+    string  data_dir = 1;
+    string  run_dir = 2;
+    repeated uint32  module_ids = 3 [packed=true];
+}
+
+message CleanupDataResponse {
+    bool    success = 1;
+    string  message = 2;
 }

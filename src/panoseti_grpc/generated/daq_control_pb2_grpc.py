@@ -47,7 +47,12 @@ class DaqControlStub(object):
         self.StatusDaq = channel.unary_unary(
                 '/panoseti.daq_control.DaqControl/StatusDaq',
                 request_serializer=daq__control__pb2.StatusDaqRequest.SerializeToString,
-                response_deserializer=daq__control__pb2.StatusResponse.FromString,
+                response_deserializer=daq__control__pb2.StatusDaqResponse.FromString,
+                _registered_method=True)
+        self.CleanupData = channel.unary_unary(
+                '/panoseti.daq_control.DaqControl/CleanupData',
+                request_serializer=daq__control__pb2.CleanupDataRequest.SerializeToString,
+                response_deserializer=daq__control__pb2.CleanupDataResponse.FromString,
                 _registered_method=True)
 
 
@@ -75,6 +80,13 @@ class DaqControlServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CleanupData(self, request, context):
+        """CleanupData: Clean up data for the specific run 
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DaqControlServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -91,7 +103,12 @@ def add_DaqControlServicer_to_server(servicer, server):
             'StatusDaq': grpc.unary_unary_rpc_method_handler(
                     servicer.StatusDaq,
                     request_deserializer=daq__control__pb2.StatusDaqRequest.FromString,
-                    response_serializer=daq__control__pb2.StatusResponse.SerializeToString,
+                    response_serializer=daq__control__pb2.StatusDaqResponse.SerializeToString,
+            ),
+            'CleanupData': grpc.unary_unary_rpc_method_handler(
+                    servicer.CleanupData,
+                    request_deserializer=daq__control__pb2.CleanupDataRequest.FromString,
+                    response_serializer=daq__control__pb2.CleanupDataResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -174,7 +191,34 @@ class DaqControl(object):
             target,
             '/panoseti.daq_control.DaqControl/StatusDaq',
             daq__control__pb2.StatusDaqRequest.SerializeToString,
-            daq__control__pb2.StatusResponse.FromString,
+            daq__control__pb2.StatusDaqResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CleanupData(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/panoseti.daq_control.DaqControl/CleanupData',
+            daq__control__pb2.CleanupDataRequest.SerializeToString,
+            daq__control__pb2.CleanupDataResponse.FromString,
             options,
             channel_credentials,
             insecure,

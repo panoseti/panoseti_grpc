@@ -19,6 +19,8 @@ from pathlib import Path
 import asyncio
 import signal
 
+from glob import glob
+
 # gRPC Imports 
 os.environ['GRPC_ENABLE_FORK_SUPPORT'] = '0'
 import grpc
@@ -112,6 +114,32 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             self.logger.debug(msg)
             return True, msg
     
+    def _check_disk_usage(self, datadir):
+        usage = shutil.disk_usage(datadir)
+        disk_usage = {
+            'total_disk_space' : usage.total,
+            'used_disk_space' : usage.used,
+            'free_disk_space' : usage.free,
+        }
+        return disk_usage
+    
+    def _check_run_dirs(self, datadir):
+        return glob(f"{datadir}/*.pffd")
+    
+    def _cleanup_dir(self, rundir):
+        path = Path(rundir)
+        if not path.is_dir():
+            self.logger.warning(f'Data Directory not exist: {rundir}')
+        else:
+            self.logger.debug(f"Cleaning up {rundir}")
+            shutil.rmtree(path)
+            if not path.is_dir():
+                self.logger.debug(f"Cleanup successful")
+                return True
+            else:
+                self.logger.debug(f"Cleanup failed")
+                return False
+            
     async def StartDaq(self, request, context):
         self.logger.info("Starting HASHPIPE instance...")
         # 1. check if we already have HASHPIPE running
@@ -190,6 +218,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     
     async def StopDaq(self, request, context):
         self.logger.info("Stop HASHPIPE instance...")
+        # data dir and run dir is not used in this method
         datadir = request.data_dir
         run_dir = request.run_dir
         if self.hashpipe_pid == -1:
@@ -222,21 +251,36 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         # check free space
         if request.check_disk_usage:
             self.logger.debug('Checking disk usage...')
-            usage = shutil.disk_usage(datadir)
-            total_disk_space = usage.total
-            used_disk_space = usage.used
-            free_disk_space = usage.free
+            disk_usage = self._check_disk_usage(datadir)
         else:
-            total_disk_space = -1
-            used_disk_space = -1
-            free_disk_space = -1
-        return daq_control_pb2.StatusResponse(
+            disk_usage = {
+                'total_disk_space' : -1,
+                'used_disk_space' : -1,
+                'free_disk_space' : -1,
+            }
+        # check run dirs
+        run_dirs = self._check_run_dirs(datadir)
+        return daq_control_pb2.StatusDaqResponse(
             success = True,
             hashpipe_running = hashpipe_running,
-            total_disk_space = total_disk_space,
-            used_disk_space = used_disk_space,
-            free_disk_space = free_disk_space
+            disk_usage = disk_usage,
+            run_dirs = run_dirs
         )
+    
+    async def CleanupData(self, request, context):
+        self.logger.info('Cleanning up Data...')
+        datadir = request.data_dir
+        rundir = request.run_dir
+        module_ids = request.module_ids
+        # clean up the run dir in data dir
+        self._cleanup_dir(f"{datadir}/{rundir}")
+        # clean up the run dir in module_x dir
+        for id in module_ids:
+            cleanupdir = f"{datadir}/module_{id}/{rundir}"
+            if not self._cleanup_dir(cleanupdir):
+                msg = f"Fail to cleanup {cleanupdir}"
+                return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
+        return daq_control_pb2.CleanupDataResponse(success=True)
 
 async def serve(grpc_port, level):
     """

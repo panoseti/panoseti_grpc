@@ -54,15 +54,19 @@ def run_client(args):
                 console.print(f"[bold orange]* HASHPIPE Status: , {status['hashpipe_running']}[/]")
             if p['check_disk_usage']:
                 console.print(f"[bold pink]* Disk Usage ({p['data_dir']}):[/]")
-                console.print(f"[bold pink]    - Total Disk Space: {human(status['total_disk_space'])}[/]")
-                console.print(f"[bold pink]    - Used  Disk Space: {human(status['used_disk_space'])}[/]")
-                console.print(f"[bold pink]    - Free  Disk Space: {human(status['free_disk_space'])}[/]")
+                console.print(f"[bold pink]    - Total Disk Space: {human(status['disk_usage']['total_disk_space'])}[/]")
+                console.print(f"[bold pink]    - Used  Disk Space: {human(status['disk_usage']['used_disk_space'])}[/]")
+                console.print(f"[bold pink]    - Free  Disk Space: {human(status['disk_usage']['free_disk_space'])}[/]")
+            if p['check_run_dirs']:
+                console.print(f"[bold yellow]* Run Dirs :[/]")
+                for r in status['run_dirs']:
+                    console.print(f"[bold yellow]   - {r}[/]")
                 
 def main():
     parser = argparse.ArgumentParser(description="PANOSETI Daq Control CLI")
     parser.add_argument("--host", default="localhost", help="gRPC Server Host")
     parser.add_argument("--port", type=int, default=50051, help="gRPC Server Port")
-    parser.add_argument("--op", choices=['startdaq', 'stopdaq', 'statusdaq', ], default='startdaq', help="Valid operations.")
+    parser.add_argument("--op", choices=['startdaq', 'stopdaq', 'statusdaq', 'cleanupdata'], default='startdaq', help="Valid operations.")
     parser.add_argument("--config", type=str, default='configs/startdaq.json', help="config file contains parameters for the specific operation.")
     parser.add_argument("--log-level", default="info", choices=["debug", "info", "warning", "error"])
     

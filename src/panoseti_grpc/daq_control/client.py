@@ -83,15 +83,15 @@ class DaqControlClient:
         request.data_dir = parameters['data_dir']
         request.check_hashpipe_running = parameters['check_hashpipe_running']
         request.check_disk_usage = parameters['check_disk_usage']
+        request.check_run_dirs = parameters['check_run_dirs']
         try:
             resp = self.stub.StatusDaq(request)
             if not resp.success:
                 raise ValueError(f"Server rejected data: {resp.message}")
             status = {}
             status['hashpipe_running'] = resp.hashpipe_running
-            status['total_disk_space'] = resp.total_disk_space
-            status['used_disk_space'] = resp.used_disk_space
-            status['free_disk_space'] = resp.free_disk_space
+            status['disk_usage'] = resp.disk_usage
+            status['run_dirs'] = resp.run_dirs
             return resp.success, status
         except grpc.RpcError as e:
             raise ConnectionError(f"gRPC failed: {e.details()}")

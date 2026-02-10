@@ -1,0 +1,8 @@
+{
+    "data_dir": "/mnt/panoseti",
+    "run_dir": "test",
+    "module_ids": [
+        250,
+        251
+    ]
+}
