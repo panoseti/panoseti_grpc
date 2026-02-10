@@ -36,27 +36,27 @@ def run_client(args):
     console.print(f"[bold green]Connected to Daq Control Server at {args.host}:{args.port}[/]")
     p = load_config(args.config)
     if args.op == 'startdaq':
-        logger.info('Starting Daq Capture...')
+        logger.debug('Starting Daq Capture...')
         if client.StartDaq(p):
-            print('Daq Capture started successfully.')
-            logger.info('Daq Capture started successfully.')
+            console.print(f"[bold green]Daq Capture started successfully.[/]")
+            logger.debug('Daq Capture started successfully.')
     elif args.op == 'stopdaq':
-        logger.info('Stop Daq Capture...')
+        logger.debug('Stop Daq Capture...')
         if client.StopDaq(p):
-            print('Daq Capture stopped successfully.')
-            logger.info('Daq Capture stopped successfully.')
+            console.print(f"[bold green]Daq Capture stopped successfully.[/]")
+            logger.debug('Daq Capture stopped successfully.')
     elif args.op == 'statusdaq':
-        logger.info('Getting Daq status...')
+        logger.debug('Getting Daq status...')
         success, status = client.StatusDaq(p)
         if success:
-            print('Daq Status:')
+            console.print(f"[bold green]Daq Status:[/]")
             if p['check_hashpipe_running']:
-                print('* HASHPIPE Status: ', status['hashpipe_running'])
+                console.print(f"[bold green]* HASHPIPE Status: , {status['hashpipe_running']}[/]")
             if p['check_disk_usage']:
-                print(f"* Disk Usage {p['data_dir']}:")
-                print("    - Total Disk Space: ", human(status['total_disk_space']))
-                print("    - Used Disk Space: ", human(status['used_disk_space']))
-                print("    - Free Disk Space: ", human(status['free_disk_space']))
+                console.print(f"[bold green]* Disk Usage {p['data_dir']}:[/]")
+                console.print(f"[bold green]    - Total Disk Space: {human(status['total_disk_space'])}[/]")
+                console.print(f"[bold green]    - Used  Disk Space: {human(status['used_disk_space'])}[/]")
+                console.print(f"[bold green]    - Free  Disk Space: {human(status['free_disk_space'])}[/]")
                 
 def main():
     parser = argparse.ArgumentParser(description="PANOSETI Daq Control CLI")
