@@ -51,7 +51,6 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             self.logger.warning(f"Found {n} HASHPIPE instances are running, pids: {hashpipe_pids}")
             self.logger.warning(f"All of these HASHPIPE instances have been killed.")
             self.kill_processes(hashpipe_pids)
-        self.datadir = None
 
     def _get_pids_by_name(self, name):
         pids = []
@@ -62,11 +61,11 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     
     def kill_processes(self, pids):
         for pid in pids:
-            p = psutil.Process(self.pid)
+            p = psutil.Process(pid)
             p.send_signal(signal.SIGINT)
 
-    def _create_module_config(self, module_id):
-        mconfig = f'{self.datadir}/module.config'
+    def _create_module_config(self, datadir,module_id):
+        mconfig = f'{datadir}/module.config'
         self.logger.info(f'Create {mconfig}')
         with open(mconfig, 'w') as f:
             for id in module_id:
@@ -82,21 +81,57 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             dirname = f"{datadir}/module_{m}/{rundir}"
             self.logger.info(f'Setup rundir for data: {dirname}')
             Path(dirname).mkdir(parents=True, exist_ok=True)
-
+    
+    def _validate_data_dir(self, datadir):
+        if not Path(datadir).is_dir():
+            msg = f"data directory ({datadir}) not found."
+            self.logger.error(msg)
+            return False, msg
+        else:
+            msg = f"Data dir ({datadir}): validated."
+            self.logger.debug(msg)
+            return True, msg
+    
+    def _validate_ip_ethport(self, ip, ethport):
+        netinfo = {}
+        addrs = psutil.net_if_addrs()
+        for iface, addr_list in addrs.items():
+            for addr in addr_list:
+                if addr.family.name == "AF_INET":
+                    netinfo[iface] = addr.address
+        if ethport not in netinfo:
+            msg = f"eth port ({ethport} is not valid.)"
+            self.logger.error(msg)
+            return False, msg
+        elif netinfo[ethport] != ip:
+            msg = f"DAQ node IP ({ip}) is incorrect."
+            self.logger.error(msg)
+            return False, msg
+        else:
+            msg = f"{ethport} ({ip}): validated."
+            self.logger.debug(msg)
+            return True, msg
+    
     async def StartDaq(self, request, context):
         self.logger.info("Starting HASHPIPE instance...")
+        # 1. check if we already have HASHPIPE running
         n, pids = self._get_pids_by_name(PROCESS)
         if n > 0:
             msg = f"Found {n} HASHPIPE instances running. pids: {pids}"
             self.logger.warning(msg)
             return daq_control_pb2.StartDaqResponse(success=False, message=msg)
-        # get the parameters from client
-        self.datadir = request.data_dir
-        self.logger.debug(f"data_dir: {self.datadir}")
+        # 2. check if the data dir exists
+        datadir = request.data_dir
+        s, msg = self._validate_data_dir(datadir)
+        if not s:
+            return daq_control_pb2.StartDaqResponse(success=s, message=msg)
+        # 3. check if the IP and eth port are valid.
+        #    Actually, IP is not important here
         daq_ip_addr = request.daq_ip_addr
-        self.logger.debug(f"daq_ip_addr: {daq_ip_addr}")
         bindhost = request.bindhost
-        self.logger.debug(f"bindhost: {bindhost}")
+        s, msg = self._validate_ip_ethport(daq_ip_addr, bindhost)
+        if not s:
+            return daq_control_pb2.StartDaqResponse(success=s, message=msg)
         max_file_size_mb = request.max_file_size_mb
         self.logger.debug(f"max_file_size_mb: {max_file_size_mb}")
         group_ph_frames = request.group_ph_frames
@@ -107,16 +142,16 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         self.logger.debug(f"obs: {obs}")
         module_id = request.module_id
         # get the full path for hashpipe.so, rundir and module.config
-        hashpipe_so = f"{self.datadir}/hashpipe.so"
-        configfn = f"{self.datadir}/module.config"
+        hashpipe_so = f"{datadir}/hashpipe.so"
+        configfn = f"{datadir}/module.config"
         # create module.config
-        self._create_module_config(module_id)
+        self._create_module_config(datadir, module_id)
         # setup data directories
-        self._setup_data_directories(self.datadir, run_dir, module_id)
+        self._setup_data_directories(datadir, run_dir, module_id)
         # create log files for stdout and stderr
         self.logger.debug('Create log files...')
-        stdoutfd = open(f"{self.datadir}/{run_dir}/hp_stdout_{daq_ip_addr}", "w")
-        stderrfd = open(f"{self.datadir}/{run_dir}/hp_stderr_{daq_ip_addr}", "w")
+        stdoutfd = open(f"{datadir}/{run_dir}/hp_stdout_{daq_ip_addr}", "w")
+        stderrfd = open(f"{datadir}/{run_dir}/hp_stderr_{daq_ip_addr}", "w")
         # create cmdline for start HASHPIPE
         cmd = [
              'hashpipe',
@@ -138,7 +173,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         self.logger.debug(f"cmd: {cmdstr}")
         proc = await asyncio.create_subprocess_exec(
              *cmd,
-             cwd = self.datadir,
+             cwd = datadir,
              stdout=stdoutfd,
              stderr=stderrfd,
              start_new_session=True
@@ -155,7 +190,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     
     async def StopDaq(self, request, context):
         self.logger.info("Stop HASHPIPE instance...")
-        self.datadir = request.data_dir
+        datadir = request.data_dir
         run_dir = request.run_dir
         if self.hashpipe_pid == -1:
             self.logger.info('No HASHPIPE instance is running.')
@@ -174,7 +209,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     
     async def StatusDaq(self, request, context):
         self.logger.info('Checking Daq Node status...')
-        self.datadir = request.data_dir
+        datadir = request.data_dir
         # check hashpipe status
         if request.check_hashpipe_running:
             self.logger.debug('Checking HASHPIPE status...')
@@ -183,11 +218,11 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             else:
                 hashpipe_running = is_hashpipe_running(self.hashpipe_pid)
         else:
-            hashpipe_status = False
+            hashpipe_running = False
         # check free space
         if request.check_disk_usage:
             self.logger.debug('Checking disk usage...')
-            usage = shutil.disk_usage(self.datadir)
+            usage = shutil.disk_usage(datadir)
             total_disk_space = usage.total
             used_disk_space = usage.used
             free_disk_space = usage.free
