@@ -18,6 +18,6 @@ docker compose -f $COMPOSE_FILE up \
 
 echo "--- Cleaning Up ---"
 # Ensure all containers and networks are removed
-docker compose -f $COMPOSE_FILE down
+docker compose -f $COMPOSE_FILE down --volumes
 
 echo "--- Telemetry CI Run Completed Successfully ---"

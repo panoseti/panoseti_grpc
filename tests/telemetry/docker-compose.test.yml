@@ -15,7 +15,8 @@ services:
 
   # NEW: Add Loki for integration tests
   loki:
-    image: grafana/loki:2.9.0
+    image: grafana/loki:3.6.0
+    user: "0:0"
     ports:
       - "3100:3100"
     # Mount config if necessary, or use defaults for testing
