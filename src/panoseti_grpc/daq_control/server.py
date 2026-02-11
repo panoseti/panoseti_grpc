@@ -201,7 +201,11 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         self.hashpipe_pid = proc.pid
         success = is_hashpipe_running(self.hashpipe_pid)
         self.logger.info(f"HASHPIPE instance status: {success}; PID: {self.hashpipe_pid}")
-        return daq_control_pb2.StartDaqResponse(success=success)
+        if not success:
+            msg = 'HASHPIPE start failed.'
+        else:
+            msg = ''
+        return daq_control_pb2.StartDaqResponse(success=success, message=msg)
     
     @grpc_error_handler
     async def StopDaq(self, request, context):
@@ -284,7 +288,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
         return daq_control_pb2.CleanupDataResponse(success=True)
 
-async def serve(grpc_port, level):
+async def serve(grpc_port=50051, level=logging.DEBUG):
     """
     Main entry point for running the server.
     Args:

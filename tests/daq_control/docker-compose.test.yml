@@ -1,0 +1,8 @@
+services:
+  test_runner:
+    build:
+      context: ../../
+      dockerfile: tests/daq_control/Dockerfile
+    environment:
+      - GRPC_PORT=50051
+    command: ["pytest", "--timeout=20", "-v", "tests/daq_control/integration", "tests/daq_control/unit"]
