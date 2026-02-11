@@ -113,4 +113,19 @@ jobs:
           # --abort-on-container-exit: stops Redis/Influx once pytest finishes
           # --exit-code-from test_runner: fails the CI job if pytest fails
           docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from test_runner
+  
+  daq-control-service-build-and-test:
+    name: Daq Control Service Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Run Daq Control Docker Compose Tests
+        run: |
+          cd tests/daq_control
+          # Run the compose stack.
+          # --abort-on-container-exit: stops Redis/Influx once pytest finishes
+          # --exit-code-from test_runner: fails the CI job if pytest fails
+          docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from test_runner
 
