@@ -37,17 +37,17 @@ def run_client(args):
     p = load_config(args.config)
     if args.op == 'startdaq':
         logger.debug('Starting Daq Capture...')
-        if client.StartDaq(p):
+        if client.StartDaq(p['startdaq']):
             console.print(f"[bold green]Daq Capture started successfully.[/]")
             logger.debug('Daq Capture started successfully.')
     elif args.op == 'stopdaq':
         logger.debug('Stop Daq Capture...')
-        if client.StopDaq(p):
+        if client.StopDaq(p['stopdaq']):
             console.print(f"[bold green]Daq Capture stopped successfully.[/]")
             logger.debug('Daq Capture stopped successfully.')
     elif args.op == 'statusdaq':
         logger.debug('Getting Daq status...')
-        success, status = client.StatusDaq(p)
+        success, status = client.StatusDaq(p['statusdaq'])
         if success:
             console.print(f"[bold bright_blue]******** Daq Node Status ********[/]")
             if p['check_hashpipe_running']:
@@ -64,7 +64,7 @@ def run_client(args):
                     console.print(f"[bold yellow]   - {r}[/]")
     elif args.op == 'cleanupdata':
         logger.debug('Clean up data dirs...')
-        success = client.CleanupData(p)
+        success = client.CleanupData(p['cleanupdate'])
         if success:
             console.print(f"[bold bright_blue]Clean up data dirs successfully.[/]")
             datadir = p['data_dir']

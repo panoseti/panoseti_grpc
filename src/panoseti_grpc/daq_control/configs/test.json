@@ -1,0 +1,33 @@
+{
+    "startdaq": {
+        "data_dir": "/mnt/panoseti",
+        "daq_ip_addr": "192.168.0.228",
+        "bindhost": "enp171s0",
+        "max_file_size_mb": 10,
+        "group_ph_frames": true,
+        "run_dir": "test.pffd",
+        "obs": "ucb-lab",
+        "module_id": [
+            250,
+            251
+        ]
+    },
+    "stopdaq": {
+        "data_dir": "/mnt/panoseti",
+        "run_dir": "test.pffd"
+    },
+    "statusdaq": {
+        "data_dir": "/mnt/panoseti",
+        "check_hashpipe_running": true,
+        "check_disk_usage": true,
+        "check_run_dirs": true
+    },
+    "cleanupdate": {
+        "data_dir": "/mnt/panoseti",
+        "run_dir": "test.pffd",
+        "module_id": [
+            250,
+            251
+        ]
+    }
+}
