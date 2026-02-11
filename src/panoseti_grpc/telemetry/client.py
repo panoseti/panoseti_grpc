@@ -8,7 +8,6 @@ import socket
 import time
 from queue import Queue, Full
 from rich.logging import RichHandler
-import traceback
 
 import grpc
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -79,17 +78,17 @@ class TelemetryClient:
         ]
 
 
-        target = f'{self.host}:{self.grpc_port}'
-        self.channel = grpc.insecure_channel(target, options=options)
+        self.target = f'{self.host}:{self.grpc_port}'
+        self.channel = grpc.insecure_channel(self.target, options=options)
         self.channel.subscribe(self._on_channel_state_change)
         self.stub = telemetry_pb2_grpc.TelemetryStub(self.channel)
 
     def _on_channel_state_change(self, connectivity):
         # This runs in a background thread whenever connection state changes
         if connectivity == grpc.ChannelConnectivity.TRANSIENT_FAILURE:
-            print("⚠️ Telemetry Connection Lost - Retrying...")
+            print(f"⚠️ Telemetry Connection Lost to [{self.target}] - Retrying...")
         elif connectivity == grpc.ChannelConnectivity.READY:
-            print("✅ Telemetry Connection Active / Restored")
+            print(f"✅ Telemetry Connection Active / Restored to [{self.target}]")
 
     def _get_timestamp(self):
         ts = Timestamp()
@@ -213,10 +212,13 @@ class AsyncGrpcHandler(logging.Handler):
         self.service_name = service_name
         self.queue = Queue(maxsize=queue_size)
 
-        # Start the background worker
-        self._stop_event = threading.Event()
-        self.worker = threading.Thread(target=self._worker, daemon=True, name="LogShipper")
-        self.worker.start()
+        if grpc_client is not None:
+            # Start the background worker
+            self._stop_event = threading.Event()
+            self.worker = threading.Thread(target=self._worker, daemon=True, name="LogShipper")
+            self.worker.start()
+        else:
+            print("LogShipper is disabled because grpc_client is not available.")
 
     def emit(self, record):
         try:
@@ -321,6 +323,7 @@ def make_grpc_logger(
         queue_size: int = 1000,
         level: int = logging.INFO,
         attach_to_root: bool = False,
+        add_console_handler: bool = False,
 ) -> logging.Logger:
     """
     Configures the root logger to send data to:
@@ -335,6 +338,7 @@ def make_grpc_logger(
         attach_to_root (bool, optional): If True, adds the gRPC handler to the ROOT logger.
                            This captures logs from ALL libraries and other modules.
                            If False, only captures logs for 'service_name'.
+        add_console_handler (bool, optional): If True, adds a rich console logger.
 
     Important: define the following environment variables to enable this logger to auto create the grpc connection.
         - HEADNODE_IP
@@ -347,35 +351,35 @@ def make_grpc_logger(
         logger = setup_panoseti_logging("Quabo_Control")
         logger.info("System Ready")
     """
-    if grpc_client is None:
-        grpc_client = TelemetryClient()
+    # 0. Setup targets (Root or Isolated)
+    if attach_to_root:
+        target_logger = logging.getLogger()  # Root
+    else:
+        target_logger = logging.getLogger(service_name)
+        target_logger.propagate = False
+    target_logger.setLevel(level)
 
-        # 1. Create the Handler
+    # 1. Connect to the Telemetry Service
+    if grpc_client is None:
+        try:
+            grpc_client = TelemetryClient()
+            assert(isinstance(grpc_client, TelemetryClient)), \
+                f"grpc_client='{grpc_client}' is not an instance of TelemetryClient"
+        except Exception as e:
+            logging.exception(e)
+
+    # 2. Create the gRPC Handler (Always do this)
     grpc_handler = AsyncGrpcHandler(grpc_client, service_name)
 
-    # 2. Rich Console Handler (Visuals)
-    # We allow this to exist alongside file handlers
-    console = RichHandler(rich_tracebacks=True, markup=True)
+    # 3. Attach gRPC Handler (Idempotent check)
+    if not any(isinstance(h, AsyncGrpcHandler) for h in target_logger.handlers):
+        target_logger.addHandler(grpc_handler)
 
-    if attach_to_root:
-        # Get Root Logger
-        root = logging.getLogger()
-        root.setLevel(level)
+    # 4. Attach Console Handler (ONLY if requested)
+    if add_console_handler:
+        # Check for existing RichHandler to avoid duplicates
+        if not any(isinstance(h, RichHandler) for h in target_logger.handlers):
+            console = RichHandler(rich_tracebacks=True, markup=True)
+            target_logger.addHandler(console)
 
-        # Add our handlers without removing existing FileHandlers
-        # Check if we already added them to avoid duplicates
-        if not any(isinstance(h, AsyncGrpcHandler) for h in root.handlers):
-            root.addHandler(grpc_handler)
-        if not any(isinstance(h, RichHandler) for h in root.handlers):
-            root.addHandler(console)
-
-        # Return the specific service logger, but it will propagate up to root
-        return logging.getLogger(service_name)
-    else:
-        # Isolated Logger
-        logger = logging.getLogger(service_name)
-        logger.setLevel(level)
-        logger.addHandler(grpc_handler)
-        logger.addHandler(console)
-        logger.propagate = False  # Do not bubble up to avoid double logging if root has handlers
-        return logger
+    return logging.getLogger(service_name)

@@ -289,14 +289,19 @@ def main():
                         default='mixed', help="Type of payload to send.")
     parser.add_argument("--count", type=int, default=1000, help="Number of messages to send")
     parser.add_argument("--delay", type=float, default=0.5, help="Delay between messages (seconds)")
-    parser.add_argument("--log-level", default="info", choices=["debug", "info", "warning", "error"])
+    parser.add_argument("--log-level", default="debug", choices=["debug", "info", "warning", "error"])
 
     args = parser.parse_args()
 
     if args.type == 'log':
         # Create a specific logger hooked to gRPC
         # We assume the CLI is running on a 'client' machine talking to 'host'
-        grpc_logger = make_grpc_logger("CLI_TESTER")
+        level = getattr(logging, args.log_level.upper())
+        grpc_logger = make_grpc_logger(
+            "CLI_TESTER",
+            level=level,
+            add_console_handler=True,
+        )
         generate_logs(grpc_logger, args.count, args.delay)
         return
 
