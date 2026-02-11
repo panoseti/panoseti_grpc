@@ -24,11 +24,18 @@ from glob import glob
 # gRPC Imports 
 os.environ['GRPC_ENABLE_FORK_SUPPORT'] = '0'
 import grpc
+from google.protobuf.json_format import MessageToDict
 from panoseti_grpc.generated import daq_control_pb2, daq_control_pb2_grpc
 
 # Local Imports
 from .resources import make_rich_logger
 from .util import is_hashpipe_running
+from .config import (
+    StartDaqModel, 
+    StopDaqModel,
+    StatusDaqModel,
+    CleanupDataModel
+)
 
 PROCESS = 'hashpipe'
 
@@ -94,36 +101,6 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             self.logger.info(f'Setup rundir for data: {dirname}')
             Path(dirname).mkdir(parents=True, exist_ok=True)
     
-    def _validate_data_dir(self, datadir):
-        if not Path(datadir).is_dir():
-            msg = f"data directory ({datadir}) not found."
-            self.logger.error(msg)
-            return False, msg
-        else:
-            msg = f"Data dir ({datadir}): validated."
-            self.logger.debug(msg)
-            return True, msg
-    
-    def _validate_ip_ethport(self, ip, ethport):
-        netinfo = {}
-        addrs = psutil.net_if_addrs()
-        for iface, addr_list in addrs.items():
-            for addr in addr_list:
-                if addr.family.name == "AF_INET":
-                    netinfo[iface] = addr.address
-        if ethport not in netinfo:
-            msg = f"eth port ({ethport} is not valid.)"
-            self.logger.error(msg)
-            return False, msg
-        elif netinfo[ethport] != ip:
-            msg = f"DAQ node IP ({ip}) is incorrect."
-            self.logger.error(msg)
-            return False, msg
-        else:
-            msg = f"{ethport} ({ip}): validated."
-            self.logger.debug(msg)
-            return True, msg
-    
     def _check_disk_usage(self, datadir):
         usage = shutil.disk_usage(datadir)
         disk_usage = {
@@ -150,6 +127,14 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 self.logger.debug(f"Cleanup failed")
                 return False
 
+    def _request_to_dict(self, request):
+        request_dict = MessageToDict(
+            request,
+            always_print_fields_with_no_presence=True,
+            preserving_proto_field_name=True
+        )
+        return request_dict
+    
     @grpc_error_handler
     async def StartDaq(self, request, context):
         self.logger.info("Starting HASHPIPE instance...")
@@ -159,27 +144,18 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             msg = f"Found {n} HASHPIPE instances running. pids: {pids}"
             self.logger.warning(msg)
             return daq_control_pb2.StartDaqResponse(success=False, message=msg)
-        # 2. check if the data dir exists
-        datadir = request.data_dir
-        s, msg = self._validate_data_dir(datadir)
-        if not s:
-            return daq_control_pb2.StartDaqResponse(success=s, message=msg)
-        # 3. check if the IP and eth port are valid.
-        #    Actually, IP is not important here
-        daq_ip_addr = request.daq_ip_addr
-        bindhost = request.bindhost
-        s, msg = self._validate_ip_ethport(daq_ip_addr, bindhost)
-        if not s:
-            return daq_control_pb2.StartDaqResponse(success=s, message=msg)
-        max_file_size_mb = request.max_file_size_mb
-        self.logger.debug(f"max_file_size_mb: {max_file_size_mb}")
-        group_ph_frames = request.group_ph_frames
-        self.logger.debug(f"group_ph_frames: {group_ph_frames}")
-        run_dir = request.run_dir
-        self.logger.debug(f"run_dir: {run_dir}")
-        obs = request.obs
-        self.logger.debug(f"obs: {obs}")
-        module_id = request.module_id
+        # 2. check the parameters
+        dreq = self._request_to_dict(request)
+        vreq = StartDaqModel(**dreq)
+        # 3. get the parameters
+        datadir = vreq.data_dir
+        daq_ip_addr = vreq.daq_ip_addr
+        run_dir = vreq.run_dir
+        bindhost = vreq.bindhost
+        max_file_size_mb = vreq.max_file_size_mb
+        group_ph_frames = vreq.group_ph_frames
+        obs = vreq.obs
+        module_id = vreq.module_id
         # get the full path for hashpipe.so, rundir and module.config
         hashpipe_so = f"{datadir}/hashpipe.so"
         configfn = f"{datadir}/module.config"
@@ -231,8 +207,8 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     async def StopDaq(self, request, context):
         self.logger.info("Stop HASHPIPE instance...")
         # data dir and run dir is not used in this method
-        datadir = request.data_dir
-        run_dir = request.run_dir
+        # dreq = self._request_to_dict(request)
+        # vreq = StopDaqModel(**dreq)
         if self.hashpipe_pid == -1:
             self.logger.info('No HASHPIPE instance is running.')
             return daq_control_pb2.StopDaqResponse(success=True)
@@ -251,9 +227,11 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     @grpc_error_handler
     async def StatusDaq(self, request, context):
         self.logger.info('Checking Daq Node status...')
-        datadir = request.data_dir
+        creq = self._request_to_dict(request)
+        vreq = StatusDaqModel(**creq)
+        datadir = vreq.data_dir
         # check hashpipe status
-        if request.check_hashpipe_running:
+        if vreq.check_hashpipe_running:
             self.logger.debug('Checking HASHPIPE status...')
             if self.hashpipe_pid == -1:
                 hashpipe_running = False
@@ -262,7 +240,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         else:
             hashpipe_running = False
         # check free space
-        if request.check_disk_usage:
+        if vreq.check_disk_usage:
             self.logger.debug('Checking disk usage...')
             disk_usage = self._check_disk_usage(datadir)
         else:
@@ -272,7 +250,10 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 'free_disk_space' : -1,
             }
         # check run dirs
-        run_dirs = self._check_run_dirs(datadir)
+        if vreq.check_run_dirs:
+            self.logger.debug('Checking run dirs')
+            run_dirs = self._check_run_dirs(datadir)
+        # return
         return daq_control_pb2.StatusDaqResponse(
             success = True,
             hashpipe_running = hashpipe_running,
@@ -288,9 +269,11 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             msg = f'HASHPIPE is running, pid[{self.hashpipe_pid}]'
             self.logger.warning(msg)
             return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
-        datadir = request.data_dir
-        rundir = request.run_dir
-        module_id = request.module_id
+        creq = self._request_to_dict(request)
+        vreq = CleanupDataModel(**creq)
+        datadir = vreq.data_dir
+        rundir = vreq.run_dir
+        module_id = vreq.module_id
         # clean up the run dir in data dir
         self._cleanup_dir(f"{datadir}/{rundir}")
         # clean up the run dir in module_x dir
