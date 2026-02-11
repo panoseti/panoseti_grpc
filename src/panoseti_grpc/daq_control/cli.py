@@ -50,26 +50,26 @@ def run_client(args):
         success, status = client.StatusDaq(p['statusdaq'])
         if success:
             console.print(f"[bold bright_blue]******** Daq Node Status ********[/]")
-            if p['check_hashpipe_running']:
+            if p['statusdaq']['check_hashpipe_running']:
                 console.print(f"[bold magenta]* HASHPIPE Running[/]")
                 console.print(f"[bold magenta]    - Status: {status['hashpipe_running']}[/]")
-            if p['check_disk_usage']:
-                console.print(f"[bold cyan]* Disk Usage ({p['data_dir']})[/]")
+            if p['statusdaq']['check_disk_usage']:
+                console.print(f"[bold cyan]* Disk Usage ({p['statusdaq']['data_dir']})[/]")
                 console.print(f"[bold cyan]    - Total Disk Space: {human(status['disk_usage']['total_disk_space'])}[/]")
                 console.print(f"[bold cyan]    - Used  Disk Space: {human(status['disk_usage']['used_disk_space'])}[/]")
                 console.print(f"[bold cyan]    - Free  Disk Space: {human(status['disk_usage']['free_disk_space'])}[/]")
-            if p['check_run_dirs']:
+            if p['statusdaq']['check_run_dirs']:
                 console.print(f"[bold yellow]* Run Dirs [/]")
                 for r in status['run_dirs']:
                     console.print(f"[bold yellow]   - {r}[/]")
     elif args.op == 'cleanupdata':
         logger.debug('Clean up data dirs...')
-        success = client.CleanupData(p['cleanupdate'])
+        success = client.CleanupData(p['cleanupdata'])
         if success:
             console.print(f"[bold bright_blue]Clean up data dirs successfully.[/]")
-            datadir = p['data_dir']
-            rundir = p['run_dir']
-            module_id = p['module_id']
+            datadir = p['cleanupdata']['data_dir']
+            rundir = p['cleanupdata']['run_dir']
+            module_id = p['cleanupdata']['module_id']
             console.print(f"[bold yellow]Cleaned up Directories [/]")
             console.print(f"[bold yellow]   - {datadir}/{rundir}[/]")
             for id in module_id:

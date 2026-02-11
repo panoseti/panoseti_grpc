@@ -22,7 +22,7 @@
         "check_disk_usage": true,
         "check_run_dirs": true
     },
-    "cleanupdate": {
+    "cleanupdata": {
         "data_dir": "/mnt/panoseti",
         "run_dir": "test.pffd",
         "module_id": [
