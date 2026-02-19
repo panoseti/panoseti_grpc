@@ -35,8 +35,8 @@ def test_filesystem_writing(tmp_path):
         if isinstance(h, logging.handlers.RotatingFileHandler):
             h.close()
 
-    # FIX: Use .lower() because the logger creates 'fs_test_...' files
-    found_files = list(log_dir.glob(f"*{unique_name.lower()}*.log"))
+    # Match the exact unique name pattern.
+    found_files = list(log_dir.glob(f"{unique_name}.log"))
 
     assert len(
         found_files) > 0, f"No log file found matching {unique_name.lower()}. Dir content: {list(log_dir.iterdir())}"
@@ -67,8 +67,7 @@ def test_filesystem_rotation(tmp_path):
     file_handler.flush()
     file_handler.close()
 
-    # FIX: Match lowercase filename
-    files = list(log_dir.glob(f"*{unique_name.lower()}*.log*"))
+    files = list(log_dir.glob(f"{unique_name}.log*"))
     assert len(files) >= 2, f"Rotation failed. Found: {files}"
 
 
@@ -96,7 +95,7 @@ def test_log_level_filtering(tmp_path):
     for h in logger.handlers: h.flush()
 
     # Find log file
-    log_file = next(log_dir.glob(f"*{service_name.lower()}*.log"))
+    log_file = next(log_dir.glob(f"{service_name}.log"))
     content = log_file.read_text()
 
     assert "THIS_SHOULD_BE_SEEN" in content
@@ -126,7 +125,7 @@ def test_dual_destination_logging(tmp_path, redis_client, grpc_client):
 
     # 1. Check Filesystem
     for h in logger.handlers: h.flush()
-    log_file = next(log_dir.glob(f"*{service_name.lower()}*.log"))
+    log_file = next(log_dir.glob(f"*{service_name}*.log"))
     assert msg_body in log_file.read_text(), "Message missing from local file"
 
     # 2. Check Remote (Redis)
@@ -147,7 +146,7 @@ def test_grpc_server_down_resilience(grpc_client):
     # Point to a blackhole port where nothing is listening
     dead_client = TelemetryClient(host="localhost", port=59999)
 
-    logger = logger = get_logger(service_name, grpc_enabled=True)
+    logger = get_logger(service_name, grpc_enabled=True)
 
     try:
         logger.info("This should not crash the app")

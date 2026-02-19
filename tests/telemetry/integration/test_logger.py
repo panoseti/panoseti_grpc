@@ -23,9 +23,9 @@ def reset_log_factory():
 def test_file_logger_creation_and_writing(tmp_path):
     """Verify logger creates file and writes to it."""
     log_dir = tmp_path / "logs"
-
+    name = "FileTest"
     logger = get_logger(
-        "FileTest",
+       name,
         log_dir=str(log_dir),
         grpc_enabled=False,
         console=False
@@ -34,7 +34,7 @@ def test_file_logger_creation_and_writing(tmp_path):
     logger.info("Hello File System")
 
     # Check file exists
-    expected_file = log_dir / "filetest.log"
+    expected_file = log_dir / f"{name}.log"
     assert expected_file.exists()
 
     # Check content
@@ -130,13 +130,12 @@ async def test_subprocess_stream_capture(capsys):
 
 def test_factory_singleton_behavior():
     """Verify we don't create multiple gRPC clients."""
+    with patch("panoseti_grpc.telemetry.client.TelemetryClient") as MockClient:
+        # 1. First call should create a client
+        get_logger("ServiceA", grpc_enabled=True)
 
-    # FIX: Patch the TelemetryClient inside 'panoseti_grpc.telemetry.logging'
-    # This ensures we mock the class that the logging module is actually using.
-    # Adjust the path string if your logging.py is located elsewhere.
-    with patch("panoseti_grpc.telemetry.logging.TelemetryClient") as MockClient:
-        logger1 = get_logger("ServiceA", grpc_enabled=True)
-        logger2 = get_logger("ServiceB", grpc_enabled=True)
+        # 2. Second call (same host/port) should reuse it
+        get_logger("ServiceB", grpc_enabled=True)
 
         # Should only initialize the client ONCE
         assert MockClient.call_count == 1

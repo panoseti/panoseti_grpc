@@ -8,6 +8,7 @@ import asyncio
 import uuid
 from panoseti_grpc.telemetry.client import TelemetryClient
 from panoseti_grpc.telemetry.server import serve
+from panoseti_grpc.telemetry.logging import PanosetiLogFactory
 
 # Get Hosts from Env
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
@@ -16,6 +17,17 @@ MAX_GRPC_SERVER_STARTUP_DELAY = 30
 
 # to avoid distributed workers from polluting the test database
 TEST_DB_INDEX = 1
+
+@pytest.fixture(autouse=True)
+def reset_log_factory():
+    """
+    Resets the singleton gRPC client cache before every test.
+    This prevents state pollution where a client created in Test A
+    is reused in Test B, breaking mocks.
+    """
+    PanosetiLogFactory.reset_clients()
+    yield
+    PanosetiLogFactory.reset_clients()
 
 @pytest.fixture(scope="session")
 def redis_connection():

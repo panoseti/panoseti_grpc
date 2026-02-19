@@ -2,25 +2,25 @@ import pytest
 import time
 import json
 import logging
-import panoseti_grpc.telemetry.logging as client_module
+from panoseti_grpc.telemetry.logging import get_logger
 
 LOG_KEY = "logs:ingress"
 
-def test_git_metadata_flow(redis_client, start_grpc_server):
-    """
-    Verifies that GIT_COMMIT is attached to logs.
-    We manually force the client module's cached variable to 'deadbeef'.
-    """
-    # 1. Force the internal cached variable to our test value
-    # This bypasses the need to mock get_sw_info() or reload the module
-    original_commit = getattr(client_module, 'CACHED_COMMIT', 'unknown')
-    client_module.CACHED_COMMIT = 'deadbeef'
+from unittest.mock import patch
+import panoseti_grpc.telemetry.client as client_module
 
-    try:
+def test_git_metadata_flow(redis_client):
+    # Patch the CONSTANT in the client module
+    with patch.object(client_module, 'CACHED_COMMIT', 'deadbeef'):
+        # Force a new client/logger creation to pick up any dynamic usage
+        # (Though AsyncGrpcHandler might read the constant at init)
+        logger = get_logger("GIT_TEST", grpc_enabled=True)
+        logger.info("Testing Git Info")
+
         # 2. Create client (it reads client_module.CACHED_COMMIT)
         # client = client_module.TelemetryClient(host="localhost", port=50051)
 
-        logger = client_module.get_logger(
+        logger = get_logger(
             "GIT_TEST",
             grpc_enabled=True,
             level=logging.INFO
@@ -41,7 +41,4 @@ def test_git_metadata_flow(redis_client, start_grpc_server):
 
         assert found, f"Could not find git_test log. Last logs: {logs}"
 
-    finally:
-        # 4. Restore original state to avoid polluting other tests
-        client_module.CACHED_COMMIT = original_commit
 
