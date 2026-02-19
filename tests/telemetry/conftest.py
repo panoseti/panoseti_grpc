@@ -5,40 +5,70 @@ import os
 import multiprocessing
 import socket
 import asyncio
+import uuid
 from panoseti_grpc.telemetry.client import TelemetryClient
-# Import the serve function
 from panoseti_grpc.telemetry.server import serve
+from panoseti_grpc.telemetry.logger import PanosetiLogFactory
 
-# Get Hosts from Env (set by Docker Compose)
+# Get Hosts from Env
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 SERVER_PORT = 50051
+MAX_GRPC_SERVER_STARTUP_DELAY = 30
+
+# to avoid distributed workers from polluting the test database
+TEST_DB_INDEX = 1
+
+@pytest.fixture(autouse=True)
+def reset_log_factory():
+    """
+    Resets the singleton gRPC client cache before every test.
+    This prevents state pollution where a client created in Test A
+    is reused in Test B, breaking mocks.
+    """
+    PanosetiLogFactory.reset_clients()
+    yield
+    PanosetiLogFactory.reset_clients()
+
+@pytest.fixture(scope="session")
+def redis_connection():
+    """Establishes the connection once per session."""
+    r = redis.Redis(host=REDIS_HOST, port=6379, db=TEST_DB_INDEX, decode_responses=True)
+    try:
+        r.ping()
+        # Ensure clean slate for the session
+        # r.flushdb()
+    except redis.ConnectionError:
+        pytest.fail(f"Could not connect to Redis at {REDIS_HOST}")
+    return r
 
 
 @pytest.fixture(scope="session")
-def redis_client():
-    r = redis.Redis(host=REDIS_HOST, port=6379, decode_responses=True)
-    try:
-        r.ping()
-    except redis.ConnectionError:
-        pytest.fail(f"Could not connect to Redis at {REDIS_HOST}")
-    yield r
-    r.flushall()
-
-
-def _run_server_process(redis_host, grpc_port):
+def redis_client(redis_connection):
     """
-    Runs the server in a separate process.
+    Provides a clean Redis for EACH test function.
     """
-    # NOTE: Config is loaded from default location (resources.py) or env var
-    asyncio.run(serve(redis_host=redis_host, grpc_port=grpc_port))
+    # redis_connection.flushdb()
+    yield redis_connection
+    # redis_connection.flushdb()
+
+@pytest.fixture(scope="session", autouse=True)
+def clean_redis(redis_connection):
+    """Ensure a clean slate for the integration tests."""
+    redis_connection.flushdb()
+    yield
+
+def _run_server_process(redis_host, port):
+    # We need to tell the server to use the TEST DB
+    # Since the server code might hardcode DB=0, we should pass it or mock it.
+    # A cleaner way for integration tests without changing server code
+    # is to set an ENV var that the server reads, or modify server.py to accept db.
+
+    # Assuming we modify server.py (see step 2 below)
+    asyncio.run(serve(redis_host=redis_host, port=port, redis_db=TEST_DB_INDEX))
 
 
 @pytest.fixture(scope="session")
 def start_grpc_server():
-    """
-    Starts the gRPC server in a separate multiprocessing.Process.
-    """
-    # 1. Start Server Process
     proc = multiprocessing.Process(
         target=_run_server_process,
         args=(REDIS_HOST, SERVER_PORT),
@@ -46,13 +76,12 @@ def start_grpc_server():
     )
     proc.start()
 
-    # 2. Wait for Port to Open (Health Check)
+    # Wait for startup
     start_time = time.time()
     server_ready = False
-    while time.time() - start_time < 10:
+    while time.time() - start_time < MAX_GRPC_SERVER_STARTUP_DELAY:
         if not proc.is_alive():
-            raise RuntimeError("gRPC Server process died immediately! Check container logs.")
-
+            raise RuntimeError("Server process died!")
         try:
             with socket.create_connection(("localhost", SERVER_PORT), timeout=0.1):
                 server_ready = True
@@ -62,17 +91,35 @@ def start_grpc_server():
 
     if not server_ready:
         proc.terminate()
-        raise TimeoutError(f"gRPC server failed to bind port {SERVER_PORT} within 10 seconds")
+        raise TimeoutError("Server failed to bind port")
 
     yield
 
-    # 3. Cleanup
     proc.terminate()
     proc.join(timeout=2)
     if proc.is_alive():
         proc.kill()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def grpc_client(start_grpc_server):
     return TelemetryClient(host="localhost", port=SERVER_PORT)
+
+
+@pytest.fixture(scope="module")
+def distributed_session(redis_client, start_grpc_server):
+    """
+    Manages a unique session ID for workers to synchronize on.
+    Ensures a clean slate before and after the test run.
+    """
+    session_id = str(uuid.uuid4())
+    print(f"🚀 STARTING Distributed Session: {session_id}")
+
+    # Broadcast the session ID so all Docker workers start sending logs
+    redis_client.set("DISTRIBUTED_SESSION_ID", session_id)
+
+    yield session_id
+
+    # Cleanup: Workers will stop when they see the key is gone
+    redis_client.delete("DISTRIBUTED_SESSION_ID")
+    print(f"🛑 ENDED Session: {session_id}")

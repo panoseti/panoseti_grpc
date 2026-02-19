@@ -458,7 +458,7 @@ def get_quabo_ip_port(ip_addr, i, network_config):
             break
     return ip_ports
 
-# attach port forwarding info to daq config based on network_config        
+# attach port forwarding info to daq config based on network_config
 def attach_daq_config(daq_config, network_config):
     for i in range(len(daq_config['daq_nodes'])):
         daq = daq_config['daq_nodes'][i]
