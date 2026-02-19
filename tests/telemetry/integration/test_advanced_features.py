@@ -3,7 +3,7 @@ import time
 import logging
 
 # Import helpers
-from panoseti_grpc.telemetry.logging import get_logger
+from panoseti_grpc.telemetry.logger import get_logger
 from panoseti_grpc.telemetry.client import AsyncGrpcHandler, TelemetryClient
 from .test_logging_scenarios import wait_for_service_log, LOG_KEY
 

@@ -3,7 +3,7 @@ import asyncio
 import sys
 from unittest.mock import MagicMock, patch
 import time
-from panoseti_grpc.telemetry.logging import get_logger, monitor_subprocess, PanosetiLogFactory
+from panoseti_grpc.telemetry.logger import get_logger, monitor_subprocess, PanosetiLogFactory
 
 
 def test_grpc_logger_metadata_capture():
@@ -48,8 +48,8 @@ def test_factory_singleton_behavior():
 
     # 2. PATCH TARGET: The module where 'TelemetryClient' is IMPORTED and USED.
     #    Tree: src/panoseti_grpc/telemetry/logging.py
-    #    Path: panoseti_grpc.telemetry.logging.TelemetryClient
-    with patch("panoseti_grpc.telemetry.logging.TelemetryClient") as MockClientClass:
+    #    Path: panoseti_grpc.telemetry.logger.TelemetryClient
+    with patch("panoseti_grpc.telemetry.logger.TelemetryClient") as MockClientClass:
         # First call -> Should instantiate a new client
         get_logger("ServiceA", grpc_enabled=True)
 

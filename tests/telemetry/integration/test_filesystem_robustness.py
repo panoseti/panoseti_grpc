@@ -3,7 +3,7 @@ import logging
 import time
 import json
 from pathlib import Path
-from panoseti_grpc.telemetry.logging import get_logger
+from panoseti_grpc.telemetry.logger import get_logger
 from panoseti_grpc.telemetry.client import TelemetryClient, AsyncGrpcHandler
 
 # Import helper to check Redis for the dual-destination test

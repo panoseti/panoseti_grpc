@@ -4,7 +4,7 @@ import json
 import logging
 from unittest.mock import MagicMock
 from panoseti_grpc.telemetry.client import TelemetryClient, AsyncGrpcHandler
-from panoseti_grpc.telemetry.logging import get_logger
+from panoseti_grpc.telemetry.logger import get_logger
 
 LOG_KEY = "logs:ingress"
 

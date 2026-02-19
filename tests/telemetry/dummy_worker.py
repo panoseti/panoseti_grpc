@@ -4,7 +4,7 @@ import socket
 import json
 import redis
 import logging
-from panoseti_grpc.telemetry.logging import get_logger
+from panoseti_grpc.telemetry.logger import get_logger
 
 
 def run_worker():

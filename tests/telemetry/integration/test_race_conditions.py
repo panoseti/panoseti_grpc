@@ -5,7 +5,7 @@ import logging
 import random
 from concurrent.futures import ThreadPoolExecutor
 from panoseti_grpc.telemetry.client import TelemetryClient
-from panoseti_grpc.telemetry.logging import get_logger
+from panoseti_grpc.telemetry.logger import get_logger
 
 LOG_KEY = "logs:ingress"
 

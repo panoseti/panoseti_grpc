@@ -8,7 +8,7 @@ import asyncio
 import uuid
 from panoseti_grpc.telemetry.client import TelemetryClient
 from panoseti_grpc.telemetry.server import serve
-from panoseti_grpc.telemetry.logging import PanosetiLogFactory
+from panoseti_grpc.telemetry.logger import PanosetiLogFactory
 
 # Get Hosts from Env
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")

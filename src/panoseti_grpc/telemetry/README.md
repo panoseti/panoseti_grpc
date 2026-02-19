@@ -124,7 +124,7 @@ Do not manually construct gRPC messages. Use the provided helper function to att
 
 ```python
 import logging
-from panoseti_grpc.telemetry.logging import get_logger
+from panoseti_grpc.telemetry.logger import get_logger
 
 # Run this ONCE at startup. 
 # It attaches the gRPC handler to the Root Logger, capturing everything.

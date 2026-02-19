@@ -11,7 +11,7 @@ from rich.logging import RichHandler
 from rich.table import Table
 
 from panoseti_grpc.telemetry.client import TelemetryClient
-from panoseti_grpc.telemetry.logging import get_logger
+from panoseti_grpc.telemetry.logger import get_logger
 
 # Setup Rich Console
 console = Console()

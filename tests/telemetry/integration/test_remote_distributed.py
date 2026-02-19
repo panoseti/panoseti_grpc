@@ -2,7 +2,7 @@ import pytest
 import json
 import time
 from typing import List, Dict
-from panoseti_grpc.telemetry.logging import get_logger
+from panoseti_grpc.telemetry.logger import get_logger
 import uuid
 
 def fetch_logs(redis_client, session_id: str) -> List[Dict]:

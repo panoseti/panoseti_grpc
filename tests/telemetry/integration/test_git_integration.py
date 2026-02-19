@@ -2,7 +2,7 @@ import pytest
 import time
 import json
 import logging
-from panoseti_grpc.telemetry.logging import get_logger
+from panoseti_grpc.telemetry.logger import get_logger
 
 LOG_KEY = "logs:ingress"
 
