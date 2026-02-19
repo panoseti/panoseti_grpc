@@ -2,7 +2,7 @@ import pytest
 import time
 import json
 import logging
-from panoseti_grpc.telemetry.client import make_grpc_logger, TelemetryClient
+from panoseti_grpc.telemetry.logging import get_logger
 
 LOG_KEY = "logs:ingress"
 
@@ -37,16 +37,16 @@ def test_basic_log_rpc(grpc_client, redis_client):
     assert payload["text"] == msg
 
 
-def test_async_logger_pipeline(redis_client):
+def test_async_logger_pipeline(redis_client, start_grpc_server):
     """Verifies the end-to-end Python Logger -> Redis flow."""
     logger_name = "TEST_LOGGER_PIPELINE"
 
     # FIXED: Use 'port' argument
-    client = TelemetryClient(host="localhost", port=50051)
+    # client = TelemetryClient(host="localhost", port=50051)
 
-    logger = make_grpc_logger(
+    logger = get_logger(
         logger_name,
-        grpc_client=client,
+        grpc_enabled=True,
         level=logging.INFO
     )
 
@@ -88,13 +88,13 @@ def test_async_logger_pipeline(redis_client):
         assert "_meta" in stored_payload
 
 
-def test_burst_logging(redis_client):
+def test_burst_logging(redis_client, start_grpc_server):
     """Chaos Test: Sends 500 logs rapidly."""
     burst_count = 500
     service_name = "BURST_TEST"
     # FIXED: Use 'port' argument
-    client = TelemetryClient(host="localhost", port=50051)
-    logger = make_grpc_logger(service_name, grpc_client=client, queue_size=burst_count + 100, level=logging.INFO)
+    # client = TelemetryClient(host="localhost", port=50051)
+    logger = get_logger(service_name, grpc_enabled=True, level=logging.INFO)
 
     start_len = redis_client.llen(LOG_KEY)
 
@@ -109,12 +109,10 @@ def test_burst_logging(redis_client):
     assert delta >= burst_count, f"Packet Loss Detected! Sent {burst_count}, Stored {delta}"
 
 
-def test_severity_mapping(redis_client):
+def test_severity_mapping(redis_client, start_grpc_server):
     """Verifies Python Log Levels -> PANOSETI Severities."""
     service_name = "LEVEL_TEST"
-    # FIXED: Use 'port' argument
-    client = TelemetryClient(host="localhost", port=50051)
-    logger = make_grpc_logger(service_name, grpc_client=client, level=logging.DEBUG)
+    logger = get_logger(service_name, grpc_enabled=True, level=logging.DEBUG)
 
     logger.debug("Test Debug")  # 1
     logger.info("Test Info")  # 2

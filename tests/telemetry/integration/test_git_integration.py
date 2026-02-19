@@ -2,13 +2,7 @@ import pytest
 import time
 import json
 import logging
-from importlib import reload
-from unittest.mock import patch
-from panoseti_grpc.telemetry.client import make_grpc_logger, TelemetryClient
-
-# We need to reload client to force it to pick up the mocked git info
-import importlib
-import panoseti_grpc.telemetry.client as client_module
+import panoseti_grpc.telemetry.logging as client_module
 
 LOG_KEY = "logs:ingress"
 
@@ -24,11 +18,11 @@ def test_git_metadata_flow(redis_client, start_grpc_server):
 
     try:
         # 2. Create client (it reads client_module.CACHED_COMMIT)
-        client = client_module.TelemetryClient(host="localhost", port=50051)
+        # client = client_module.TelemetryClient(host="localhost", port=50051)
 
-        logger = client_module.make_grpc_logger(
+        logger = client_module.get_logger(
             "GIT_TEST",
-            grpc_client=client,
+            grpc_enabled=True,
             level=logging.INFO
         )
 

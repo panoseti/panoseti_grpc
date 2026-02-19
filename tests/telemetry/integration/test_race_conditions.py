@@ -4,7 +4,8 @@ import json
 import logging
 import random
 from concurrent.futures import ThreadPoolExecutor
-from panoseti_grpc.telemetry.client import make_grpc_logger, TelemetryClient
+from panoseti_grpc.telemetry.client import TelemetryClient
+from panoseti_grpc.telemetry.logging import get_logger
 
 LOG_KEY = "logs:ingress"
 
@@ -23,9 +24,9 @@ def test_concurrent_loggers_race_condition(redis_client):
     def worker_logger(worker_id):
         # Each thread gets its own logger instance (simulating different modules)
         # They share the same gRPC port but are distinct clients
-        client = TelemetryClient(host="localhost", port=50051)
+        # client = TelemetryClient(host="localhost", port=50051)
         name = f"WORKER_{worker_id}"
-        logger = make_grpc_logger(name, grpc_client=client, level=logging.INFO)
+        logger = get_logger(name, grpc_enabled=True, level=logging.INFO)
 
         for i in range(logs_per_thread):
             # Send structured data

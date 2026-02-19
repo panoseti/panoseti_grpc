@@ -124,14 +124,15 @@ Do not manually construct gRPC messages. Use the provided helper function to att
 
 ```python
 import logging
-from panoseti_grpc.telemetry.client import make_grpc_logger
+from panoseti_grpc.telemetry.logging import get_logger
 
 # Run this ONCE at startup. 
 # It attaches the gRPC handler to the Root Logger, capturing everything.
-logger = make_grpc_logger(
+logger = get_logger(
     service_name="Dome_Control", 
     level=logging.INFO,
-    attach_to_root=True
+    grpc_enabled=True,
+    console=True
 )
 
 # Use standard logging as usual - it now goes to Loki!

@@ -27,8 +27,9 @@ import sys
 import logging
 import asyncio
 from pathlib import Path
-from typing import Optional, Dict, Union
+from typing import Optional, Union, Dict, Tuple
 from logging.handlers import RotatingFileHandler
+import threading
 
 from pydantic import BaseModel, Field, field_validator
 from rich.logging import RichHandler
@@ -51,7 +52,7 @@ class FileLogConfig(BaseModel):
     """Configuration for local filesystem logging."""
     enabled: bool = True
     directory: Path = Path("/var/log/panoseti")
-    rotation_size_mb: int = 50
+    max_bytes: int = 10 * 1024 * 1024  # 10 MB
     backup_count: int = 5
 
     @field_validator("directory")
@@ -74,123 +75,134 @@ class FileLogConfig(BaseModel):
 
 
 class LoggerConfig(BaseModel):
-    """Master configuration for a specific logger instance."""
     service_name: str
-    level: str = "INFO"
+    level: Union[int, str] = logging.INFO
     console: bool = True
-    file: FileLogConfig = Field(default_factory=FileLogConfig)
+    file: FileLogConfig = Field(default_factory=lambda: FileLogConfig(enabled=False))
     grpc: GrpcLogConfig = Field(default_factory=GrpcLogConfig)
+
+    @field_validator('level')
+    def normalize_level(cls, v):
+        """Allows user to pass 'DEBUG', 'debug', or 10."""
+        if isinstance(v, str):
+            v = v.upper()
+            # Check if it's a known level name
+            level = logging.getLevelName(v)
+            if isinstance(level, int):
+                return level
+            # Fallback for edge cases
+            return getattr(logging, v, logging.INFO)
+        return v
 
 
 # --- Singleton Factory ---
 
 class PanosetiLogFactory:
     """
-    Manages logger instances and the shared gRPC connection.
-    Implements the Singleton pattern for the gRPC client to prevent resource exhaustion.
+    Factory for creating loggers with SHARED gRPC resources.
     """
-    _shared_grpc_client: Optional[TelemetryClient] = None
-    _loggers: Dict[str, logging.Logger] = {}
+
+    # Singleton Registry: Maps (host, port) -> TelemetryClient
+    _grpc_clients: Dict[Tuple[str, int], TelemetryClient] = {}
+    _lock: threading.Lock = threading.Lock()
 
     @classmethod
-    def _get_grpc_client(cls, config: GrpcLogConfig) -> Optional[TelemetryClient]:
-        """Lazy-loads the shared gRPC client."""
-        if not config.enabled:
-            return None
+    def get_shared_client(cls, host: str, port: int) -> TelemetryClient:
+        """
+        Returns an existing TelemetryClient for the given host/port,
+        or creates a new one if it doesn't exist. Thread-safe.
+        """
+        key = (host, port)
+        with cls._lock:
+            if key not in cls._grpc_clients:
+                # Lazy initialization of the connection
+                cls._grpc_clients[key] = TelemetryClient(host=host, port=port)
+            return cls._grpc_clients[key]
 
-        if cls._shared_grpc_client is None:
-            try:
-                cls._shared_grpc_client = TelemetryClient(
-                    host=config.host,
-                    port=config.port
+    @classmethod
+    def reset_clients(cls):
+        """For testing purposes: Clear cached clients."""
+        with cls._lock:
+            cls._grpc_clients.clear()
+
+    @staticmethod
+    def configure_logger(cfg: LoggerConfig, reset_handlers: bool = True) -> logging.Logger:
+        logger = logging.getLogger(cfg.service_name)
+        logger.setLevel(cfg.level)
+
+        if reset_handlers and logger.handlers:
+            for h in list(logger.handlers):
+                h.close()
+                logger.removeHandler(h)
+
+        # 1. Console
+        if cfg.console and not any(isinstance(h, RichHandler) for h in logger.handlers):
+            console = RichHandler(rich_tracebacks=True, markup=False, show_path=False)
+            console.setLevel(cfg.level)
+            logger.addHandler(console)
+
+        # 2. Filesystem
+        if cfg.file.enabled:
+            cfg.file.directory.mkdir(parents=True, exist_ok=True)
+            log_path = cfg.file.directory / f"{cfg.service_name}.log"
+
+            if not any(isinstance(h, RotatingFileHandler) and h.baseFilename == str(log_path.resolve()) for h in
+                       logger.handlers):
+                fh = RotatingFileHandler(
+                    log_path,
+                    maxBytes=cfg.file.max_bytes,
+                    backupCount=cfg.file.backup_count
                 )
-                if config.fail_fast:
-                    cls._shared_grpc_client.check_connection(timeout=1.0)
-            except Exception as e:
-                print(f"⚠️ Telemetry Service Unreachable: {e}. gRPC logging disabled for this process.",
-                      file=sys.stderr)
-                # We return None so the app continues running without remote logging
-                return None
+                fh.setLevel(cfg.level)
+                fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+                logger.addHandler(fh)
 
-        return cls._shared_grpc_client
+        # 3. gRPC (SHARED RESOURCE)
+        if cfg.grpc.enabled:
+            # We must verify we don't attach multiple AsyncGrpcHandlers to the same logger
+            # (e.g. if user called get_logger without reset=True)
+            if not any(isinstance(h, AsyncGrpcHandler) for h in logger.handlers):
+                try:
+                    # RETRIEVE SHARED CLIENT
+                    client = PanosetiLogFactory.get_shared_client(cfg.grpc.host, cfg.grpc.port)
 
-    @classmethod
-    def configure_logger(cls, config: LoggerConfig) -> logging.Logger:
-        """Configures and returns a standard Python Logger with attached handlers."""
+                    # Create a Handler unique to this service (preserves 'service_name')
+                    # but backed by the SHARED client.
+                    grpc_handler = AsyncGrpcHandler(client, cfg.service_name)
+                    grpc_handler.setLevel(cfg.level)
+                    logger.addHandler(grpc_handler)
+                except Exception as e:
+                    if cfg.grpc.fail_fast:
+                        raise ConnectionError(f"Failed to init Telemetry: {e}")
+                    sys.stderr.write(f"Warning: Telemetry unavailable: {e}\n")
 
-        # 1. Return existing if configured
-        if config.service_name in cls._loggers:
-            return cls._loggers[config.service_name]
-
-        logger = logging.getLogger(config.service_name)
-        logger.setLevel(getattr(logging, config.level.upper()))
-        logger.propagate = False  # Prevent double logging to root
-        logger.handlers = []  # Reset handlers to ensure clean state
-
-        # 2. Console Handler (Rich)
-        if config.console:
-            console_handler = RichHandler(
-                rich_tracebacks=True,
-                markup=True,
-                show_path=False  # We handle path in metadata
-            )
-            console_handler.setLevel(logger.level)
-            logger.addHandler(console_handler)
-
-        # 3. File Handler (Rotation)
-        if config.file.enabled:
-            safe_name = config.service_name.lower().replace(" ", "_").replace(".", "_")
-            log_path = config.file.directory / f"{safe_name}.log"
-
-            file_handler = RotatingFileHandler(
-                log_path,
-                maxBytes=config.file.rotation_size_mb * 1024 * 1024,
-                backupCount=config.file.backup_count,
-                encoding="utf-8"
-            )
-            formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            )
-            file_handler.setFormatter(formatter)
-            logger.addHandler(file_handler)
-
-        # 4. gRPC Handler (Async)
-        client = cls._get_grpc_client(config.grpc)
-        if client:
-            grpc_handler = AsyncGrpcHandler(
-                grpc_client=client,
-                service_name=config.service_name
-            )
-            grpc_handler.setLevel(logger.level)
-            logger.addHandler(grpc_handler)
-
-        cls._loggers[config.service_name] = logger
         return logger
 
 
 # --- Public API ---
 
+# --- Public API ---
+
 def get_logger(
         service_name: str,
-        level: str = "INFO",
+        level: Union[int, str] = logging.INFO,
         console: bool = True,
-        log_dir: Optional[str] = "/var/log/panoseti",
-        grpc_enabled: bool = True
+        log_dir: Optional[str] = None,
+        grpc_enabled: bool = True,
+        reset: bool = True
 ) -> logging.Logger:
     """
-    Main entry point for obtaining a configured PANOSETI logger.
+    Get or create a configured logger.
 
     Args:
-        service_name: Unique identifier for the service (e.g. "Quabo_Ctrl").
-        level: Logging level ("DEBUG", "INFO", "WARNING", "ERROR").
-        console: Whether to print logs to stdout via Rich.
-        log_dir: Directory for local log files. Set None to disable file logging.
-        grpc_enabled: Whether to send logs to the Telemetry Service.
-
-    Returns:
-        A logging.Logger instance ready to use.
+        service_name: Unique name for the service (e.g. 'DAQ_Writer').
+        level: Logging level (e.g. logging.INFO, 'DEBUG').
+        console: Whether to print to stdout/stderr.
+        log_dir: Path to write log files. If None, file logging is disabled.
+        grpc_enabled: Whether to send logs to the Telemetry Server.
+        reset: If True (default), clears existing handlers on this logger
+               to apply the new configuration cleanly.
     """
-    # Build configuration object dynamically
     file_config = FileLogConfig(enabled=False)
     if log_dir:
         file_config = FileLogConfig(enabled=True, directory=Path(log_dir))
@@ -205,7 +217,7 @@ def get_logger(
         grpc=grpc_config
     )
 
-    return PanosetiLogFactory.configure_logger(config)
+    return PanosetiLogFactory.configure_logger(config, reset_handlers=reset)
 
 
 # --- Subprocess Utilities ---

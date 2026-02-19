@@ -10,7 +10,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRe
 from rich.logging import RichHandler
 from rich.table import Table
 
-from panoseti_grpc.telemetry.client import TelemetryClient, make_grpc_logger
+from panoseti_grpc.telemetry.client import TelemetryClient
+from panoseti_grpc.telemetry.logging import get_logger
 
 # Setup Rich Console
 console = Console()
@@ -297,10 +298,11 @@ def main():
         # Create a specific logger hooked to gRPC
         # We assume the CLI is running on a 'client' machine talking to 'host'
         level = getattr(logging, args.log_level.upper())
-        grpc_logger = make_grpc_logger(
+        grpc_logger = get_logger(
             "CLI_TESTER",
             level=level,
-            add_console_handler=True,
+            grpc_enabled=True,
+            reset=True,
         )
         generate_logs(grpc_logger, args.count, args.delay)
         return

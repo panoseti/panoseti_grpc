@@ -22,7 +22,7 @@ COPY --from=builder /app/src /app/src
 RUN pip install pytest pytest-asyncio pytest-timeout redis influxdb
 COPY src/panoseti_grpc/telemetry/telemetry_config.toml .
 COPY tests ./tests
-#CMD ["python", "-m", "pytest", "-v", "tests/telemetry", "-k", "distributed", "--asyncio-mode=auto", "--asyncio-debug"]
+#CMD ["python", "-m", "pytest", "-v", "tests/telemetry", "-k", "advanced", "--asyncio-mode=auto", "--asyncio-debug"]
 CMD ["python", "-m", "pytest", "-v", "tests/telemetry"]
 
 # --- NEW STAGE ---

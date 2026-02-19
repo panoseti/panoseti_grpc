@@ -1,28 +1,7 @@
 import pytest
 import json
 import time
-import uuid
 from typing import List, Dict
-
-
-@pytest.fixture(scope="module")
-def distributed_session(redis_client, start_grpc_server):
-    """
-    Manages a unique session ID for workers to synchronize on.
-    Ensures a clean slate before and after the test run.
-    """
-    session_id = str(uuid.uuid4())
-    print(f"🚀 STARTING Distributed Session: {session_id}")
-
-    # Broadcast the session ID so all Docker workers start sending logs
-    redis_client.set("DISTRIBUTED_SESSION_ID", session_id)
-
-    yield session_id
-
-    # Cleanup: Workers will stop when they see the key is gone
-    redis_client.delete("DISTRIBUTED_SESSION_ID")
-    print(f"🛑 ENDED Session: {session_id}")
-
 
 def fetch_logs(redis_client, session_id: str) -> List[Dict]:
     """

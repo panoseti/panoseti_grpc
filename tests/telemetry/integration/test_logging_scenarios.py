@@ -3,7 +3,8 @@ import time
 import json
 import logging
 from unittest.mock import MagicMock
-from panoseti_grpc.telemetry.client import make_grpc_logger, TelemetryClient, AsyncGrpcHandler
+from panoseti_grpc.telemetry.client import TelemetryClient, AsyncGrpcHandler
+from panoseti_grpc.telemetry.logging import get_logger
 
 LOG_KEY = "logs:ingress"
 
@@ -29,10 +30,9 @@ def wait_for_service_log(redis_client, service_name, retries=20):
     return None
 
 
-def test_unserializable_payload_handling(redis_client):
+def test_unserializable_payload_handling(redis_client, start_grpc_server):
     service_name = "BAD_DATA_TEST"
-    client = TelemetryClient(host="localhost", port=50051)
-    logger = make_grpc_logger(service_name, grpc_client=client)
+    logger = get_logger(service_name, grpc_enabled=True)
 
     # Clean up previous runs if any (Optional but helps debugging)
     # redis_client.delete(LOG_KEY)
@@ -99,6 +99,7 @@ def test_handler_survives_queue_overflow():
     assert handler.queue.full(), "Queue should be full after 1 item"
 
     # 5. CRITICAL STEP: Attempt to overflow
+    success = False
     try:
         # This call should normally block or raise Full.
         # Your AsyncGrpcHandler uses queue.put_nowait() inside a try/except.
@@ -115,13 +116,13 @@ def test_handler_survives_queue_overflow():
     handler._stop_event.set()
 
 
-def test_metadata_context_propagation(redis_client, grpc_client):
+def test_metadata_context_propagation(redis_client, start_grpc_server):
     """
     Verifies that rich Python metadata (function name, filename, line number)
     survives the gRPC serialization loop and arrives in Redis.
     """
     service_name = "META_TEST"
-    logger = make_grpc_logger(service_name, grpc_client=grpc_client)
+    logger = get_logger(service_name, grpc_enabled=True)
 
     def internal_function():
         logger.info("Inside Function")  # Line X
@@ -149,13 +150,13 @@ def test_metadata_context_propagation(redis_client, grpc_client):
 
 
 # --- NEW TEST 4: Severity Level Mapping ---
-def test_severity_level_propagation(redis_client, grpc_client):
+def test_severity_level_propagation(redis_client, start_grpc_server):
     """
     Verifies that Python logging levels (WARNING, ERROR, CRITICAL)
     are correctly mapped to the Telemetry Protocol Enums in Redis.
     """
     service_name = "SEVERITY_TEST"
-    logger = make_grpc_logger(service_name, grpc_client=grpc_client)
+    logger = get_logger(service_name, grpc_enabled=True)
 
     # Log an error
     error_msg = "Critical Failure Simulation"

@@ -315,6 +315,17 @@ class AsyncGrpcHandler(logging.Handler):
             #     print(f"{status_code}: {e.details()}")
             pass
 
+    def close(self):
+        """
+        Stops the worker thread.
+        NOTE: We generally do NOT close the self.client here because it might
+        be shared by other loggers. The Client's channel cleans up on process exit.
+        """
+        self._shutdown = True
+        if self.worker.is_alive():
+            self.worker.join(timeout=1.0)
+        super().close()
+
 def make_grpc_logger(
         service_name: str,
         grpc_client: TelemetryClient = None,
