@@ -223,8 +223,6 @@ class AsyncGrpcHandler(logging.Handler):
     def emit(self, record):
         try:
             msg = self.format(record)
-
-            # --- METADATA ENRICHMENT ---
             # Python's LogRecord already captures these!
 
             severity = int(record.levelno / 10)

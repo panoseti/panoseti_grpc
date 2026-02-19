@@ -275,7 +275,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
             await context.abort(grpc.StatusCode.INTERNAL, str(e))
 
 
-async def serve(redis_host='localhost', redis_port=6379, port=50051, uds_path=None, config_path=None):
+async def serve(redis_host='localhost', redis_port=6379, redis_db: int = 0, port=50051, uds_path=None, config_path=None):
     """
     Main entry point for running the server.
     Args:
@@ -286,13 +286,26 @@ async def serve(redis_host='localhost', redis_port=6379, port=50051, uds_path=No
     import redis.asyncio as redis
     logger.info(f"Connecting to Redis at [bold]{redis_host}:{redis_port}[/]...")
 
-    try:
-        r = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
-        await r.ping()  # Fail fast if Redis is down
-        logger.info("Connected to Redis.")
-    except Exception as e:
-        logger.critical(f"Could not connect to Redis: {e}")
-        return
+    # --- 1. ROBUST REDIS CONNECTION (Modified) ---
+    r = None
+    max_retries = 10
+    for i in range(max_retries):
+        try:
+            logger.info(f"Connecting to Redis at [bold]DB={redis_db}, {redis_host}:6379[/] (Attempt {i + 1}/{max_retries})...")
+            # Create client
+            r = redis.Redis(host=redis_host, port=6379, db=redis_db, decode_responses=True)
+            # Force a connection check
+            await r.ping()
+            logger.info("✅ Redis connection established.")
+            break
+        except redis.ConnectionError as e:
+            logger.warning(f"⚠️ Failed to connect to Redis: {e}")
+            if i < max_retries - 1:
+                logger.info("Retrying in 2 seconds...")
+                await asyncio.sleep(2)  # Non-blocking sleep
+            else:
+                logger.critical("❌ Could not connect to Redis after multiple retries. Exiting.")
+                return  # Exit the server function gracefully (causes process to die)
 
     # 2. Setup gRPC Server
     server = grpc.aio.server()

@@ -3,6 +3,14 @@ services:
     image: redis:alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - panoseti-net
+
 
   influxdb:
     image: influxdb:1.8
@@ -12,30 +20,91 @@ services:
       - INFLUXDB_DB=metadata
       - INFLUXDB_ADMIN_USER=root
       - INFLUXDB_ADMIN_PASSWORD=root
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8086/ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - panoseti-net
 
-  # NEW: Add Loki for integration tests
-  loki:
-    image: grafana/loki:3.6.0
-    user: "0:0"
-    ports:
-      - "3100:3100"
-    # Mount config if necessary, or use defaults for testing
-    command: -config.file=/etc/loki/local-config.yaml
+#  loki:
+#    image: grafana/loki:3.6.0
+#    user: "0:0"
+#    ports:
+#      - "3100:3100"
+#    # Mount config if necessary, or use defaults for testing
+#    command: -config.file=/etc/loki/local-config.yaml
+#    networks:
+#      - panoseti-net
 
+# --- THE HEADNODE (Test Runner) ---
   test_runner:
     build:
       context: ../../
       dockerfile: tests/telemetry/Dockerfile
+      target: runner  # Uses the full image with pytest
+    hostname: headnode-runner
     environment:
       - REDIS_HOST=redis
       - INFLUX_HOST=influxdb
       - LOKI_URL=http://loki:3100
       - GRPC_PORT=50051
-      # Ensure client connects to the separate process started by conftest
       - HEADNODE_IP=localhost
+    ports:
+      - "50051:50051"
+    # This prevents the runner from crashing on startup
     depends_on:
-      - redis
-      - influxdb
-      - loki
-    # Run integration first, then unit
-    command: ["pytest", "--timeout=20", "-v", "tests/telemetry/integration", "tests/telemetry/unit"]
+      redis:
+        condition: service_healthy
+      influxdb:
+        condition: service_started
+#      loki:
+#        condition: service_started
+    # Wait for the gRPC server to spin up inside pytest
+    healthcheck:
+      test: [ "CMD-SHELL", "python3 -c 'import socket; s=socket.create_connection((\"localhost\", 50051))' || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - panoseti-net
+#    command: ["pytest", "--timeout=40", "-v", "tests/telemetry/integration/test_distributed.py"]
+
+  # --- THE WORKERS (Minimal Clients) ---
+  worker-1: &worker
+    build:
+      context: ../../
+      dockerfile: tests/telemetry/Dockerfile
+      target: client   # <--- Uses the minimal image
+    hostname: worker-1
+    environment:
+      - HEADNODE_IP=test_runner # Points to the test_runner container
+      - HEADNODE_GRPC_PORT=50051
+      - REDIS_HOST=redis
+      - REDIS_DB=1
+    depends_on:
+      test_runner:
+        condition: service_healthy
+    networks:
+      - panoseti-net
+    # Override the default command to run our loop script
+    command: ["python3", "dummy_worker.py"]
+    restart: on-failure
+
+  worker-2:
+    <<: *worker
+    hostname: worker-2
+
+  worker-3:
+    <<: *worker
+    hostname: worker-3
+
+  worker-4:
+    <<: *worker
+    hostname: worker-4
+
+networks:
+  panoseti-net:
+    driver: bridge

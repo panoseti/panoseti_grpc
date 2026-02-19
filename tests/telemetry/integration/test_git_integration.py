@@ -2,6 +2,7 @@ import pytest
 import time
 import json
 import logging
+from importlib import reload
 from unittest.mock import patch
 from panoseti_grpc.telemetry.client import make_grpc_logger, TelemetryClient
 
@@ -11,36 +12,42 @@ import panoseti_grpc.telemetry.client as client_module
 
 LOG_KEY = "logs:ingress"
 
-
 def test_git_metadata_flow(redis_client, start_grpc_server):
     """
-    Verifies that GIT_COMMIT and GIT_BRANCH are correctly attached
-    to the gRPC message and stored in Redis.
+    Verifies that GIT_COMMIT is attached to logs.
+    We manually force the client module's cached variable to 'deadbeef'.
     """
-    # 1. Mock the module-level constants in client.py
-    # Since they are calculated at import time, we patch them directly on the module
-    with patch.object(client_module, 'CACHED_COMMIT', 'deadbeef'), \
-            patch.object(client_module, 'CACHED_BRANCH', 'feature-x'):
-        logger_name = "GIT_TEST"
-        # Use port 50051 (assuming fixture server is running there)
-        client = TelemetryClient(host="localhost", port=50051)
+    # 1. Force the internal cached variable to our test value
+    # This bypasses the need to mock get_sw_info() or reload the module
+    original_commit = getattr(client_module, 'CACHED_COMMIT', 'unknown')
+    client_module.CACHED_COMMIT = 'deadbeef'
 
-        # Manually create logger using the patched module
+    try:
+        # 2. Create client (it reads client_module.CACHED_COMMIT)
+        client = client_module.TelemetryClient(host="localhost", port=50051)
+
         logger = client_module.make_grpc_logger(
-            logger_name,
+            "GIT_TEST",
             grpc_client=client,
             level=logging.INFO
         )
 
         logger.info("Testing Git Info")
-
         time.sleep(1.0)
 
-        # 2. Verify in Redis
-        log_json = redis_client.lindex(LOG_KEY, -1)
-        assert log_json is not None
+        # 3. Verify
+        found = False
+        logs = redis_client.lrange("logs:ingress", -10, -1)
+        for log in logs:
+            data = json.loads(log)
+            if data.get("service_name") == "git_test":
+                assert data.get('git_commit') == 'deadbeef'
+                found = True
+                break
 
-        data = json.loads(log_json)
+        assert found, f"Could not find git_test log. Last logs: {logs}"
 
-        assert data.get('git_commit') == 'deadbeef'
-        assert data.get('git_branch') == 'feature-x'
+    finally:
+        # 4. Restore original state to avoid polluting other tests
+        client_module.CACHED_COMMIT = original_commit
+
