@@ -6,10 +6,15 @@ from pathlib import Path
 from panoseti_grpc.telemetry.logging import get_logger
 from panoseti_grpc.telemetry.client import TelemetryClient, AsyncGrpcHandler
 
+# Import helper to check Redis for the dual-destination test
+from .test_logging_scenarios import wait_for_service_log
 
-# --- FILESYSTEM TESTS ---
 
 def test_filesystem_writing(tmp_path):
+    """
+    FIXED: Now searches for the filename using .lower() to handle
+    auto-lowercasing behavior of the logger factory.
+    """
     log_dir = tmp_path / "app_logs"
     log_dir.mkdir()
     service_name = "FS_TEST"
@@ -24,24 +29,26 @@ def test_filesystem_writing(tmp_path):
 
     logger.info("FS_TEST_MESSAGE")
 
-    # Force flush
+    # Force flush and close to ensure data is on disk
     for h in logger.handlers:
         h.flush()
         if isinstance(h, logging.handlers.RotatingFileHandler):
-            h.close()  # Close matches flush + release file handle
+            h.close()
 
-    # RELAXED CHECK: Look for any file starting with the unique name (ignoring case)
-    # The factory might lowercase the filename.
-    found_files = list(log_dir.glob(f"*{unique_name}*.log"))
+    # FIX: Use .lower() because the logger creates 'fs_test_...' files
+    found_files = list(log_dir.glob(f"*{unique_name.lower()}*.log"))
 
-    assert len(found_files) > 0, f"No log file found matching {unique_name}. Dir content: {list(log_dir.iterdir())}"
+    assert len(
+        found_files) > 0, f"No log file found matching {unique_name.lower()}. Dir content: {list(log_dir.iterdir())}"
 
-    # Check content of the found file
     content = found_files[0].read_text()
     assert "FS_TEST_MESSAGE" in content
 
 
 def test_filesystem_rotation(tmp_path):
+    """
+    FIXED: Uses .lower() for glob matching.
+    """
     log_dir = tmp_path / "rotate_logs"
     log_dir.mkdir()
     service_name = "ROTATE_TEST"
@@ -49,7 +56,7 @@ def test_filesystem_rotation(tmp_path):
 
     logger = get_logger(unique_name, log_dir=str(log_dir), grpc_enabled=False)
 
-    # Monkey-patch limits
+    # Monkey-patch limits for test
     file_handler = next(h for h in logger.handlers if isinstance(h, logging.handlers.RotatingFileHandler))
     file_handler.maxBytes = 50
     file_handler.backupCount = 2
@@ -60,9 +67,72 @@ def test_filesystem_rotation(tmp_path):
     file_handler.flush()
     file_handler.close()
 
-    # Case-insensitive glob
-    files = list(log_dir.glob(f"*{unique_name}*.log*"))
+    # FIX: Match lowercase filename
+    files = list(log_dir.glob(f"*{unique_name.lower()}*.log*"))
     assert len(files) >= 2, f"Rotation failed. Found: {files}"
+
+
+# --- NEW TEST 1: Log Level Filtering (Local) ---
+def test_log_level_filtering(tmp_path):
+    """
+    Verifies that low-priority logs (DEBUG) are suppressed when
+    the logger is set to a higher level (INFO).
+    """
+    log_dir = tmp_path / "filter_logs"
+    log_dir.mkdir()
+    service_name = "FILTER_TEST"
+
+    # Set level to INFO
+    logger = get_logger(
+        service_name,
+        log_dir=str(log_dir),
+        level="info",
+        grpc_enabled=False
+    )
+
+    logger.debug("THIS_SHOULD_BE_IGNORED")
+    logger.info("THIS_SHOULD_BE_SEEN")
+
+    for h in logger.handlers: h.flush()
+
+    # Find log file
+    log_file = next(log_dir.glob(f"*{service_name.lower()}*.log"))
+    content = log_file.read_text()
+
+    assert "THIS_SHOULD_BE_SEEN" in content
+    assert "THIS_SHOULD_BE_IGNORED" not in content
+
+
+# --- NEW TEST 2: Dual Destination (Local + Distributed) ---
+def test_dual_destination_logging(tmp_path, redis_client, grpc_client):
+    """
+    Verifies that a single logger instance correctly dispatches data
+    to BOTH the local filesystem AND the remote Redis server.
+    """
+    log_dir = tmp_path / "dual_logs"
+    log_dir.mkdir()
+    service_name = "DUAL_TEST"
+
+    # Enable BOTH filesystem and gRPC
+    logger = get_logger(
+        service_name,
+        log_dir=str(log_dir),
+        grpc_enabled=True,  # Remote
+        console=False
+    )
+
+    msg_body = f"Dual-Test-{time.time()}"
+    logger.info(msg_body)
+
+    # 1. Check Filesystem
+    for h in logger.handlers: h.flush()
+    log_file = next(log_dir.glob(f"*{service_name.lower()}*.log"))
+    assert msg_body in log_file.read_text(), "Message missing from local file"
+
+    # 2. Check Remote (Redis)
+    remote_data = wait_for_service_log(redis_client, service_name)
+    assert remote_data is not None, "Message missing from Remote Telemetry"
+    assert msg_body in remote_data["payload_json"], "Payload mismatch in Redis"
 
 
 # --- ROBUSTNESS TESTS ---

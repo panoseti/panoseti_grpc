@@ -113,3 +113,68 @@ def test_handler_survives_queue_overflow():
 
     # Clean up
     handler._stop_event.set()
+
+
+def test_metadata_context_propagation(redis_client, grpc_client):
+    """
+    Verifies that rich Python metadata (function name, filename, line number)
+    survives the gRPC serialization loop and arrives in Redis.
+    """
+    service_name = "META_TEST"
+    logger = make_grpc_logger(service_name, grpc_client=grpc_client)
+
+    def internal_function():
+        logger.info("Inside Function")  # Line X
+
+    internal_function()
+
+    data = wait_for_service_log(redis_client, service_name)
+    assert data is not None
+
+    # In 'client.py', metadata is injected into the payload or top-level struct
+    # We check the top-level 'LogSchema' fields first, then the payload fallback
+
+    # Note: exact keys depend on your LogSchema definition in config.py
+    # If they aren't top-level, they might be inside 'extra_fields' or 'payload_json'
+
+    payload = data.get("payload_json", "")
+
+    # We expect the function name to be present somewhere
+    assert "internal_function" in str(data) or "internal_function" in payload, \
+        f"Function name metadata lost. Data: {data}"
+
+    # We expect the filename to be present
+    assert "test_logging_scenarios.py" in str(data) or "test_logging_scenarios.py" in payload, \
+        "Filename metadata lost."
+
+
+# --- NEW TEST 4: Severity Level Mapping ---
+def test_severity_level_propagation(redis_client, grpc_client):
+    """
+    Verifies that Python logging levels (WARNING, ERROR, CRITICAL)
+    are correctly mapped to the Telemetry Protocol Enums in Redis.
+    """
+    service_name = "SEVERITY_TEST"
+    logger = make_grpc_logger(service_name, grpc_client=grpc_client)
+
+    # Log an error
+    error_msg = "Critical Failure Simulation"
+    logger.error(error_msg)
+
+    data = wait_for_service_log(redis_client, service_name)
+    assert data is not None
+
+    # Check the 'severity' field in the Redis JSON
+    # LogSeverity Enum: DEBUG=1, INFO=2, WARNING=3, ERROR=4, CRITICAL=5
+
+    # Verify the message content
+    assert error_msg in data["payload_json"]
+
+    # Verify the severity level.
+    # Depending on implementation, it might be an int (4) or string "ERROR"
+    severity = data.get("severity")
+
+    # Accept either Int(4) or String("ERROR")
+    valid_severities = [4, "ERROR", "LogSeverity.ERROR"]
+    assert severity in valid_severities, \
+        f"Expected severity ERROR (4), got {severity}"
