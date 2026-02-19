@@ -321,7 +321,7 @@ class AsyncGrpcHandler(logging.Handler):
         NOTE: We generally do NOT close the self.client here because it might
         be shared by other loggers. The Client's channel cleans up on process exit.
         """
-        self._shutdown = True
+        self._stop_event.set()
         if self.worker.is_alive():
             self.worker.join(timeout=1.0)
         super().close()
