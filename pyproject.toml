@@ -47,7 +47,7 @@ dependencies = [
     "psutil",
     "watchfiles",
     "aiofiles",
-    "pygnssutils",
+#    "pygnssutils",
     "pydantic>=2.12",
     "tomli",
     "requests",
