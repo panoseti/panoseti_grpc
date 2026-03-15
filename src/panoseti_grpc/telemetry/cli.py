@@ -2,6 +2,7 @@
 import argparse
 import time
 import random
+import numpy as np
 import math
 import logging
 from rich.console import Console
@@ -10,6 +11,7 @@ from rich.logging import RichHandler
 from rich.table import Table
 
 from panoseti_grpc.telemetry.client import TelemetryClient
+from panoseti_grpc.telemetry.logger import get_logger
 
 # Setup Rich Console
 console = Console()
@@ -104,6 +106,80 @@ def generate_payload(payload_type, iteration):
         }
 
     return None, {}
+
+
+class SimulatedException(Exception):
+    pass
+
+
+def generate_logs(logger_instance, count, delay):
+    """
+    Generates a realistic stream of telescope observatory logs.
+    Includes structured metadata, state transitions, and simulated stack traces.
+    """
+
+    # 1. Define Narrative Scenarios
+    components = ["DOMECTRL", "CAM_04", "CAM_05", "COOLING", "GNSS_MAIN"]
+
+    # Probability weights for log levels: mostly INFO, some DEBUG, rare ERROR
+    levels = [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL]
+    weights = [0.3, 0.5, 0.19, 0.005, 0.005]
+
+    # structured data generators
+    def get_cooling_data(i):
+        # Temperature drops over time then stabilizes
+        temp = max(-20, 25 - (i * 0.5)) + random.uniform(-0.5, 0.5)
+        return "Cooling system active", {"temp_c": round(temp, 2), "power_pct": 85 if temp > -19 else 40}
+
+    def get_dome_data(i):
+        az = (i * 10) % 360
+        return f"Dome rotating to azimuth {az}", {"azimuth": az, "motor_current": round(random.uniform(2.0, 2.5), 2)}
+
+    def get_observation_data(i):
+        return "Frame captured", {"exposure_ms": 100, "gain": 200, "mean_adu": int(random.gauss(1400, 50))}
+
+    console.print(f"[bold green]Starting Log Simulation ({count} events)...[/]")
+
+
+    for i in range(count):
+        # Pick a random component and severity
+        comp = random.choice(components)
+        lvl = random.choices(levels, weights)[0]
+
+        # Default payload
+        msg = f"Routine health check for {comp}"
+        extra = {"component": comp, "iteration": i}
+
+        # --- Scenario Logic ---
+        if comp == "COOLING":
+            msg, data = get_cooling_data(i % 50)  # reset cycle every 50
+            extra.update(data)
+
+        elif comp == "DOMECTRL":
+            msg, data = get_dome_data(i)
+            extra.update(data)
+
+        elif comp.startswith("CAM") and lvl == logging.INFO:
+            msg, data = get_observation_data(i)
+            extra.update(data)
+
+        # --- Chaos Engineering (Simulate Errors) ---
+        if lvl >= logging.ERROR:
+            try:
+                # Raise a fake exception to generate a real stack trace
+                if random.random() > 0.999:
+                    x = 1 / 0
+                else:
+                    raise SimulatedException(f"Hardware timeout on {comp}")
+            except Exception:
+                # logger.exception automatically attaches the traceback
+                logger_instance.exception(f"CRITICAL FAILURE in {comp}", extra=extra)
+        else:
+            # Standard log with structured context
+            logger_instance.log(lvl, msg, extra=extra)
+
+        # Add jitter to the delay for realism
+        time.sleep(delay * random.uniform(0.5, 1.5))
 
 
 def run_sender(args):
@@ -210,13 +286,27 @@ def main():
     parser = argparse.ArgumentParser(description="PANOSETI Telemetry CLI Data Generator")
     parser.add_argument("--host", default="localhost", help="gRPC Server Host")
     parser.add_argument("--port", type=int, default=50051, help="gRPC Server Port")
-    parser.add_argument("--type", choices=['test', 'gnss', 'dew', 'flex', 'mixed'], default='mixed',
-                        help="Type of payload to send. 'mixed' cycles through all.")
+    parser.add_argument("--type", choices=['test', 'gnss', 'dew', 'flex', 'mixed', 'log'],
+                        default='mixed', help="Type of payload to send.")
     parser.add_argument("--count", type=int, default=1000, help="Number of messages to send")
     parser.add_argument("--delay", type=float, default=0.5, help="Delay between messages (seconds)")
-    parser.add_argument("--log-level", default="info", choices=["debug", "info", "warning", "error"])
+    parser.add_argument("--log-level", default="debug", choices=["debug", "info", "warning", "error"])
 
     args = parser.parse_args()
+
+    if args.type == 'log':
+        # Create a specific logger hooked to gRPC
+        # We assume the CLI is running on a 'client' machine talking to 'host'
+        level = getattr(logging, args.log_level.upper())
+        grpc_logger = get_logger(
+            "CLI_TESTER",
+            level=level,
+            grpc_enabled=True,
+            reset=True,
+        )
+        generate_logs(grpc_logger, args.count, args.delay)
+        return
+
     setup_logging(args.log_level)
     run_sender(args)
 

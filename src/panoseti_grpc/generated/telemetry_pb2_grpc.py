@@ -34,6 +34,11 @@ class TelemetryStub(object):
         Args:
             channel: A grpc.Channel.
         """
+        self.Log = channel.unary_unary(
+                '/panoseti.telemetry.Telemetry/Log',
+                request_serializer=telemetry__pb2.LogMessage.SerializeToString,
+                response_deserializer=telemetry__pb2.StatusResponse.FromString,
+                _registered_method=True)
         self.ReportStatus = channel.unary_unary(
                 '/panoseti.telemetry.Telemetry/ReportStatus',
                 request_serializer=telemetry__pb2.StatusRequest.SerializeToString,
@@ -44,6 +49,12 @@ class TelemetryStub(object):
 class TelemetryServicer(object):
     """Missing associated documentation comment in .proto file."""
 
+    def Log(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def ReportStatus(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -53,6 +64,11 @@ class TelemetryServicer(object):
 
 def add_TelemetryServicer_to_server(servicer, server):
     rpc_method_handlers = {
+            'Log': grpc.unary_unary_rpc_method_handler(
+                    servicer.Log,
+                    request_deserializer=telemetry__pb2.LogMessage.FromString,
+                    response_serializer=telemetry__pb2.StatusResponse.SerializeToString,
+            ),
             'ReportStatus': grpc.unary_unary_rpc_method_handler(
                     servicer.ReportStatus,
                     request_deserializer=telemetry__pb2.StatusRequest.FromString,
@@ -68,6 +84,33 @@ def add_TelemetryServicer_to_server(servicer, server):
  # This class is part of an EXPERIMENTAL API.
 class Telemetry(object):
     """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def Log(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/panoseti.telemetry.Telemetry/Log',
+            telemetry__pb2.LogMessage.SerializeToString,
+            telemetry__pb2.StatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def ReportStatus(request,

@@ -11,8 +11,51 @@ import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
 service Telemetry {
+  rpc Log (LogMessage) returns (StatusResponse) {}
   rpc ReportStatus(StatusRequest) returns (StatusResponse) {}
 }
+
+message LogMessage {
+  // --- Indexing ---
+  string host = 1;
+  string service_name = 2;
+
+  // --- Metadata ---
+  google.protobuf.Timestamp timestamp = 3;
+  // Severity enum (1=DEBUG, 2=INFO, etc) matches Python logging
+  int32 severity = 4;
+
+  // --- Context ---
+  string file_path = 5;
+  uint32 line_number = 6;
+  string function_name = 7;
+
+  // --- Runtime Metadata ---
+  int64 process_id = 8;
+  string thread_name = 9;
+
+  // --- Software Versioning (NEW) ---
+  string git_commit = 10;
+  string git_branch = 11;
+
+  // --- Payload ---
+  string payload_json = 12;
+}
+
+message LogResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  DEBUG = 1;
+  INFO = 2;
+  WARNING = 3;
+  ERROR = 4;
+  CRITICAL = 5;
+}
+
 
 message StatusRequest {
   string device_type = 1; // e.g. "gnss", "dew", "test"
