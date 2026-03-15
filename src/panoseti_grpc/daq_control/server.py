@@ -254,6 +254,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 'free_disk_space' : -1,
             }
         # check run dirs
+        run_dirs = []
         if vreq.check_run_dirs:
             self.logger.debug('Checking run dirs')
             run_dirs = self._check_run_dirs(datadir)

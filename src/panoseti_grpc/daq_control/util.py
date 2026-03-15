@@ -14,3 +14,4 @@ def is_hashpipe_running(pid):
                 return False
         except:
             return False
+    return False
