@@ -1,18 +1,21 @@
 """
-Unit tests for DaqControlServicer private helper methods.
-Patches psutil.process_iter so __init__ sees no running hashpipe instances.
+Unit tests for DaqControlServicer private helper methods and module-level async utilities.
+Patches psutil.process_iter and get_logger so __init__ has no side effects.
 """
+import asyncio
 import pytest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock, AsyncMock
 
-from panoseti_grpc.daq_control.server import DaqControlServicer
+from panoseti_grpc.daq_control.server import DaqControlServicer, _read_stream, _monitor_hashpipe
 
 
 @pytest.fixture
 def servicer():
-    """Return a DaqControlServicer whose __init__ finds no hashpipe processes."""
-    with patch("panoseti_grpc.daq_control.server.psutil.process_iter", return_value=[]):
+    """Return a DaqControlServicer whose __init__ finds no hashpipe processes
+    and does not attempt file/gRPC logging."""
+    with patch("panoseti_grpc.daq_control.server.psutil.process_iter", return_value=[]), \
+         patch("panoseti_grpc.daq_control.server.get_logger", return_value=MagicMock()):
         return DaqControlServicer()
 
 
@@ -141,3 +144,97 @@ class TestSetupDataDirectories:
         servicer._setup_data_directories(str(tmp_path), "run.pffd", [5])
         servicer._setup_data_directories(str(tmp_path), "run.pffd", [5])
         assert (tmp_path / "run.pffd").is_dir()
+
+
+# ---------------------------------------------------------------------------
+# _read_stream
+# ---------------------------------------------------------------------------
+
+class TestReadStream:
+    @pytest.mark.asyncio
+    async def test_forwards_lines_to_log_method(self):
+        mock_stream = AsyncMock()
+        mock_stream.readline = AsyncMock(side_effect=[b"line one\n", b"line two\n", b""])
+        received = []
+        await _read_stream(mock_stream, received.append)
+        assert received == ["line one", "line two"]
+
+    @pytest.mark.asyncio
+    async def test_skips_blank_lines(self):
+        mock_stream = AsyncMock()
+        mock_stream.readline = AsyncMock(side_effect=[b"  \n", b"\n", b""])
+        received = []
+        await _read_stream(mock_stream, received.append)
+        assert received == []
+
+    @pytest.mark.asyncio
+    async def test_stops_on_eof(self):
+        mock_stream = AsyncMock()
+        mock_stream.readline = AsyncMock(side_effect=[b""])
+        received = []
+        await _read_stream(mock_stream, received.append)
+        assert received == []
+
+    @pytest.mark.asyncio
+    async def test_replaces_invalid_utf8(self):
+        mock_stream = AsyncMock()
+        mock_stream.readline = AsyncMock(side_effect=[b"\xff\xfe bad bytes\n", b""])
+        received = []
+        await _read_stream(mock_stream, received.append)
+        assert len(received) == 1
+        assert "bad bytes" in received[0]
+
+
+# ---------------------------------------------------------------------------
+# _monitor_hashpipe
+# ---------------------------------------------------------------------------
+
+class TestMonitorHashpipe:
+    @pytest.mark.asyncio
+    async def test_routes_stdout_to_stdout_logger(self):
+        mock_proc = MagicMock()
+        mock_proc.stdout = AsyncMock()
+        mock_proc.stdout.readline = AsyncMock(side_effect=[b"stdout msg\n", b""])
+        mock_proc.stderr = AsyncMock()
+        mock_proc.stderr.readline = AsyncMock(side_effect=[b""])
+
+        stdout_logger = MagicMock()
+        stderr_logger = MagicMock()
+        await _monitor_hashpipe(mock_proc, stdout_logger, stderr_logger)
+
+        stdout_logger.info.assert_called_once_with("stdout msg")
+        stderr_logger.error.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_routes_stderr_to_stderr_logger(self):
+        mock_proc = MagicMock()
+        mock_proc.stdout = AsyncMock()
+        mock_proc.stdout.readline = AsyncMock(side_effect=[b""])
+        mock_proc.stderr = AsyncMock()
+        mock_proc.stderr.readline = AsyncMock(side_effect=[b"error msg\n", b""])
+
+        stdout_logger = MagicMock()
+        stderr_logger = MagicMock()
+        await _monitor_hashpipe(mock_proc, stdout_logger, stderr_logger)
+
+        stderr_logger.error.assert_called_once_with("error msg")
+        stdout_logger.info.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_handles_both_streams_concurrently(self):
+        mock_proc = MagicMock()
+        mock_proc.stdout = AsyncMock()
+        mock_proc.stdout.readline = AsyncMock(side_effect=[b"out\n", b""])
+        mock_proc.stderr = AsyncMock()
+        mock_proc.stderr.readline = AsyncMock(side_effect=[b"err\n", b""])
+
+        stdout_calls, stderr_calls = [], []
+        stdout_logger = MagicMock()
+        stdout_logger.info = stdout_calls.append
+        stderr_logger = MagicMock()
+        stderr_logger.error = stderr_calls.append
+
+        await _monitor_hashpipe(mock_proc, stdout_logger, stderr_logger)
+
+        assert stdout_calls == ["out"]
+        assert stderr_calls == ["err"]

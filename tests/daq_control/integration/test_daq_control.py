@@ -1,6 +1,7 @@
 import pytest
 import time
 import psutil
+from pathlib import Path
 
 # Parameters reused across tests
 START_PARAMS = {
@@ -36,6 +37,14 @@ CLEANUP_PARAMS = {
 def test_start_daq(grpc_client):
     """Verify StartDaq succeeds and hashpipe starts."""
     assert grpc_client.StartDaq(START_PARAMS) is True
+
+
+def test_hashpipe_log_files_created(grpc_client):
+    """After StartDaq, hp_stdout.log and hp_stderr.log should exist in run_dir."""
+    time.sleep(1)  # allow background monitoring task to write initial output
+    run_dir = Path(START_PARAMS["data_dir"]) / START_PARAMS["run_dir"]
+    assert (run_dir / "hp_stdout.log").exists()
+    assert (run_dir / "hp_stderr.log").exists()
 
 
 def test_start_daq_already_running(grpc_client):
