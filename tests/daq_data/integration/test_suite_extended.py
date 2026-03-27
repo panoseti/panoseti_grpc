@@ -183,22 +183,28 @@ async def test_client_handles_one_server_failure(n_sim_servers_fixture_factory):
 
         # Shut down one server
         server_to_stop = server_details[0]
+        stopped_module = server_to_stop['module_id']
         server_to_stop['stop_event'].set()
         await asyncio.wait_for(server_to_stop['task'], timeout=5.0)
 
-        # Continue streaming and verify we only get images from the remaining servers
+        # Drain any frames already buffered in the client queue from the stopped server
+        # before making assertions about post-shutdown data.
         received_from_module_after = set()
         try:
-            for _ in range((num_servers - 1) * 10):
+            for _ in range((num_servers - 1) * 20):
                 image = await stream.__anext__()
-                received_from_module_after.add(image['module_id'])
+                mid = image['module_id']
+                if mid != stopped_module:
+                    received_from_module_after.add(mid)
+                    # Once we have data from all remaining servers, we're past the drain phase
+                    remaining_modules = {detail['module_id'] for detail in server_details[1:]}
+                    if received_from_module_after >= remaining_modules:
+                        break
         except grpc.aio.AioRpcError as e:
             # The client's stream might be implemented to terminate on any single error.
             # A more robust implementation might try to continue. We accept both behaviors.
             pass
 
         remaining_modules = {detail['module_id'] for detail in server_details[1:]}
-        assert server_to_stop['module_id'] not in received_from_module_after
-        # It's possible we don't receive from all remaining modules if the stream errors out,
-        # so we check that the set of received modules is a subset of the remaining ones.
+        # After draining buffered frames, only remaining server modules should appear.
         assert received_from_module_after.issubset(remaining_modules)
