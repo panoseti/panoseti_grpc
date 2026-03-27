@@ -2,14 +2,16 @@
 Manages the lifecycle of DAQ simulation tasks for the DaqData server.
 Only the UDS (Unix Domain Socket) simulation mode is supported.
 """
+from __future__ import annotations
 import abc
 import asyncio
 from importlib import resources
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from panoseti_grpc.panoseti_util import pff
 
+from .config import DaqDataServerConfig, SimulateDaqConfig, UdsSimStrategyConfig
 from .state import get_dp_config
 from .resources import daq_data_anchor_package
 
@@ -17,34 +19,33 @@ from .resources import daq_data_anchor_package
 class BaseSimulationStrategy(abc.ABC):
     """Abstract base class for a simulation strategy."""
 
-    def __init__(self, common_config: dict, strategy_config: dict, server_config: dict, logger: logging.Logger,
-                 stop_event: asyncio.Event):
+    def __init__(self, common_config: SimulateDaqConfig, strategy_config: UdsSimStrategyConfig,
+                 server_cfg: DaqDataServerConfig, logger: logging.Logger, stop_event: asyncio.Event):
         self.logger = logger
         self.stop_event = stop_event
         self.common_config = common_config
         self.strategy_config = strategy_config
-        self.server_config = server_config
+        self.server_cfg = server_cfg
         self.sim_created_resources = []
-        self.movie_frames: List[bytes] = []
-        self.ph_frames: List[bytes] = []
+        self.movie_frames: list[bytes] = []
+        self.ph_frames: list[bytes] = []
 
-        frame_limit = self.strategy_config.get('frame_limit', -1)
-        self.frame_limit = float('inf') if frame_limit < 0 else frame_limit
+        self.frame_limit = float('inf') if strategy_config.frame_limit < 0 else strategy_config.frame_limit
 
     def _load_source_data(self):
         """Loads all PFF frames from source files into memory."""
         self.logger.info("Loading source data frames into memory for simulation.")
-        source_cfg = self.common_config['source_data']
-        dp_cfgs = get_dp_config([self.common_config['movie_type'], self.common_config['ph_type']])
+        source_cfg = self.common_config.source_data
+        dp_cfgs = get_dp_config([self.common_config.movie_type, self.common_config.ph_type])
         try:
-            with resources.files(daq_data_anchor_package).joinpath(source_cfg['movie_pff_path']).open("rb") as f:
-                dp_config = dp_cfgs[self.common_config['movie_type']]
+            with resources.files(daq_data_anchor_package).joinpath(source_cfg.movie_pff_path).open("rb") as f:
+                dp_config = dp_cfgs[self.common_config.movie_type]
                 frame_size, nframes, _, _ = pff.img_info(f, dp_config.bytes_per_image)
                 f.seek(0)
                 for _ in range(nframes):
                     self.movie_frames.append(f.read(frame_size))
-            with resources.files(daq_data_anchor_package).joinpath(source_cfg['ph_pff_path']).open("rb") as f:
-                dp_config = dp_cfgs[self.common_config['ph_type']]
+            with resources.files(daq_data_anchor_package).joinpath(source_cfg.ph_pff_path).open("rb") as f:
+                dp_config = dp_cfgs[self.common_config.ph_type]
                 frame_size, nframes, _, _ = pff.img_info(f, dp_config.bytes_per_image)
                 f.seek(0)
                 for _ in range(nframes):
@@ -85,11 +86,11 @@ class BaseSimulationStrategy(abc.ABC):
                     break
                 movie_frame = self.movie_frames[fnum % len(self.movie_frames)]
                 ph_frame = self.ph_frames[fnum % len(self.ph_frames)]
-                for mid in self.common_config['sim_module_ids']:
-                    await self.send_frame(movie_frame, self.common_config['movie_type'], mid, fnum)
-                    await self.send_frame(ph_frame, self.common_config['ph_type'], mid, fnum)
+                for mid in self.common_config.sim_module_ids:
+                    await self.send_frame(movie_frame, self.common_config.movie_type, mid, fnum)
+                    await self.send_frame(ph_frame, self.common_config.ph_type, mid, fnum)
                 fnum += 1
-                await asyncio.sleep(self.common_config.get('update_interval_seconds', 0.1))
+                await asyncio.sleep(0.1)
         except asyncio.CancelledError:
             self.logger.info(f"Simulation data loop for '{self.__class__.__name__}' cancelled.")
         except Exception as e:
@@ -103,18 +104,14 @@ class UdsStrategy(BaseSimulationStrategy):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._writers: Dict[str, asyncio.StreamWriter] = {}
+        self._writers: dict[str, asyncio.StreamWriter] = {}
 
     async def setup(self, num_retries=5, retry_delay=0.5) -> bool:
         """Connects to the UDS sockets created by the main server."""
         self.logger.info("Setting up UDS simulation (Client Role).")
-        uds_cfg = self.server_config.get("acquisition_methods", {}).get("uds", {})
-        socket_template = uds_cfg.get("socket_path_template")
-        if not socket_template:
-            self.logger.error("UDS simulation requires 'socket_path_template'.")
-            return False
-
-        data_products = self.strategy_config.get('data_products', [])
+        uds_cfg = self.server_cfg.acquisition_methods.uds
+        socket_template = uds_cfg.socket_path_template
+        data_products = self.strategy_config.data_products
 
         for i in range(num_retries):
             all_connected = True
@@ -168,7 +165,7 @@ class UdsStrategy(BaseSimulationStrategy):
 
 class SimulationManager:
     """Manages the lifecycle of a DAQ simulation task."""
-    def __init__(self, server_cfg: dict, logger: logging.Logger):
+    def __init__(self, server_cfg: DaqDataServerConfig, logger: logging.Logger):
         self.server_cfg = server_cfg
         self.logger = logger
         self.sim_task: Optional[asyncio.Task] = None
@@ -177,18 +174,17 @@ class SimulationManager:
 
     async def setup_environment(self) -> bool:
         """Sets up the simulation environment but does not start the data loop."""
-        sim_cfg = self.server_cfg.get('simulate_daq_cfg')
+        sim_cfg = self.server_cfg.simulate_daq_cfg
         if not sim_cfg:
             self.logger.error("`simulate_daq_cfg` not found in server configuration.")
             return False
 
-        mode = sim_cfg.get("simulation_mode")
-        if mode != "uds":
-            self.logger.error(f"Unsupported simulation mode: '{mode}'. Only 'uds' is supported.")
+        if sim_cfg.simulation_mode != "uds":
+            self.logger.error(f"Unsupported simulation mode: '{sim_cfg.simulation_mode}'. Only 'uds' is supported.")
             return False
 
         self.logger.info("Setting up environment for 'uds' simulation.")
-        strategy_config = sim_cfg.get('strategies', {}).get('uds', {})
+        strategy_config = sim_cfg.strategies.get('uds', UdsSimStrategyConfig())
         self.strategy = UdsStrategy(sim_cfg, strategy_config, self.server_cfg, self.logger, self._sim_stop_event)
 
         self.strategy._load_source_data()

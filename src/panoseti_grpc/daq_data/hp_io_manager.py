@@ -7,13 +7,14 @@ Incoming frames are assigned monotonically increasing frame IDs and cached
 in a shared dict so that any number of gRPC streaming clients can poll for
 fresh frames at their own rate.
 """
+from __future__ import annotations
 import asyncio
 import logging
-from typing import Dict, List, Optional
 from collections import defaultdict
 
 from panoseti_grpc.generated.daq_data_pb2 import PanoImage
 
+from .config import DaqDataServerConfig
 from .resources import get_dp_name_from_props
 from .state import ReaderState, DataProductState, CachedPanoImage, ModuleState
 from .data_sources import UdsDataSource
@@ -22,9 +23,11 @@ from .data_sources import UdsDataSource
 class HpIoManager:
     """Orchestrates data acquisition from UDS sources and broadcasts to clients."""
 
-    def __init__(self, server_config: Dict, reader_states: List[ReaderState], stop_event: asyncio.Event,
-                 valid: asyncio.Event, active_data_products_queue: asyncio.Queue, logger: logging.Logger):
-        self.server_config = server_config
+    def __init__(self, server_cfg: DaqDataServerConfig, hp_io_cfg: dict, reader_states: list[ReaderState],
+                 stop_event: asyncio.Event, valid: asyncio.Event,
+                 active_data_products_queue: asyncio.Queue, logger: logging.Logger):
+        self.server_cfg = server_cfg
+        self.hp_io_cfg = hp_io_cfg
         self.reader_states = reader_states
         self.stop_event = stop_event
         self.valid = valid
@@ -33,10 +36,10 @@ class HpIoManager:
         self.processing_loop_timeout = 0.75
 
         self.data_queue = asyncio.Queue(maxsize=500)
-        self.data_sources = []
+        self.data_sources: list[UdsDataSource] = []
 
-        self.modules: Dict[int, ModuleState] = {}
-        self.latest_data_cache: Dict[int, Dict[str, Optional[CachedPanoImage]]] = defaultdict(
+        self.modules: dict[int, ModuleState] = {}
+        self.latest_data_cache: dict[int, dict[str, CachedPanoImage | None]] = defaultdict(
             lambda: {'ph': None, 'movie': None}
         )
         self._frame_id_counter = 0
@@ -45,27 +48,21 @@ class HpIoManager:
 
     def _configure_data_sources(self):
         """Instantiates UDS data sources based on server configuration."""
-        acq_config = self.server_config.get("acquisition_methods", {})
-        self.logger.info(f"Configuring data sources: {acq_config}")
+        uds_cfg = self.server_cfg.acquisition_methods.uds
+        self.logger.info(f"Configuring data sources with UDS enabled={uds_cfg.enabled}.")
 
-        uds_cfg = acq_config.get("uds", {})
-        if uds_cfg.get("enabled"):
+        if uds_cfg.enabled:
             self.logger.info("Configuring UDS data sources (Server Mode).")
-            socket_template = uds_cfg.get("socket_path_template")
-            if not socket_template:
-                self.logger.error("UDS is enabled, but 'socket_path_template' is not defined.")
-            else:
-                data_products = uds_cfg.get("data_products", [])
-                for dp_name in data_products:
-                    source_cfg = {
-                        "dp_name": dp_name,
-                        "socket_path_template": socket_template,
-                        "read_timeout": uds_cfg.get("read_timeout", 60.0),
-                    }
-                    self.logger.info(f"Creating UDS server for data product '{dp_name}'")
-                    self.data_sources.append(
-                        UdsDataSource(source_cfg, self.logger, self.data_queue, self.stop_event)
-                    )
+            for dp_name in uds_cfg.data_products:
+                source_cfg = {
+                    "dp_name": dp_name,
+                    "socket_path_template": uds_cfg.socket_path_template,
+                    "read_timeout": uds_cfg.read_timeout,
+                }
+                self.logger.info(f"Creating UDS server for data product '{dp_name}'")
+                self.data_sources.append(
+                    UdsDataSource(source_cfg, self.logger, self.data_queue, self.stop_event)
+                )
         self.logger.info(f"Configured {len(self.data_sources)} data sources: {self.data_sources}")
 
     async def run(self):
@@ -120,20 +117,18 @@ class HpIoManager:
                     frame_id=self._frame_id_counter,
                     pano_image=pano_image
                 )
-                await self._cache_pano_image(cached_image)
+                self._cache_pano_image(cached_image)
 
-                self.data_queue.task_done()
             except asyncio.CancelledError:
                 break
             except asyncio.TimeoutError:
                 continue
         self.logger.info("Processing loop finished.")
 
-    async def _cache_pano_image(self, cached_image: CachedPanoImage):
-        """Caches the received CachedPanoImage, overwriting the previous one."""
+    def _cache_pano_image(self, cached_image: CachedPanoImage):
+        """Caches the received CachedPanoImage, overwriting the previous one. Synchronous — no awaits needed."""
         pano_image = cached_image.pano_image
-        is_ph = (pano_image.type == PanoImage.Type.PULSE_HEIGHT)
-        cache_key = 'ph' if is_ph else 'movie'
+        cache_key = 'ph' if pano_image.type == PanoImage.Type.PULSE_HEIGHT else 'movie'
         self.latest_data_cache[pano_image.module_id][cache_key] = cached_image
 
     async def _discover_module_from_image(self, pano_image: PanoImage):

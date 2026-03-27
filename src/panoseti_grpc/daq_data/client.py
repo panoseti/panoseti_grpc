@@ -37,7 +37,8 @@ from panoseti_grpc.generated.daq_data_pb2 import (
 from panoseti_grpc.panoseti_util import control_utils
 
 ## daq_data utils
-from .resources import make_rich_logger, parse_pano_image, format_stream_images_response, load_package_json
+from panoseti_grpc.telemetry.logger import get_logger
+from .resources import parse_pano_image, format_stream_images_response, load_package_json
 
 hp_io_config_simulate = load_package_json("panoseti_grpc.daq_data", "config/hp_io_config_simulate.json")
 
@@ -73,7 +74,7 @@ class DaqDataClient:
                 Can be None if no port forwarding is needed.
             log_level (int): The logging verbosity level (e.g., logging.INFO).
         """
-        self.logger = make_rich_logger("daq_data.client", level=log_level)
+        self.logger = get_logger("daq_data.client", level=log_level)
 
         # Load daq config, if necessary
         if daq_config is None:
@@ -489,7 +490,7 @@ class AioDaqDataClient:
                 shutdown of long-running streams.
             log_level (int): The logging verbosity level (e.g., logging.INFO).
         """
-        self.logger = make_rich_logger("daq_data.client", level=log_level)
+        self.logger = get_logger("daq_data.client", level=log_level)
 
         # Load daq config, if necessary
         if daq_config is None:

@@ -1,27 +1,29 @@
 """Classes for managing DaqData server state."""
+from __future__ import annotations
 import uuid
 import asyncio
 from contextlib import asynccontextmanager
-from typing import List, Dict, Optional
 import logging
 import grpc
 
+from .config import DaqDataServerConfig
 from .hp_io_manager import HpIoManager
-from .state import ReaderState, DataProductState
+from .state import ReaderState
 from .simulate import SimulationManager
+
 
 class HpIoTaskManager:
     """Manages the lifecycle of the HpIoManager background task."""
 
-    def __init__(self, logger: logging.Logger, server_cfg: dict, reader_states: List[ReaderState]):
+    def __init__(self, logger: logging.Logger, server_cfg: DaqDataServerConfig, reader_states: list[ReaderState]):
         self.logger = logger
         self.server_cfg = server_cfg
         self.reader_states = reader_states
-        self.hp_io_task: Optional[asyncio.Task] = None
-        self.hp_io_manager: Optional[HpIoManager] = None
+        self.hp_io_task: asyncio.Task | None = None
+        self.hp_io_manager: HpIoManager | None = None
         self.hp_io_valid_event = asyncio.Event()
-        self.active_data_products = set()
-        self.hp_io_cfg: Dict = {}
+        self.active_data_products: set = set()
+        self.hp_io_cfg: dict = {}
         self.stop_event = asyncio.Event()
         self.simulation_manager = SimulationManager(server_cfg, logger)
 
@@ -30,9 +32,12 @@ class HpIoTaskManager:
         if self.hp_io_task and not self.hp_io_task.done() and self.hp_io_valid_event.is_set():
             return True
         if verbose:
-            if not self.hp_io_task: self.logger.warning("hp_io task is uninitialized")
-            elif self.hp_io_task.done(): self.logger.warning("hp_io task is not alive")
-            elif not self.hp_io_valid_event.is_set(): self.logger.warning("hp_io task is alive but not valid")
+            if not self.hp_io_task:
+                self.logger.warning("hp_io task is uninitialized")
+            elif self.hp_io_task.done():
+                self.logger.warning("hp_io task is not alive")
+            elif not self.hp_io_valid_event.is_set():
+                self.logger.warning("hp_io task is alive but not valid")
         return False
 
     async def start(self, hp_io_cfg: dict) -> bool:
@@ -45,12 +50,12 @@ class HpIoTaskManager:
             sim_setup_task = asyncio.create_task(self.simulation_manager.setup_environment())
 
         self.hp_io_cfg = hp_io_cfg
-        temp_server_cfg = self.server_cfg.copy()
-        temp_server_cfg['hp_io_cfg'] = hp_io_cfg
         active_data_products_queue = asyncio.Queue()
 
-        self.hp_io_manager = HpIoManager(temp_server_cfg, self.reader_states, self.stop_event,
-                                         self.hp_io_valid_event, active_data_products_queue, self.logger)
+        self.hp_io_manager = HpIoManager(
+            self.server_cfg, hp_io_cfg, self.reader_states,
+            self.stop_event, self.hp_io_valid_event, active_data_products_queue, self.logger,
+        )
         self.hp_io_task = asyncio.create_task(self.hp_io_manager.run())
         try:
             await asyncio.wait_for(self.hp_io_valid_event.wait(), timeout=10.0)
@@ -101,32 +106,33 @@ class HpIoTaskManager:
 
 class ClientManager:
     """Manages client connections, state, and access control for server resources."""
-    def __init__(self, logger: logging.Logger, server_cfg: dict):
+
+    def __init__(self, logger: logging.Logger, server_cfg: DaqDataServerConfig):
         self.logger = logger
-        self.max_clients = server_cfg['max_concurrent_rpcs']
+        self.max_clients = server_cfg.max_concurrent_rpcs
         self._cancel_readers_event = asyncio.Event()
         self._shutdown_event = asyncio.Event()
-        self._readers: List[ReaderState] = [
+        self._readers: list[ReaderState] = [
             ReaderState(
-                queue=asyncio.Queue(maxsize=server_cfg['max_read_queue_size']),
                 cancel_reader_event=self._cancel_readers_event,
                 shutdown_event=self._shutdown_event,
             ) for _ in range(self.max_clients)
         ]
         self._active_readers = 0
-        self._writer_active = False
-
         self._writer_lock = asyncio.Lock()
         self._readers_lock = asyncio.Lock()
 
     @property
-    def reader_states(self) -> List[ReaderState]: return self._readers
+    def reader_states(self) -> list[ReaderState]:
+        return self._readers
 
     @property
-    def cancel_readers_event(self): return self._cancel_readers_event
+    def cancel_readers_event(self):
+        return self._cancel_readers_event
 
     @property
-    def shutdown_event(self): return self._shutdown_event
+    def shutdown_event(self):
+        return self._shutdown_event
 
     async def cancel_all_readers(self):
         """Signals all active reader streams to terminate."""
@@ -140,7 +146,6 @@ class ClientManager:
     async def get_writer_access(self, context, force: bool = False):
         """A context manager to safely acquire exclusive 'writer' access."""
         uid = uuid.uuid4()
-
         await self._writer_lock.acquire()
         try:
             self.logger.debug(f"Writer ({uid}) acquired writer lock.")

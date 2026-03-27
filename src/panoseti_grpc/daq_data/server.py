@@ -27,17 +27,24 @@ from panoseti_grpc.generated import daq_data_pb2, daq_data_pb2_grpc
 from panoseti_grpc.generated.daq_data_pb2 import InitHpIoResponse, StreamImagesResponse, PanoImage
 
 # Package imports
-from .resources import make_rich_logger, CFG_DIR, is_daq_active, load_package_json, daq_data_anchor_package
+from panoseti_grpc.telemetry.logger import get_logger
+from .config import DaqDataServerConfig
+from .resources import CFG_DIR, is_daq_active, load_package_json, daq_data_anchor_package
 from .testing import is_os_posix
 from .managers import ClientManager, HpIoTaskManager
 from .state import ReaderState, CachedPanoImage
 
 
 class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
-    """ Provides implementations for DaqData RPCs by orchestrating manager classes. """
+    """Provides implementations for DaqData RPCs by orchestrating manager classes."""
 
-    def __init__(self, server_cfg, logging_level=logging.DEBUG):
-        self.logger = make_rich_logger("daq_data.server", level=logging_level)
+    def __init__(self, server_cfg: DaqDataServerConfig, logging_level=logging.DEBUG):
+        self.logger = get_logger(
+            "daq_data.server",
+            level=logging_level,
+            log_dir=server_cfg.log_dir,
+            grpc_enabled=server_cfg.grpc_logging,
+        )
         test_result, msg = is_os_posix()
         assert test_result, msg
         self.server_cfg = server_cfg
@@ -46,10 +53,10 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
     async def start_initial_task(self):
         """Starts the initial hp_io task if configured to do so."""
-        if self.server_cfg.get("init_from_default", False):
+        if self.server_cfg.init_from_default:
             self.logger.info("Creating initial hp_io task from default config.")
             try:
-                with open(CFG_DIR / self.server_cfg["default_hp_io_config_file"], "r") as f:
+                with open(CFG_DIR / self.server_cfg.default_hp_io_config_file, "r") as f:
                     hp_io_cfg = json.load(f)
                 await self.task_manager.start(hp_io_cfg)
             except Exception as e:
@@ -72,7 +79,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
         async with self.client_manager.get_reader_access(context, self.task_manager) as reader_state:
             # Configure the reader's stream based on the request
-            hp_io_update_interval_seconds = self.task_manager.hp_io_cfg.get('update_interval_seconds', self.server_cfg['min_hp_io_update_interval_seconds'])
+            hp_io_update_interval_seconds = self.task_manager.hp_io_cfg.get('update_interval_seconds', self.server_cfg.min_hp_io_update_interval_seconds)
             reader_state.config.update({
                 "stream_movie_data": request.stream_movie_data,
                 "stream_pulse_height_data": request.stream_pulse_height_data,
@@ -81,30 +88,38 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             })
             self.logger.info(f"Stream configured for ({reader_state.uid}) with interval {reader_state.config['update_interval_seconds']}s")
 
+            # Track wall-clock time of last fresh data delivery for idle detection
+            last_data_t = time.monotonic()
+
             # Main streaming loop
-            while not any([context.cancelled(), reader_state.cancel_reader_event.is_set(), reader_state.shutdown_event.is_set()]):
+            while not (context.cancelled() or reader_state.cancel_reader_event.is_set() or reader_state.shutdown_event.is_set()):
                 try:
                     now = time.monotonic()
                     interval = reader_state.config['update_interval_seconds']
-                    
+
                     # Check if it's time to send an update to this client
+                    fresh_images = []
                     delta_t = now - reader_state.last_update_t
                     if delta_t >= interval:
                         fresh_images = self._get_fresh_images_for_client(reader_state)
-                        
                         if fresh_images:
                             for image in fresh_images:
                                 yield StreamImagesResponse(pano_image=image)
                             reader_state.last_update_t = now
-                    await asyncio.sleep(interval)  # Sleep until the next update interval
-                    reader_state.dequeue_timeouts = 0  # Reset on success
-                except asyncio.TimeoutError:
-                    reader_state.dequeue_timeouts += 1
-                    if reader_state.dequeue_timeouts >= self.server_cfg['max_reader_dequeue_timeouts']:
-                        self.logger.warning(f"Client ({reader_state.uid}) from '{peer}' timed out waiting for data. Ending stream.")
-                        await context.abort(grpc.StatusCode.DEADLINE_EXCEEDED, "Client timed out.")
-                    self.logger.warning(f"Client '{peer}' timed out waiting for data. {reader_state.dequeue_timeouts} timeouts so far")
-                    continue
+                            last_data_t = now
+
+                    # Time-based idle detection: abort if no data has arrived for reader_timeout seconds
+                    if now - last_data_t >= self.server_cfg.reader_timeout:
+                        self.logger.warning(
+                            f"Client ({reader_state.uid}) from '{peer}' received no data for "
+                            f"{now - last_data_t:.1f}s. Ending stream."
+                        )
+                        await context.abort(grpc.StatusCode.DEADLINE_EXCEEDED, "No data received within timeout window.")
+                        return
+
+                    # Sleep for the remainder of the interval, accounting for processing time
+                    elapsed = time.monotonic() - now
+                    await asyncio.sleep(max(0.0, interval - elapsed))
                 except Exception as e:
                     self.logger.error(f"Error in stream loop for ({reader_state.uid}) from '{peer}': {e}", exc_info=True)
                     break
@@ -117,34 +132,32 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     await context.abort(grpc.StatusCode.CANCELLED, f"cancel_reader_event set for ({reader_state.uid}) from '{peer}'."
                                                                    f"A writer has likely forced a reconfiguration of hp_io")
 
-    def _get_fresh_images_for_client(self, rs: ReaderState) -> List[PanoImage]:
-        """ Checks the cache for images that are newer than what the client has already seen.  """
-        images_to_send = []
+    def _get_fresh_images_for_client(self, rs: ReaderState) -> list[PanoImage]:
+        """Checks the cache for images newer than what the client last received."""
         if not self.task_manager.hp_io_manager:
-            return images_to_send
-            
+            return []
+
         cache = self.task_manager.hp_io_manager.latest_data_cache
-        subscribed_mids = set(rs.config['module_ids'])
+        subscribed = set(rs.config['module_ids'])
+        # Only iterate subscribed modules when a whitelist is given (avoids scanning all modules)
+        module_ids = subscribed if subscribed else list(cache.keys())
 
-        for mid, data in cache.items():
-            if subscribed_mids and mid not in subscribed_mids:
+        images: list[PanoImage] = []
+        for mid in module_ids:
+            data = cache.get(mid)  # .get() avoids triggering defaultdict factory
+            if data is None:
                 continue
-
-            # Check for fresh movie data
             if rs.config['stream_movie_data']:
                 cached_movie: CachedPanoImage = data.get('movie')
                 if cached_movie and cached_movie.frame_id > rs.last_sent_movie_id:
-                    images_to_send.append(cached_movie.pano_image)
+                    images.append(cached_movie.pano_image)
                     rs.last_sent_movie_id = cached_movie.frame_id
-            
-            # Check for fresh pulse-height data
             if rs.config['stream_pulse_height_data']:
                 cached_ph: CachedPanoImage = data.get('ph')
                 if cached_ph and cached_ph.frame_id > rs.last_sent_ph_id:
-                    images_to_send.append(cached_ph.pano_image)
+                    images.append(cached_ph.pano_image)
                     rs.last_sent_ph_id = cached_ph.frame_id
-        
-        return images_to_send
+        return images
 
     async def InitHpIo(self, request, context) -> InitHpIoResponse:
         """Initialize or re-initialize the hp_io task. [writer]"""
@@ -159,7 +172,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             if not await is_daq_active(simulate_daq=False):
                 await context.abort(grpc.StatusCode.FAILED_PRECONDITION, "Real DAQ software is not active.")
 
-        if request.update_interval_seconds < self.server_cfg['min_hp_io_update_interval_seconds']:
+        if request.update_interval_seconds < self.server_cfg.min_hp_io_update_interval_seconds:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "update_interval_seconds is below server minimum.")
 
         async with self.client_manager.get_writer_access(context, force=request.force) as uid:
@@ -200,6 +213,8 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 async def serve(server_cfg, shutdown_event=None, in_main_thread: bool = True):
     """Create and run the gRPC server."""
     logger = logging.getLogger("daq_data.server")
+    if isinstance(server_cfg, dict):
+        server_cfg = DaqDataServerConfig.model_validate(server_cfg)
 
     # Define a signal handler to set the shutdown event
     def _signal_handler(*_):
@@ -235,10 +250,9 @@ async def serve(server_cfg, shutdown_event=None, in_main_thread: bool = True):
     logger.info(f"Server starting, listening on '{listen_addr}'")
 
     # Add a Unix Domain Socket listener for local inter-process communication
-    uds_listen_addr = server_cfg.get("unix_domain_socket", None)
-    if uds_listen_addr:
-        server.add_insecure_port(uds_listen_addr)
-        logger.info(f"Server also listening on '{uds_listen_addr}'")
+    if server_cfg.unix_domain_socket:
+        server.add_insecure_port(server_cfg.unix_domain_socket)
+        logger.info(f"Server also listening on '{server_cfg.unix_domain_socket}'")
 
     # Start the server and initial tasks
     await server.start()
@@ -252,7 +266,7 @@ async def serve(server_cfg, shutdown_event=None, in_main_thread: bool = True):
     # 1. Stop the application-level managers first.
     await servicer.shutdown()
     # 2. Stop the gRPC server to prevent new connections.
-    grace = server_cfg.get("shutdown_grace_period", 5)
+    grace = server_cfg.shutdown_grace_period
     await server.stop(grace)
     # 3. Ensure the initial task is complete.
     await initial_task
@@ -260,10 +274,8 @@ async def serve(server_cfg, shutdown_event=None, in_main_thread: bool = True):
 
 if __name__ == "__main__":
     try:
-        server_config = load_package_json(daq_data_anchor_package,CFG_DIR / "daq_data_server_config.json" )
-        # with open(CFG_DIR / "daq_data_server_config.json", "r") as f:
-        #     server_config = json.load(f)
-        # asyncio.run will wait for the serve() coroutine to complete
+        raw_cfg = load_package_json(daq_data_anchor_package, CFG_DIR / "daq_data_server_config.json")
+        server_config = DaqDataServerConfig.model_validate(raw_cfg)
         asyncio.run(serve(server_config))
     except (KeyboardInterrupt, asyncio.CancelledError):
         # This will now only be triggered if Ctrl+C is hit during initial setup

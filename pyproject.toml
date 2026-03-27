@@ -57,6 +57,7 @@ dependencies = [
 dev = [
     "pytest",
     "pytest-asyncio>=0.23",
+    "pytest-timeout",
     "black",
     "flake8",
     "ipython",
@@ -103,6 +104,7 @@ extend-ignore = ["E203", "W503"]
 minversion = "6.0"
 addopts = "-ra -q"
 asyncio_mode = "auto"
+timeout = 120
 testpaths = [
     "tests",
 ]

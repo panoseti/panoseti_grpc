@@ -18,7 +18,7 @@ from panoseti_grpc.generated import (
     daq_data_pb2_grpc
 )
 from panoseti_grpc.generated.daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
-from .resources import make_rich_logger
+from panoseti_grpc.telemetry.logger import get_logger
 from .client import DaqDataClient, AioDaqDataClient
 from .plot import PulseHeightDistribution, PanoImagePreviewer
 
@@ -99,7 +99,7 @@ async def run_speed_test(
         # ph_dist = PulseHeightDistribution(durations_seconds, module_ids, plot_update_interval)
         npackets = 0
         ref_t = time.monotonic()
-        logger = make_rich_logger("daq_data.cli", level=logging.INFO)
+        logger = get_logger("daq_data.cli", level=logging.INFO)
         async for _ in stream_images_responses:
             if shutdown_event.is_set():
                 break

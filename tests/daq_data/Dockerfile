@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Install test dependencies
-RUN pip install pytest pytest-asyncio
+RUN pip install pytest pytest-asyncio pytest-timeout
 
 # Copy relevant files for panoseti-grpc package
 COPY pyproject.toml LICENSE README.md /app/

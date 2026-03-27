@@ -2,6 +2,7 @@
 Defines data source classes for the HpIoManager.
 Only the Unix Domain Socket (UDS) data source is supported.
 """
+from __future__ import annotations
 import abc
 import asyncio
 import logging
@@ -9,7 +10,6 @@ import os
 import stat
 from io import BytesIO
 from json import loads
-from typing import Optional
 import socket
 import struct
 
@@ -19,7 +19,7 @@ from google.protobuf.struct_pb2 import Struct
 from panoseti_grpc.generated.daq_data_pb2 import PanoImage
 from panoseti_grpc.panoseti_util import pff
 
-from .state import get_dp_config
+from .state import get_dp_config, DataProductState
 
 
 class BaseDataSource(abc.ABC):
@@ -38,7 +38,11 @@ class BaseDataSource(abc.ABC):
 
 
 class UdsDataSource(BaseDataSource):
-    """Acquires data from a Unix Domain Socket. Acts as the UDS SERVER."""
+    """Acquires data from a Unix Domain Socket. Acts as the UDS SERVER.
+
+    Wire format per frame (written atomically by Hashpipe via writev):
+        [2 bytes: big-endian module_id] [JSON header] \\n\\n* [binary image bytes]
+    """
     SOCKET_BUFFER_SIZE = 2048 * 100
 
     def __init__(self, config: dict, logger: logging.Logger, data_queue: asyncio.Queue, stop_event: asyncio.Event):
@@ -50,10 +54,10 @@ class UdsDataSource(BaseDataSource):
             raise ValueError("UdsDataSource requires a 'socket_path_template'")
 
         self.socket_path = socket_path_template.format(dp_name=self.dp_name)
-        self.dp_config = get_dp_config([self.dp_name])[self.dp_name]
-        self.server: Optional[asyncio.AbstractServer] = None
-        self.read_timeout = config.get('read_timeout', 10.0)
-        self.client_handler_tasks = set()
+        self.dp_config: DataProductState = get_dp_config([self.dp_name])[self.dp_name]
+        self.server: asyncio.AbstractServer | None = None
+        self.read_timeout = config.get('read_timeout', 60.0)
+        self.client_handler_tasks: set[asyncio.Task] = set()
 
     async def _client_connection_wrapper(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         """Wraps the client handler to track its task lifecycle."""
@@ -72,7 +76,7 @@ class UdsDataSource(BaseDataSource):
         self.logger.info(f"Starting UDS receiver for '{self.dp_name}' on {self.socket_path}")
 
         try:
-            # Check if a file exists at the socket path and if it's actually a socket.
+            # Remove stale socket files from previous runs.
             if os.path.exists(self.socket_path):
                 s = os.stat(self.socket_path)
                 if stat.S_ISSOCK(s.st_mode):
@@ -80,33 +84,32 @@ class UdsDataSource(BaseDataSource):
                     os.unlink(self.socket_path)
                 else:
                     self.logger.error(
-                        f"A non-socket file exists at the socket path {self.socket_path}. "
-                        "Manual intervention required."
+                        f"A non-socket file exists at {self.socket_path}. Manual intervention required."
                     )
-                    return  # Prevent the server from starting
+                    return
         except OSError as e:
-            self.logger.error(
-                f"Error removing stale socket file {self.socket_path}: {e}. "
-                "UDS receiver cannot start."
-            )
-            return  # Abort if cleanup fails
+            self.logger.error(f"Error removing stale socket file {self.socket_path}: {e}. Cannot start.")
+            return
 
         server_sock = None
         try:
             server_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 
-            # Set receive buffer size to detect disconnects faster.
+            # Larger receive buffer detects disconnects faster.
             server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.SOCKET_BUFFER_SIZE)
-            self.logger.info(f"Set UDS receive buffer size to {self.SOCKET_BUFFER_SIZE} for {self.socket_path}")
+            self.logger.info(f"Set UDS receive buffer to {self.SOCKET_BUFFER_SIZE} for {self.socket_path}")
 
-            # SO_LINGER: immediately signal a connection reset to the client's OS on close.
+            # SO_LINGER(1,0): force RST on close so Hashpipe detects the disconnect immediately.
             linger_struct = struct.pack('ii', 1, 0)
             server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, linger_struct)
-            self.logger.info(f"Set SO_LINGER option for {self.socket_path} to force RST on close.")
 
             server_sock.bind(self.socket_path)
-            os.chmod(self.socket_path, 0o777)
-            server_sock.listen(1)  # Hashpipe should be the only process connecting.
+            try:
+                os.chmod(self.socket_path, 0o600)  # owner-only: only Hashpipe (same user) connects
+            except OSError as e:
+                self.logger.warning(f"Could not set socket permissions on {self.socket_path}: {e}")
+
+            server_sock.listen(5)  # allow a small queue in case of rapid reconnects
             server_sock.setblocking(False)
 
             self.server = await asyncio.start_unix_server(self._client_connection_wrapper, sock=server_sock)
@@ -143,38 +146,51 @@ class UdsDataSource(BaseDataSource):
                     pass
             self.ready_event.clear()
 
+    async def _read_one_frame(
+        self,
+        reader: asyncio.StreamReader,
+        header_size: int | None,
+    ) -> tuple[int, bytes, bytes, int]:
+        """Reads one complete PFF frame from the stream. Returns (module_id, header_bytes, img_data, header_size).
+
+        Batches all three reads inside a single wait_for to reduce Task creation overhead.
+        """
+        async def _reads():
+            nonlocal header_size
+            module_id_bytes = await reader.readexactly(2)
+            module_id = int.from_bytes(module_id_bytes, 'big')
+
+            if header_size is None:
+                header_with_sep = await reader.readuntil(b'\n\n')
+                header_size = len(header_with_sep)
+                self.logger.info(f"Discovered header size of {header_size} bytes for {self.socket_path}")
+            else:
+                header_with_sep = await reader.readexactly(header_size)
+
+            # '1 +' accounts for the '*' byte at the start of the image block
+            img_data = await reader.readexactly(1 + self.dp_config.bytes_per_image)
+            return module_id, header_with_sep, img_data, header_size
+
+        return await asyncio.wait_for(_reads(), self.read_timeout)
+
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        """Handles a client connection, parsing [module_id][PFF frame] messages."""
+        """Handles a Hashpipe client connection, parsing [module_id][PFF frame] messages."""
         client_info = writer.get_extra_info('peername')
         self.logger.info(f"New client connection on {self.socket_path} from {client_info}")
         frame_count = 0
-        header_size = None  # Discover from first frame
+        header_size: int | None = None  # Discovered from first frame; fixed thereafter
 
         try:
             while not self.stop_event.is_set():
-                # 1. Read the 2-byte module ID prefix with a timeout
-                module_id_bytes = await asyncio.wait_for(reader.readexactly(2), self.read_timeout)
-                module_id = int.from_bytes(module_id_bytes, 'big')
+                module_id, header_with_sep, img_data, header_size = await self._read_one_frame(reader, header_size)
 
-                # 2. Discover or read the fixed-size PFF frame with a timeout
-                if header_size is None:
-                    header_with_sep = await asyncio.wait_for(reader.readuntil(b'\n\n'), self.read_timeout)
-                    header_size = len(header_with_sep)
-                    self.logger.info(f"Discovered header size of {header_size} bytes for {self.socket_path}")
-                else:
-                    header_with_sep = await asyncio.wait_for(reader.readexactly(header_size), self.read_timeout)
-
-                # 3. Read the image data with a timeout
-                # '1 +' is needed to account for the '*' prefix
-                img_data_size = 1 + self.dp_config.bytes_per_image
-                img_data = await asyncio.wait_for(reader.readexactly(img_data_size), self.read_timeout)
-
-                # 4. Parse and process the frame
-                json_bytes = header_with_sep[:-2]  # Strip the '\n\n' separator
-                header = loads(json_bytes.decode())
-                img_array = pff.read_image(BytesIO(img_data), self.dp_config.image_shape[0],
-                                           self.dp_config.bytes_per_pixel)
-
+                # Parse JSON header (strip '\n\n' separator) and decode image
+                header = loads(header_with_sep[:-2].decode())
+                img_array = pff.read_image(
+                    BytesIO(img_data),
+                    self.dp_config.image_shape[0],
+                    self.dp_config.bytes_per_pixel,
+                )
                 pano_image = PanoImage(
                     type=self.dp_config.pano_image_type,
                     header=ParseDict(header, Struct()),
@@ -187,6 +203,14 @@ class UdsDataSource(BaseDataSource):
                 )
                 await self.data_queue.put(pano_image)
                 frame_count += 1
+
+        except asyncio.TimeoutError:
+            # Hashpipe closes its connection after 15 s of idle (UDS_CONNECTION_TIMEOUT_US).
+            # This is expected during observation gaps; log and exit so the server re-accepts.
+            self.logger.info(
+                f"Read timeout on {self.socket_path} (>{self.read_timeout}s idle). "
+                "Closing connection; Hashpipe will reconnect on next frame."
+            )
         except (asyncio.IncompleteReadError, ConnectionResetError):
             self.logger.info(f"Client {client_info} disconnected from {self.socket_path}.")
         except asyncio.CancelledError:

@@ -5,10 +5,9 @@ import asyncio
 import os
 from pathlib import Path
 import logging
-import time
 from typing import Any, Dict
 import numpy as np
-from pandas import to_datetime, Timestamp
+from pandas import to_datetime
 from datetime import datetime
 import decimal
 import re
@@ -18,21 +17,18 @@ import json
 
 # rich formatting
 from rich import print
-from rich.logging import RichHandler
-# from rich.pretty import pprint, Pretty
-# from rich.console import Console
 
 ## gRPC imports
-# Standard gRPC protobuf types
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import MessageToDict, ParseDict
-# from google.protobuf import timestamp_pb2
 
 # protoc-generated marshalling / demarshalling code
 from panoseti_grpc.generated import daq_data_pb2
-from panoseti_grpc.generated.daq_data_pb2 import PanoImage
 from panoseti_grpc.generated.daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
 from panoseti_grpc.panoseti_util import pff, control_utils
+
+# Shared PANOSETI logger (console + rotating file + optional gRPC telemetry)
+from panoseti_grpc.telemetry.logger import get_logger
 
 CFG_DIR = Path('daq_data/config')
 
@@ -70,82 +66,22 @@ def _parse_seqno(filename: str, seqno_re=re.compile(r'\.seqno_(\d+)\.')) -> int:
 
 
 
-def get_dp_name_from_props(pano_type: PanoImage.Type or str, shape: list, bytes_per_pixel: int) -> str:
-    """Derives the data product name from PanoImage properties."""
-    if isinstance(pano_type, type(PanoImage.Type)):
-        pano_type = PanoImage.Type.Name(pano_type)
+def get_dp_name_from_props(pano_type, shape: list, bytes_per_pixel: int) -> str:
+    """Derives the data product name from PanoImage properties by iterating DataProduct members."""
+    from .state import DataProduct
+    # Normalise pano_type to a PanoImage.Type int value
+    if isinstance(pano_type, str):
+        pano_type = PanoImage.Type.Value(pano_type)
     is_ph = (pano_type == PanoImage.Type.PULSE_HEIGHT)
     shape_tuple = tuple(shape)
-
-    if shape_tuple == (32, 32):
-        if bytes_per_pixel == 2:
-            return 'ph1024' if is_ph else 'img16'
-        elif bytes_per_pixel == 1:
-            if not is_ph:
-                return 'img8'
-    elif shape_tuple == (16, 16):
-        if bytes_per_pixel == 2:
-            if is_ph:
-                return 'ph256'
-
+    for dp in DataProduct:
+        if dp.image_shape == shape_tuple and dp.bytes_per_pixel == bytes_per_pixel and dp.is_ph == is_ph:
+            return dp.value
     raise ValueError(
         f"Unknown data product for properties: type={PanoImage.Type.Name(pano_type)}, "
         f"shape={shape_tuple}, bpp={bytes_per_pixel}"
     )
 
-
-def make_rich_logger(name: str, level=logging.INFO) -> logging.Logger:
-    """
-    Sets up a logger with a RichHandler for console output and a FileHandler
-    for writing logs to a file. Also silences noisy third-party loggers.
-
-    Args:
-        name (str): The name for the logger (e.g., 'daq_data').
-        level (int): The logging level (e.g., logging.INFO).
-
-    Returns:
-        logging.Logger: A configured logger instance.
-    """
-    # define log directory and file path
-    log_dir = Path("daq_data/logs")
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_file_path = log_dir / f"{name}_{datetime.now().strftime('%Y-%m-%d')}.log"
-
-    # Get the logger and set its level.
-    # We use getLogger(name) to get our specific application logger.
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-
-    # Prevent messages from being passed to the root logger
-    logger.propagate = False
-
-    # Configure and add the RichHandler for console output
-    # This handler is for pretty-printing logs to the terminal.
-    console_handler = RichHandler(
-        level=level,
-        show_time=True,
-        show_level=True,
-        show_path=False, # Set to False for cleaner output
-        rich_tracebacks=True,
-        tracebacks_theme="monokai",
-    )
-    console_handler.setFormatter(logging.Formatter("[%(funcName)s()] %(message)s", datefmt="%H:%M:%S"))
-
-    # Configure and add the FileHandler for file output
-    # This handler writes logs to the file defined above.
-    file_handler = logging.FileHandler(log_file_path)
-    file_handler.setLevel(level)
-    file_formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - [%(funcName)s] - %(message)s"
-    )
-    file_handler.setFormatter(file_formatter)
-
-    # Add handlers to the logger, but only if they haven't been added already
-    if not logger.handlers:
-        logger.addHandler(console_handler)
-        logger.addHandler(file_handler)
-
-    return logger
 
 def pkt_to_unix_decimal(tv_sec, tv_usec):
     tv_sec = decimal.Decimal(str(tv_sec))

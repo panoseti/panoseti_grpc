@@ -1,14 +1,42 @@
-
-"""Dataclasses for managing DaqData server state."""
+"""Dataclasses and enums for managing DaqData server state."""
 import uuid
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple, List
-import asyncio
+from enum import Enum
+from typing import Optional
 import time
 
 # Package imports
 from panoseti_grpc.generated.daq_data_pb2 import PanoImage
+
+
+class DataProduct(str, Enum):
+    """Canonical data product definitions. Inherits from str so values compare equal to their string names."""
+    IMG16  = "img16"
+    IMG8   = "img8"
+    PH256  = "ph256"
+    PH1024 = "ph1024"
+
+    @property
+    def image_shape(self) -> tuple[int, int]:
+        return (16, 16) if self == DataProduct.PH256 else (32, 32)
+
+    @property
+    def bytes_per_pixel(self) -> int:
+        return 1 if self == DataProduct.IMG8 else 2
+
+    @property
+    def is_ph(self) -> bool:
+        return self in (DataProduct.PH256, DataProduct.PH1024)
+
+    @property
+    def pano_image_type(self) -> "PanoImage.Type":
+        return PanoImage.Type.PULSE_HEIGHT if self.is_ph else PanoImage.Type.MOVIE
+
+    @property
+    def bytes_per_image(self) -> int:
+        r, c = self.image_shape
+        return r * c * self.bytes_per_pixel
 
 
 @dataclass
@@ -17,17 +45,17 @@ class CachedPanoImage:
     frame_id: int
     pano_image: PanoImage
 
+
 @dataclass
 class ReaderState:
     """Holds the state for a single client streaming RPC."""
     is_allocated: bool = False
     uid: Optional[uuid.UUID] = None
     client_ip: Optional[str] = None
-    queue: asyncio.Queue = field(default_factory=lambda: asyncio.Queue(maxsize=100))
-    cancel_reader_event: Optional[asyncio.Event] = None
-    shutdown_event: Optional[asyncio.Event] = None
+    cancel_reader_event: Optional["asyncio.Event"] = None
+    shutdown_event: Optional["asyncio.Event"] = None
 
-    config: Dict = field(default_factory=lambda: {
+    config: dict = field(default_factory=lambda: {
         "stream_movie_data": True,
         "stream_pulse_height_data": True,
         "update_interval_seconds": 1.0,
@@ -36,18 +64,11 @@ class ReaderState:
 
     last_sent_movie_id: int = -1
     last_sent_ph_id: int = -1
-
     last_update_t: float = field(default_factory=time.monotonic)
-    enqueue_timeouts: int = 0
     dequeue_timeouts: int = 0
 
-    def allocate(self, client_ip: str, uid: uuid.UUID):
-        self.is_allocated = True
-        self.client_ip = client_ip
-        self.uid = uid
-
     def reset(self):
-        """Resets the state for reuse."""
+        """Resets the state for reuse by the next client."""
         self.is_allocated = False
         self.client_ip = None
         self.uid = None
@@ -57,21 +78,17 @@ class ReaderState:
         }
         self.last_sent_movie_id = -1
         self.last_sent_ph_id = -1
-        self.enqueue_timeouts = 0
+        self.last_update_t = time.monotonic()
         self.dequeue_timeouts = 0
-        while not self.queue.empty():
-            try:
-                self.queue.get_nowait()
-            except asyncio.QueueEmpty:
-                break
+
 
 @dataclass
 class DataProductState:
-    """Configuration and state for a single data product."""
+    """Configuration for a single data product."""
     name: str
     is_ph: bool
-    pano_image_type: PanoImage.Type
-    image_shape: Tuple[int, int]
+    pano_image_type: "PanoImage.Type"
+    image_shape: tuple[int, int]
     bytes_per_pixel: int
     bytes_per_image: int
 
@@ -81,7 +98,7 @@ class ModuleState:
     def __init__(self, module_id: int, logger: logging.Logger):
         self.module_id = module_id
         self.logger = logger
-        self.dp_configs: Dict[str, DataProductState] = {}
+        self.dp_configs: dict[str, DataProductState] = {}
 
     def add_dp(self, dp_name: str):
         """Adds a data product configuration discovered from the UDS stream."""
@@ -94,34 +111,17 @@ class ModuleState:
             self.logger.error(f"Module {self.module_id}: Could not get config for DP '{dp_name}': {e}")
 
 
-def get_dp_config(dps: List[str]) -> Dict[str, DataProductState]:
-    """
-    Returns a dictionary of DataProductConfig objects for the given data products.
-    """
+def get_dp_config(dps: list[str]) -> dict[str, DataProductState]:
+    """Returns DataProductState objects for the given data product names. Raises ValueError on unknown names."""
     dp_cfg = {}
     for dp in dps:
-        if dp == 'img16' or dp == 'ph1024':
-            image_shape = (32, 32)
-            bytes_per_pixel = 2
-        elif dp == 'img8':
-            image_shape = (32, 32)
-            bytes_per_pixel = 1
-        elif dp == 'ph256':
-            image_shape = (16, 16)
-            bytes_per_pixel = 2
-        else:
-            raise ValueError(f"Unknown data product: {dp}")
-
-        bytes_per_image = bytes_per_pixel * image_shape[0] * image_shape[1]
-        is_ph = 'ph' in dp
-        pano_image_type = PanoImage.Type.PULSE_HEIGHT if is_ph else PanoImage.Type.MOVIE
-
+        dp_enum = DataProduct(dp)  # raises ValueError on unknown name
         dp_cfg[dp] = DataProductState(
             name=dp,
-            is_ph=is_ph,
-            pano_image_type=pano_image_type,
-            image_shape=image_shape,
-            bytes_per_pixel=bytes_per_pixel,
-            bytes_per_image=bytes_per_image,
+            is_ph=dp_enum.is_ph,
+            pano_image_type=dp_enum.pano_image_type,
+            image_shape=dp_enum.image_shape,
+            bytes_per_pixel=dp_enum.bytes_per_pixel,
+            bytes_per_image=dp_enum.bytes_per_image,
         )
     return dp_cfg
