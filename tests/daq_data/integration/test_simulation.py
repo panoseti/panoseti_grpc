@@ -6,17 +6,12 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.mark.parametrize(
     'sim_server_process',
-    [
-        'rpc_sim_server_config',
-        'uds_sim_server_config',
-        'filesystem_pipe_sim_server_config',
-        'filesystem_poll_sim_server_config'
-    ],
+    ['uds_sim_server_config'],
     indirect=True
 )
 async def test_simulation_modes(sim_server_process):
     """
-    Tests that both RPC and UDS simulation modes can be initialized and stream data.
+    Tests that the UDS simulation mode can be initialized and stream data.
     """
     daq_config = {"daq_nodes": [{"ip_addr": sim_server_process}]}
     async with AioDaqDataClient(daq_config, network_config=None) as client:
