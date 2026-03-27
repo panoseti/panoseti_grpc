@@ -54,7 +54,7 @@ COPY tests /app/tests
 # --- Build the custom panoseti_daq Plugin ---
 # The compiled .so file will be in the workdir /build/panoseti_daq
 WORKDIR /build
-RUN git clone --depth 1 --branch uds-to-grpc https://github.com/panoseti/panoseti_daq.git panoseti_daq
+RUN git clone --depth 1 --branch dev https://github.com/panoseti/panoseti_daq.git panoseti_daq
 WORKDIR /build/panoseti_daq
 # Overwrite the Makefile with our Makefile to define small data buffers
 COPY "${TEST_DIR}/Makefile" .
