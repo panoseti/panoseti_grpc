@@ -1,11 +1,13 @@
 """
+from __future__ import annotations
 Common functions for the DaqData clients and servers
 """
+from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
 import logging
-from typing import Any, Dict
+from typing import Any
 import numpy as np
 from pandas import to_datetime
 from datetime import datetime
@@ -57,14 +59,11 @@ def _parse_dp_name(filename: str, dp_name_re = re.compile(r'\.dp_([a-zA-Z0-9]+)\
         raise ValueError(f"Could not parse data product name from filename: {filename}")
     return match.group(1)
 
-
 def _parse_seqno(filename: str, seqno_re=re.compile(r'\.seqno_(\d+)\.')) -> int:
     """Extracts the seqno from a PFF filename."""
     match = seqno_re.search(filename)
     seqno = int(match.group(1)) if match else 0
     return seqno
-
-
 
 def get_dp_name_from_props(pano_type, shape: list, bytes_per_pixel: int) -> str:
     """Derives the data product name from PanoImage properties by iterating DataProduct members."""
@@ -82,14 +81,13 @@ def get_dp_name_from_props(pano_type, shape: list, bytes_per_pixel: int) -> str:
         f"shape={shape_tuple}, bpp={bytes_per_pixel}"
     )
 
-
 def pkt_to_unix_decimal(tv_sec, tv_usec):
     tv_sec = decimal.Decimal(str(tv_sec))
     tv_usec = decimal.Decimal(str(tv_usec))
     usec_factor = decimal.Decimal(str(1e6))
     return tv_sec + (tv_usec / usec_factor)
 
-def parse_pano_timestamps(pano_image: PanoImage, do_wr=False) -> Dict[str, Any]:
+def parse_pano_timestamps(pano_image: PanoImage, do_wr=False) -> dict[str, Any]:
     """Parse PanoImage header to get nanosecond-precision timestamps."""
     h = MessageToDict(pano_image.header)
     td = {}
@@ -108,7 +106,7 @@ def parse_pano_timestamps(pano_image: PanoImage, do_wr=False) -> Dict[str, Any]:
     td['pandas_unix_timestamp'] = to_datetime(nanoseconds_since_epoch, unit='ns')
     return td
 
-def parse_pano_image(pano_image: daq_data_pb2.PanoImage) -> Dict[str, Any]:
+def parse_pano_image(pano_image: daq_data_pb2.PanoImage) -> dict[str, Any]:
     """Unpacks a PanoImage message into its components"""
     parsed_pano_image = MessageToDict(pano_image, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)
     pano_timestamps = parse_pano_timestamps(pano_image)
@@ -141,7 +139,6 @@ def format_stream_images_response(stream_images_response: StreamImagesResponse) 
     message = stream_images_response.message
     server_timestamp = stream_images_response.timestamp.ToDatetime().isoformat()
     return f"{name=} {server_timestamp=} {file} (f#{frame_number}) {pano_type=} "
-
 
 def is_daq_active_sync(simulate_daq, sim_cfg=None):
     """Returns True iff the data stream from hashpipe or simulated hashpipe is active."""

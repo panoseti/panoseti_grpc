@@ -7,14 +7,12 @@ import abc
 import asyncio
 from importlib import resources
 import logging
-from typing import Optional
 
 from panoseti_grpc.panoseti_util import pff
 
 from .config import DaqDataServerConfig, SimulateDaqConfig, UdsSimStrategyConfig
 from .state import get_dp_config
 from .resources import daq_data_anchor_package
-
 
 class BaseSimulationStrategy(abc.ABC):
     """Abstract base class for a simulation strategy."""
@@ -98,7 +96,6 @@ class BaseSimulationStrategy(abc.ABC):
         finally:
             self.logger.info(f"Simulation data loop for '{self.__class__.__name__}' finished.")
 
-
 class UdsStrategy(BaseSimulationStrategy):
     """Simulates DAQ by connecting to UDS sockets and sending PFF frames (Client Role)."""
 
@@ -162,14 +159,13 @@ class UdsStrategy(BaseSimulationStrategy):
                 writer.close()
                 await writer.wait_closed()
 
-
 class SimulationManager:
     """Manages the lifecycle of a DAQ simulation task."""
     def __init__(self, server_cfg: DaqDataServerConfig, logger: logging.Logger):
         self.server_cfg = server_cfg
         self.logger = logger
-        self.sim_task: Optional[asyncio.Task] = None
-        self.strategy: Optional[BaseSimulationStrategy] = None
+        self.sim_task: asyncio.Task | None = None
+        self.strategy: BaseSimulationStrategy | None = None
         self._sim_stop_event = asyncio.Event()
 
     async def setup_environment(self) -> bool:
@@ -243,5 +239,5 @@ class SimulationManager:
             await self.strategy.cleanup()
             self.strategy = None
 
-    def data_flow_valid(self) -> Optional[bool]:
+    def data_flow_valid(self) -> bool | None:
         return self.sim_task and not self.sim_task.done()

@@ -1,9 +1,9 @@
 """Dataclasses and enums for managing DaqData server state."""
+from __future__ import annotations
 import uuid
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 import time
 
 # Package imports
@@ -50,10 +50,10 @@ class CachedPanoImage:
 class ReaderState:
     """Holds the state for a single client streaming RPC."""
     is_allocated: bool = False
-    uid: Optional[uuid.UUID] = None
-    client_ip: Optional[str] = None
-    cancel_reader_event: Optional["asyncio.Event"] = None
-    shutdown_event: Optional["asyncio.Event"] = None
+    uid: uuid.UUID | None = None
+    client_ip: str | None = None
+    cancel_reader_event: asyncio.Event | None = None
+    shutdown_event: asyncio.Event | None = None
 
     config: dict = field(default_factory=lambda: {
         "stream_movie_data": True,

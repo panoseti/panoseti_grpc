@@ -13,7 +13,7 @@ import logging
 import json
 import time
 import urllib.parse
-from typing import AsyncIterator, List, Dict, Optional
+from typing import AsyncIterator
 import signal
 
 # gRPC imports
@@ -33,7 +33,6 @@ from .resources import CFG_DIR, is_daq_active, load_package_json, daq_data_ancho
 from .testing import is_os_posix
 from .managers import ClientManager, HpIoTaskManager
 from .state import ReaderState, CachedPanoImage
-
 
 class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
     """Provides implementations for DaqData RPCs by orchestrating manager classes."""
