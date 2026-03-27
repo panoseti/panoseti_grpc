@@ -197,49 +197,6 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self.logger.info(f"Ping rpc from '{urllib.parse.unquote(context.peer())}'")
         return Empty()
 
-    async def UploadImages(self, request_iterator, context) -> Empty:
-        """Accepts a stream of PanoImages and forwards them to the HpIoManager. [writer-like]"""
-        peer = urllib.parse.unquote(context.peer())
-        self.logger.info(f"New UploadImages rpc from {peer}")
-
-        # Check if the core IO task is running and able to process images.
-        do_daq_simulation = True #self.task_manager.hp_io_cfg.get('simulate_daq', False)
-        if not do_daq_simulation and not self.task_manager.is_valid():
-            emsg = f"UploadImages: hp_io task is not running. Please initialize the server first."
-            self.logger.warning(emsg)
-            await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
-
-        async with self.client_manager.get_uploader_access(context) as uid:
-            image_count = 0
-            try:
-                async for request in request_iterator:
-                    if not request.HasField("pano_image"):
-                        self.logger.warning(f"Received empty UploadImageRequest for ({uid}) from '{peer}'")
-                        continue
-                    try:
-                        # Use non-blocking put to avoid holding up the RPC if the system is overloaded.
-                        # self.logger.debug(f"Received image from {peer}.")
-                        self.task_manager.hp_io_manager.data_queue.put_nowait(request.pano_image)
-                        image_count += 1
-                    except asyncio.QueueFull:
-                        self.logger.error(f"Upload queue is full. Aborting stream for client ({uid}) from '{peer}'.")
-                        await context.abort(grpc.StatusCode.RESOURCE_EXHAUSTED, "Server upload queue is full.")
-                    if context.cancelled() or self.client_manager.shutdown_event.is_set():
-                        self.logger.info(f"Stream ended for ({uid}) from '{peer}'.")
-                        if not context.cancelled():
-                            if self.client_manager.shutdown_event.is_set():
-                                await context.abort(grpc.StatusCode.CANCELLED, f"server shutdown_event set for ({uid}) from '{peer}'.")
-                            elif self.client_manager.cancel_readers_event.is_set():
-                                await context.abort(grpc.StatusCode.CANCELLED, f"cancel_reader_event set for ({uid}) from '{peer}'."
-                                                                               f"A writer has likely forced a reconfiguration of hp_io")
-                        await context.abort(grpc.StatusCode.CANCELLED, f"client ({uid}) from '{peer}' cancelled stream.")
-                self.logger.info(f"Successfully processed {image_count} uploaded images for ({uid}) from '{peer}'.")
-            except grpc.aio.AioRpcError as e:
-                self.logger.error(f"Error during UploadImages stream for {peer}: {e.details()}")
-                raise e
-            return Empty()
-
-
 async def serve(server_cfg, shutdown_event=None, in_main_thread: bool = True):
     """Create and run the gRPC server."""
     logger = logging.getLogger("daq_data.server")

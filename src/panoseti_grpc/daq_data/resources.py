@@ -106,9 +106,6 @@ def make_rich_logger(name: str, level=logging.INFO) -> logging.Logger:
     Returns:
         logging.Logger: A configured logger instance.
     """
-    # The 'watchfiles' logger can be verbose, so we set its level higher.
-    logging.getLogger("watchfiles").setLevel(logging.WARNING)
-
     # define log directory and file path
     log_dir = Path("daq_data/logs")
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -210,48 +207,11 @@ def format_stream_images_response(stream_images_response: StreamImagesResponse) 
     return f"{name=} {server_timestamp=} {file} (f#{frame_number}) {pano_type=} "
 
 
-""" hp_io test macros """
-def get_daq_active_file(sim_cfg, module_id):
-    sim_data_dir = sim_cfg['filesystem_cfg']['sim_data_dir']
-    sim_run_dir = sim_cfg['filesystem_cfg']['sim_run_dir_template'].format(module_id=module_id)
-    os.makedirs(f"{sim_data_dir}/{sim_run_dir}", exist_ok=True)
-    daq_active_file = sim_cfg['filesystem_cfg']['daq_active_file'].format(module_id=module_id)
-    return f"{sim_data_dir}/{sim_run_dir}/{daq_active_file}"
-
-def get_sim_pff_path(sim_cfg, module_id, seqno, is_ph, is_simulated):
-    """
-    Returns the path of the pff files in the simulated daq directory.
-    """
-    sim_data_dir = sim_cfg['filesystem_cfg']['sim_data_dir']
-    if is_simulated:
-        run_dir = sim_cfg['filesystem_cfg']['sim_run_dir_template'].format(module_id=module_id)
-        os.makedirs(f"{sim_data_dir}/{run_dir}", exist_ok=True)
-    else:
-        run_dir = sim_cfg['filesystem_cfg']['real_run_dir']
-
-    if is_ph:
-        ph_pff = sim_cfg['filesystem_cfg']['ph_pff_template'].format(module_id=module_id, seqno=seqno)
-        return f"{sim_data_dir}/{run_dir}/{ph_pff}"
-    else:
-        movie_pff = sim_cfg['filesystem_cfg']['movie_pff_template'].format(module_id=module_id, seqno=seqno)
-        return f"{sim_data_dir}/{run_dir}/{movie_pff}"
-
 def is_daq_active_sync(simulate_daq, sim_cfg=None):
     """Returns True iff the data stream from hashpipe or simulated hashpipe is active."""
     if simulate_daq:
-        if sim_cfg is None:
-            raise ValueError("sim_cfg must be provided when simulate_daq is True")
-        mode = sim_cfg.get('simulation_mode', 'filesystem')
-        if mode in ['filesystem_poll', 'filesystem_pipe']:
-            daq_active_files = [get_daq_active_file(sim_cfg, mid) for mid in sim_cfg['sim_module_ids']]
-            daq_active = any([os.path.exists(file) for file in daq_active_files])
-        elif mode in ['rpc', 'uds']:
-            daq_active = True
-        else:
-            raise ValueError(f"Unknown simulation mode: {mode}")
-    else:
-        daq_active = control_utils.is_hashpipe_running()
-    return daq_active
+        return True  # UDS simulation is always considered active
+    return control_utils.is_hashpipe_running()
 
 async def is_daq_active(simulate_daq, sim_cfg=None, retries=1, delay: float = 0.5):
     """Returns True iff the data stream from hashpipe or simulated hashpipe is active."""

@@ -32,7 +32,7 @@ from panoseti_grpc.generated import (
     daq_data_pb2_grpc,
 )
 from panoseti_grpc.generated.daq_data_pb2 import (
-    PanoImage, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse, UploadImageRequest
+    PanoImage, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse,
 )
 from panoseti_grpc.panoseti_util import control_utils
 
@@ -451,32 +451,6 @@ class DaqDataClient:
         except grpc.RpcError as e:
             return False
 
-    def upload_images(self, hosts: Union[List[str], str], image_iterator: Generator[PanoImage, None, None]):
-        """Uploads a stream of PanoImage protobuf objects to the server.
-
-        This allows a client to act as a data source, injecting images directly
-        into the server's processing queue. This is primarily used by the 'rpc'
-        simulation strategy.
-
-        Args:
-            hosts (Union[List[str], str]): The DAQ host(s) to upload to.
-            image_iterator (Generator[PanoImage, None, None]): A generator that yields
-                PanoImage protobuf objects.
-        """
-        valid_hosts = self.validate_daq_hosts(hosts)
-
-        def request_generator(iterator):
-            for image in iterator:
-                yield UploadImageRequest(pano_image=image, wait_for_ready=True)
-
-        for host in valid_hosts:
-            stub = self.daq_nodes[host]['stub']
-            try:
-                stub.UploadImages(request_generator(image_iterator))
-                self.logger.info(f"Finished uploading images to {host}.")
-            except grpc.RpcError as e:
-                self.logger.error(f"Failed to upload images to {host}: {e}")
-                raise
 
 
 
@@ -918,37 +892,4 @@ class AioDaqDataClient:
         except grpc.aio.AioRpcError:
             return False
 
-    async def upload_images(self, hosts: Union[List[str], str], image_iterator: AsyncGenerator[PanoImage, None]):
-        """Asynchronously uploads a stream of PanoImage objects to the server.
-
-        This method is a coroutine that runs an upload stream to the specified
-        server(s). It is primarily used by the 'rpc' simulation strategy.
-
-        Args:
-            hosts (Union[List[str], str]): The DAQ host(s) to upload to.
-            image_iterator (AsyncGenerator[PanoImage, None]): An async generator
-                that yields PanoImage protobuf objects to upload.
-        """
-        valid_hosts = await self.validate_daq_hosts(hosts)
-        async def request_generator(iterator):
-            async for image in iterator:
-                yield UploadImageRequest(pano_image=image)
-
-        upload_tasks = []
-        try:
-            for host in valid_hosts:
-                stub = self.daq_nodes[host]['stub']
-                #task = asyncio.create_task(stub.UploadImages(request_generator(image_iterator)))
-                task = stub.UploadImages(request_generator(image_iterator), wait_for_ready=True)
-                upload_tasks.append(task)
-            
-            await asyncio.gather(*upload_tasks)
-            self.logger.info(f"Finished uploading images to all specified hosts: {valid_hosts}")
-        except grpc.aio.AioRpcError as e:
-            self.logger.error(f"Failed to upload images to all specified hosts: {valid_hosts}")
-            raise e
-        finally:
-            for task in upload_tasks:
-                task.cancel()
-            await asyncio.gather(*upload_tasks, return_exceptions=True)
 
