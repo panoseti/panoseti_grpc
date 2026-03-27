@@ -504,64 +504,51 @@ See [daq_data.proto](protos/daq_data.proto) for the protobuf specification of th
 </table>
 
 ## System Architecture
-The DaqData service is a high-performance gRPC server designed for distributing real-time streams of PANOSETI images collected by the production observing software. Its architecture is built to handle multiple data streams from either live DAQ hardware (Hashpipe) or a sophisticated simulation engine, providing a unified interface for clients.
 
-The system's data flow is designed for efficiency and modularity:
+The DaqData service is a high-performance gRPC server that distributes real-time PANOSETI image streams from Hashpipe to any number of simultaneous clients. The sole supported data path is Unix Domain Sockets (UDS).
 
-- External Inputs: Data originates from either a live Hashpipe instance in a production environment or the Simulation Engine during testing. These inputs can write to the filesystem, signal updates via named pipes, or stream data directly over Unix Domain Sockets (UDS).
+```
+Hashpipe output_thread
+    │  [2-byte module_id][PFF frame]
+    ▼
+UdsDataSource (one per data product)
+    │  asyncio.Queue (maxsize=500)
+    ▼
+HpIoManager._processing_loop()
+    │  assigns monotonic frame_id
+    ▼
+latest_data_cache[module_id]['movie'|'ph']
+    │  polled by each reader at their update_interval
+    ▼
+StreamImages RPC → gRPC client
+```
 
-- Data Ingestion Layer: A set of DataSource classes (`PollWatcherDataSource`, `PipeWatcherDataSource`, `UdsDataSource`) are responsible for monitoring these inputs. Each DataSource is tailored to a specific ingestion method, making the system extensible.
+**Key components:**
 
-- Server Core: The central `HpIoManager` orchestrates the data flow. It runs the active DataSources, consumes all incoming data from a central `asyncio.Queue`, and updates a Latest Data Cache. This cache holds the most recent frame for each data product, allowing for immediate, low-latency access for clients.
-
-- Client Interaction: Clients connect to the `DaqDataServicer` via gRPC. When a client calls the `StreamImage` RPC, the server reads directly from the Latest Data Cache to stream the most up-to-date images. This architecture decouples data ingestion from client servicing, ensuring that the system remains responsive and scalable.
+- `UdsDataSource` — Acts as a UDS server for one data product (e.g. `img16`). Hashpipe connects as a client and streams `[2-byte big-endian module_id][PFF frame]` tuples. One instance runs per data product.
+- `HpIoManager` — Owns the central `asyncio.Queue`. The processing loop drains it, assigns monotonically increasing `frame_id`s, discovers new modules dynamically, and writes to `latest_data_cache`.
+- `latest_data_cache` — A `defaultdict` keyed `[module_id]['ph'|'movie']` storing the most-recent `CachedPanoImage` for each (module, type) pair. Readers poll this at their configured `update_interval_seconds`.
+- `ClientManager` / `HpIoTaskManager` — Manage reader slots, the writer lock (for `InitHpIo`), and the background task lifecycle.
 
 
 ## Core Remote Procedure Calls
 
 ### `StreamImages`
 
-- The gRPC server's `hp_io` thread compares consecutive snapshots of the current run directory to identify the last image frame for each Hashpipe data product, including `ph256`, `ph1024`, `img8`, `img16`. These image frames are subsequently broadcast to ready `StreamImages` clients.
-    - Details: `hp_io` assumes that `data_dir/` has the following structure and tracks updates to each `*.pff` file within it.
-      ```text
-      data_dir/
-          ├── module_1/
-          │   ├── obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd
-          │   │   ├── start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_0.pff
-          │   │   ├── start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_1.pff
-          │   │   ...
-          │   │   
-          │   ├── obs_*/  
-          │   │   ...
-          │   ...
-          │
-          ├── module_2/
-          │   └── obs_*/
-          │       ...
-          │
-          └── module_N/
-              └── obs_*/
-      ```
-- A given image frame of type `dp` from module `N` will be sent to a client when the following conditions are satisfied:
-    1. The time since the last server response to this client is at least as long as the client’s requested `update_interval_seconds`.
-    2. The client has requested data of type `dp`.
-    3. Module `N` is on the client’s whitelist.
-- $N \geq 0$ `StreamImages` clients may be concurrently connected to the server.
+Streams `PanoImage` frames to the client at the requested `update_interval_seconds`. A frame is delivered when:
+
+1. At least `update_interval_seconds` have elapsed since the last response to this client.
+2. The client has requested data of that type (`stream_movie_data` / `stream_pulse_height_data`).
+3. The frame's module is on the client's `module_ids` whitelist (or the whitelist is empty for all modules).
+
+Any number of `StreamImages` clients may be concurrently connected. Returns `DEADLINE_EXCEEDED` if no data arrives within the configured timeout.
 
 ### `InitHpIo`
 
-- Enables reconfiguration of the `hp_io` thread during an observing run.
-- Requires an observing run to be active to succeed.
-- $N \leq 1$ `InitHpIo` clients may be active at any given time. If an `InitHpIo` client is active, no other client may be.
+Initializes or re-initializes the `hp_io` background task. Acquires exclusive writer access — all active `StreamImages` RPCs are cancelled. Use `force=true` to preempt active streaming clients.
 
 ### `Ping`
-- Returns `True` only if a client can contact the DaqData server.
-
-### `UploadImages`
-- Provides a mechanism for injecting data directly into the server's broadcast queue, bypassing the filesystem.
-- Ideal for designing high-throughput simulations and testing situations where the filesystem is a primary bottleneck.
-    - The server's `"rpc"` simulation mode uses an `AioDaqDataClient` instance to upload thousands of archived PANOSETI images per second using the `UploadImages` RPC.
-- Mechanism: The client sends a stream of PanoImage objects. On the server, these images are placed into a high-priority `upload_queue`. The `HpIoManager` consumes from this queue and immediately broadcasts the images to all connected StreamImages clients, just as it would for data detected on the filesystem.
+Returns `Empty` to verify connectivity.
 
 
 ## The `hp_io_config.json` File
@@ -602,14 +589,13 @@ This file configures the core behavior of the DaqData gRPC server.
     "max_read_queue_size": 50,
     "min_hp_io_update_interval_seconds": 0.001,
     "shutdown_grace_period": 5,
-    "read_status_pipe_name": "read_status_2",
 
     "acquisition_methods": {
-        "filesystem_poll": { "enabled": false },
-        "filesystem_pipe": { "enabled": false },
         "uds": {
             "enabled": true,
-            "data_products": ["ph256", "img16"]
+            "data_products": ["img8", "img16", "ph256", "ph1024"],
+            "socket_path_template": "/tmp/hashpipe_grpc.dp_{dp_name}.sock",
+            "read_timeout": 10.0
         }
     },
 
@@ -620,19 +606,11 @@ This file configures the core behavior of the DaqData gRPC server.
         "ph_type": "ph256",
         "update_interval_seconds": 0.01,
         "source_data": {
-            "movie_pff_path": "path/to/movie.pff",
-            "ph_pff_path": "path/to/ph.pff"
-        },
-        "filesystem_cfg": {
-            "sim_data_dir": "daq_data/simulated_data_dir",
-            "sim_run_dir_template": "module_{module_id}/obs_SIMULATE",
-            "daq_active_file": "module_{module_id}.daq-active"
+            "movie_pff_path": "daq_data/simulated_data_dir/.../movie.pff",
+            "ph_pff_path": "daq_data/simulated_data_dir/.../ph.pff"
         },
         "strategies": {
-            "filesystem_poll": { "frames_per_pff": 1000 },
-            "filesystem_pipe": { "frames_per_pff": 1000 },
-            "uds": { "data_products": ["ph256", "img16"] },
-            "rpc": {}
+            "uds": { "data_products": ["img8", "img16", "ph256", "ph1024"] }
         }
     }
 }

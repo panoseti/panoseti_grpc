@@ -9,7 +9,6 @@ grpcio_reflection>=1.73.0
 grpcio_tools>=1.73.0
 
 # async libraries
-watchfiles>=1.1.0
 aiofiles>=24.1.0
 
 # observability
