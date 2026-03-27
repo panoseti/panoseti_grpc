@@ -578,7 +578,7 @@ Returns `Empty` to verify connectivity.
 
 
 ## The `daq_data_server_config.json` File
-This file configures the core behavior of the DaqData gRPC server.
+This file configures the core behavior of the DaqData gRPC server. It is validated at startup via Pydantic; a `ValidationError` on a bad value produces a clear diagnostic rather than a `KeyError` mid-observation.
 
 ```json
 {
@@ -588,14 +588,18 @@ This file configures the core behavior of the DaqData gRPC server.
     "max_concurrent_rpcs": 100,
     "max_read_queue_size": 50,
     "min_hp_io_update_interval_seconds": 0.001,
-    "shutdown_grace_period": 5,
+    "reader_timeout": 5.0,
+    "shutdown_grace_period": 5.0,
+    "hp_io_stop_timeout": 5.0,
+    "log_dir": null,
+    "grpc_logging": false,
 
     "acquisition_methods": {
         "uds": {
             "enabled": true,
             "data_products": ["img8", "img16", "ph256", "ph1024"],
             "socket_path_template": "/tmp/hashpipe_grpc.dp_{dp_name}.sock",
-            "read_timeout": 10.0
+            "read_timeout": 60.0
         }
     },
 
@@ -604,35 +608,73 @@ This file configures the core behavior of the DaqData gRPC server.
         "sim_module_ids": [224],
         "movie_type": "img16",
         "ph_type": "ph256",
-        "update_interval_seconds": 0.01,
         "source_data": {
+            "real_module_id": 224,
             "movie_pff_path": "daq_data/simulated_data_dir/.../movie.pff",
             "ph_pff_path": "daq_data/simulated_data_dir/.../ph.pff"
         },
         "strategies": {
-            "uds": { "data_products": ["img8", "img16", "ph256", "ph1024"] }
+            "uds": {
+                "data_products": ["img16", "ph256"],
+                "frame_limit": -1
+            }
         }
     }
 }
 ```
-* `init_from_default` (boolean): If `true`, the server automatically starts the `HpIoManager` on boot using the configuration from `default_hp_io_config_file`.
-* `default_hp_io_config_file` (string): Path to the default `hp_io_config.json` file to use if `init_from_default` is true.
-* `unix_domain_socket` (string): The path for the Unix Domain Socket (UDS) for efficient local inter-process communication. Format: `"unix:///path/to/socket.sock"`.
-* `max_concurrent_rpcs` (integer): The maximum number of simultaneous client connections the server will accept.
-* `max_read_queue_size` (integer): The buffer size for each client's outgoing data queue.
-* `min_hp_io_update_interval_seconds` (float): The minimum allowed value for the data polling interval, to prevent excessive CPU usage.
-* `shutdown_grace_period` (integer): The time in seconds the server will wait for active RPCs to finish during a graceful shutdown.
-* `read_status_pipe_name` (string): The filename for the named pipe used by the `filesystem_pipe` data source to receive signals from Hashpipe or the simulation.
-* **`acquisition_methods`** (object): This section enables or disables the different data ingestion methods. At least one must be enabled for the server to acquire data.
-    * `filesystem_poll` (object): Watches a directory for file changes. Less efficient but robust.
-    * `filesystem_pipe` (object): Listens to a named pipe for signals that a new file is ready. More efficient than polling.
-    * `uds` (object): Listens for data streamed directly over a Unix Domain Socket. This is the highest performance method, bypassing the filesystem for data transfer.
-        * `data_products` (array): A list of data products (e.g., `"ph256"`) to accept over UDS.
-* **`simulate_daq_cfg`** (object): This section configures the simulation engine, used when an `InitHpIo` request has `simulate_daq: true`.
-    * `simulation_mode` (string): The strategy the simulator will use to generate data. Must correspond to an enabled `acquisition_method`. Valid modes: `"filesystem_poll"`, `"filesystem_pipe"`, `"uds"`, `"rpc"`.
-    * `sim_module_ids` (array): A list of module IDs to simulate.
-    * `movie_type` / `ph_type` (string): The data product types to use for movie and pulse-height frames.
-    * `update_interval_seconds` (float): The interval at which the simulation generates and sends new frames.
-    * `source_data` (object): Paths to the `.pff` files containing the raw frames to be used for simulation.
-    * `filesystem_cfg` (object): Configuration for filesystem-based simulation strategies, including the data directory and file templates.
-    * `strategies` (object): Mode-specific configurations for each simulation strategy.
+
+### Configuration Reference
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `init_from_default` | bool | `false` | Auto-start `HpIoManager` on boot from `default_hp_io_config_file`. |
+| `default_hp_io_config_file` | string | `"hp_io_config_simulate.json"` | Filename (relative to `daq_data/config/`) to load if `init_from_default` is true. |
+| `unix_domain_socket` | string\|null | `null` | Extra UDS listener for local IPC. Format: `"unix:///path/to/socket.sock"`. |
+| `max_concurrent_rpcs` | int ≥ 1 | `100` | Maximum simultaneous client connections. |
+| `max_read_queue_size` | int ≥ 1 | `50` | `asyncio.Queue` capacity for the central frame buffer. |
+| `min_hp_io_update_interval_seconds` | float > 0 | `0.001` | Floor for the client-requested `update_interval_seconds`. |
+| `reader_timeout` | float > 0 | `5.0` | Seconds of inactivity before `StreamImages` aborts with `DEADLINE_EXCEEDED`. |
+| `shutdown_grace_period` | float ≥ 0 | `5.0` | Seconds the gRPC server waits for active RPCs during graceful shutdown. |
+| `hp_io_stop_timeout` | float > 0 | `5.0` | Seconds to wait for the `HpIoManager` background task to stop cleanly. |
+| `log_dir` | string\|null | `null` | Directory for rotating log files. `null` disables file logging. |
+| `grpc_logging` | bool | `false` | Send logs to the Telemetry gRPC server. Disable during testing (avoids connection noise when no Telemetry server is running). |
+
+**`acquisition_methods.uds`**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | bool | `true` | Enable the UDS data source. |
+| `data_products` | array | `["img8","img16","ph256","ph1024"]` | Data products to accept. Must be known `DataProduct` enum values. |
+| `socket_path_template` | string | `"/tmp/hashpipe_grpc.dp_{dp_name}.sock"` | Path template; must contain `{dp_name}`. |
+| `read_timeout` | float > 0 | `60.0` | Seconds to wait for bytes before treating a Hashpipe connection as idle and closing it. |
+
+**`simulate_daq_cfg`** — configures the simulation engine used when `InitHpIo` is called with `simulate_daq: true`. Only `"uds"` simulation mode is supported.
+
+| Field | Type | Description |
+|---|---|---|
+| `simulation_mode` | string | Must be `"uds"`. |
+| `sim_module_ids` | array | Module IDs to simulate. |
+| `movie_type` / `ph_type` | string | Data product names for movie and pulse-height frames (e.g. `"img16"`, `"ph256"`). |
+| `source_data.real_module_id` | int | Module ID embedded in the source PFF files. |
+| `source_data.movie_pff_path` | string | Package-relative path to the movie PFF file used as simulation input. |
+| `source_data.ph_pff_path` | string | Package-relative path to the pulse-height PFF file used as simulation input. |
+| `strategies.uds.data_products` | array | Data products the UDS simulator sends. |
+| `strategies.uds.frame_limit` | int | Max frames to send; `-1` means unlimited. |
+
+## Logging
+
+The server uses the shared `panoseti_grpc.telemetry.logger.get_logger()` factory, which provides three simultaneous log destinations:
+
+- **Console**: `Rich`-formatted, always enabled.
+- **Rotating file**: Enabled when `log_dir` is set to a writable directory path. Files rotate at 10 MB with 5 backups.
+- **gRPC (Loki via Telemetry service)**: Enabled when `grpc_logging: true`. Sends structured log records to the running Telemetry gRPC server. Set `grpc_logging: false` (the default) in development and test environments where no Telemetry server is running — otherwise the logger will repeatedly attempt to connect and fill the console with connection warnings.
+
+## Performance Notes
+
+**Pub/sub polling model:** `StreamImages` readers poll `latest_data_cache` at their `update_interval_seconds`. The cache stores only the most-recent frame per `(module_id, data_product)` pair — there is no per-reader queue. Fast producers overwrite slow ones, so frame loss at high rates is expected and by design.
+
+**Frame rate:** Hashpipe uses non-blocking `writev()` and drops frames when the UDS socket buffer is full. The gRPC layer adds no additional buffering between Hashpipe and the cache — a single `asyncio.Queue(maxsize=500)` absorbs transient bursts.
+
+**Idle detection:** If no fresh frames arrive for `reader_timeout` seconds, `StreamImages` aborts with `DEADLINE_EXCEEDED`. This fires when Hashpipe is stopped or the simulation ends.
+
+**Socket permissions:** UDS data sockets are created with `0o600` permissions (owner read/write only). Hashpipe must run as the same OS user as the gRPC server.
