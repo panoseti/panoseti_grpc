@@ -79,4 +79,4 @@ class DaqDataServerConfig(BaseModel):
     simulate_daq_cfg: Optional[SimulateDaqConfig] = None
     # Logging — passed to get_logger()
     log_dir: Optional[str] = None
-    grpc_logging: bool = False
+    grpc_logging: bool = True
