@@ -9,6 +9,7 @@ import time
 import psutil
 import pytest
 from pathlib import Path
+from tests.daq_control.conftest import wait_for_file, wait_for_pid_gone
 
 START_PARAMS = {
     "data_dir": "/app/data",
@@ -57,9 +58,15 @@ def test_hashpipe_crash_detection(grpc_client):
     StatusDaq must subsequently report hashpipe_running=False.
     """
     assert grpc_client.StartDaq(START_PARAMS) is True
-    time.sleep(0.5)
 
-    pid = _find_hashpipe_pid()
+    # Wait until hashpipe actually appears before killing it
+    deadline = time.monotonic() + 10.0
+    pid = None
+    while time.monotonic() < deadline:
+        pid = _find_hashpipe_pid()
+        if pid is not None:
+            break
+        time.sleep(0.1)
     assert pid is not None, "hashpipe process not found after StartDaq"
 
     try:
@@ -67,8 +74,8 @@ def test_hashpipe_crash_detection(grpc_client):
     except ProcessLookupError:
         pass  # Already gone — that's fine for the test
 
-    # Give the OS a moment to reap the zombie
-    time.sleep(0.5)
+    # Wait for OS to reap the process instead of a fixed sleep
+    wait_for_pid_gone(pid, timeout=5.0)
 
     _, status = grpc_client.StatusDaq({**STATUS_BASE, "check_hashpipe_running": True})
     assert status["hashpipe_running"] is False, (
@@ -104,22 +111,24 @@ def test_log_files_written_to_correct_run_dir(grpc_client):
     {data_dir}/{run_dir}/ — not in the parent data_dir or elsewhere.
     """
     assert grpc_client.StartDaq(START_PARAMS) is True
-    time.sleep(1.5)  # give the background monitor task time to write initial output
 
     run_dir = Path(START_PARAMS["data_dir"]) / START_PARAMS["run_dir"]
     stdout_log = run_dir / "hp_stdout.log"
     stderr_log = run_dir / "hp_stderr.log"
 
     try:
-        assert stdout_log.exists(), f"hp_stdout.log not found at {stdout_log}"
-        assert stderr_log.exists(), f"hp_stderr.log not found at {stderr_log}"
+        assert wait_for_file(stdout_log), f"hp_stdout.log not created at {stdout_log}"
+        assert wait_for_file(stderr_log), f"hp_stderr.log not created at {stderr_log}"
 
         # Verify they are not accidentally placed in the parent data_dir
         parent_stdout = Path(START_PARAMS["data_dir"]) / "hp_stdout.log"
         assert not parent_stdout.exists(), "hp_stdout.log must not be in data_dir root"
     finally:
         grpc_client.StopDaq(STOP_PARAMS)
-        time.sleep(0.5)
+        # Wait for hashpipe to exit before cleaning up
+        pid = _find_hashpipe_pid()
+        if pid:
+            wait_for_pid_gone(pid, timeout=5.0)
         try:
             grpc_client.CleanupData(CLEANUP_PARAMS)
         except Exception:

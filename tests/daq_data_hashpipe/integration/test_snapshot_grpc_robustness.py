@@ -78,8 +78,9 @@ async def test_server_reinit_during_real_daq(default_server_process):
 
             assert stream_closed, f"Stream did not close after re-init (iteration {i})"
 
+@pytest.mark.usefixtures("hashpipe_pcap_runner")
 async def test_init_waits_for_uds_ready(default_server_process):
-    # Use real DAQ config pathing via fixture server_config_base if needed
+    """After InitHpIo(simulate_daq=False), the server must create UDS listener sockets."""
     daq_config = {"daq_nodes": [{"ip_addr": default_server_process['ip_addr']}]}
     async with AioDaqDataClient(daq_config, network_config=None) as client:
         hp_io_cfg = {
@@ -90,12 +91,12 @@ async def test_init_waits_for_uds_ready(default_server_process):
             "module_ids": [],
         }
         assert await client.init_hp_io(hosts=None, hp_io_cfg=hp_io_cfg)
-        # Check that the UDS sockets exist and accept connections
-        uds_template = default_server_process['uds_template'] if 'uds_template' in default_server_process else "/tmp/hashpipe_grpc.dp_{dp}.sock"
-        for dp in ("img8","img16","ph256","ph1024"):
-            path = uds_template.format(dp=dp).replace("{dp}", dp).replace("{dp_name}", dp)
-            assert os.path.exists(path)
+        # Check that the UDS sockets exist (server creates them as listeners for hashpipe)
+        for dp in ("img8", "img16", "ph256", "ph1024"):
+            path = f"/tmp/hashpipe_grpc.dp_{dp}.sock"
+            assert os.path.exists(path), f"UDS socket for data product '{dp}' was not created at {path}"
 
+@pytest.mark.usefixtures("hashpipe_pcap_runner")
 async def test_first_frame_with_real_daq(default_server_process):
     daq_config = {"daq_nodes": [{"ip_addr": default_server_process['ip_addr']}]}
     async with AioDaqDataClient(daq_config, network_config=None) as client:

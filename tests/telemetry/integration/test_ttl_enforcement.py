@@ -4,6 +4,7 @@ production, and unknown (sandboxed) device types.
 """
 import time
 import pytest
+from tests.telemetry.conftest import poll_redis_key
 
 
 def test_experimental_key_has_positive_ttl(grpc_client, redis_client):
@@ -13,10 +14,9 @@ def test_experimental_key_has_positive_ttl(grpc_client, redis_client):
     """
     device_id = "ttl_test_exp_01"
     grpc_client.log_flexible("test_flex", device_id, {"sensor_value": 42.0})
-    time.sleep(0.5)
 
     key = f"DEV_TEST-FLEX_{device_id}"
-    assert redis_client.exists(key), f"Key {key!r} must exist in Redis"
+    assert poll_redis_key(redis_client, key), f"Key {key!r} must exist in Redis"
     ttl = redis_client.ttl(key)
     assert ttl > 0, (
         f"Experimental key {key!r} must have TTL > 0 (got {ttl}). "
@@ -37,10 +37,9 @@ def test_production_key_has_no_ttl(grpc_client, redis_client):
         "lon": -116.864,
         "fix_mode": "3D",
     })
-    time.sleep(0.5)
 
     key = f"UBLOX_ZED-F9T_{device_id}"
-    assert redis_client.exists(key), f"Key {key!r} must exist in Redis"
+    assert poll_redis_key(redis_client, key), f"Key {key!r} must exist in Redis"
     ttl = redis_client.ttl(key)
     assert ttl == -1, (
         f"Production key {key!r} must have TTL == -1 (persists forever), got {ttl}"
@@ -55,10 +54,12 @@ def test_sandbox_key_has_positive_ttl(grpc_client, redis_client):
     device_id = "ttl_sandbox_01"
     unknown_type = "mystery_sensor_xyz"
     grpc_client.log_flexible(unknown_type, device_id, {"raw": "data"})
-    time.sleep(0.5)
 
     # The server creates a SANDBOX key; find it by scanning
-    sandbox_pattern = f"SANDBOX:{unknown_type}:{device_id}"
+    sandbox_key = f"SANDBOX:{unknown_type}:{device_id}"
+    assert poll_redis_key(redis_client, sandbox_key), \
+        f"SANDBOX key {sandbox_key!r} not found in Redis"
+    sandbox_pattern = sandbox_key
     matching_keys = redis_client.keys(f"*{unknown_type}*")
 
     assert len(matching_keys) > 0, (

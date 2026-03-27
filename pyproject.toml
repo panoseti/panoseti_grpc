@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "panoseti-grpc"
-version = "0.3.5"
+version = "0.4.0"
 description = "gRPC for the PANOSETI project."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.14"
 authors = [
     { name="Nicolas Rault-Wang"},
     { name="Ben Godfrey"}
@@ -17,7 +17,7 @@ keywords = [
     "panoseti", "gRPC", "observatory", "data-acquisition", "astronomy", "real-time"
 ]
 classifiers = [
-    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: Unix",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Astronomy",
@@ -25,12 +25,11 @@ classifiers = [
 ]
 
 dependencies = [
-    "grpcio==1.70.0",          # Stable, widely used
-    "grpcio-tools==1.70.0",    # Matches the runtime
-    "grpcio-reflection==1.70.0",
+    "grpcio==1.78.0",
+    "grpcio-tools==1.78.0",
+    "grpcio-reflection==1.78.0",
 
-    # Pin Protobuf to the v5 series (Stable)
-    "protobuf>=5.26.1,<6.0.0",
+    "protobuf>=6.31.1,<7.0.0",
     "coverage>=7.10.7",
     "cython",
     "wheel",

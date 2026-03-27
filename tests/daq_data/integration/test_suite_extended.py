@@ -19,10 +19,10 @@ async def test_uds_stream_high_frequency(default_server_process):
     """
     daq_config = {"daq_nodes": [{"ip_addr": default_server_process['ip_addr']}]}
 
-    # Define a custom config to run the simulation at a high frequency
+    # Define a custom config to run the simulation at the server's minimum interval
     hp_io_cfg = {
-        "data_dir": "simulated_data_dir",
-        "update_interval_seconds": 0.001,  # Match the stream's update interval
+        "data_dir": "daq_data/simulated_data_dir",
+        "update_interval_seconds": 0.01,  # Server minimum is 0.01s
         "force": True,
         "simulate_daq": True,
         "module_ids": [],
@@ -32,12 +32,12 @@ async def test_uds_stream_high_frequency(default_server_process):
         # Initialize the server with the high-frequency simulation config
         assert await client.init_hp_io(hosts=None, hp_io_cfg=hp_io_cfg) is True
 
-        # Request a stream with a very small update interval to stress the server
+        # Request a stream at the server's minimum interval to stress it
         stream = await client.stream_images(
             hosts=None,
             stream_movie_data=True,
             stream_pulse_height_data=False,
-            update_interval_seconds=0.001,  # High frequency
+            update_interval_seconds=0.01,  # High frequency (server minimum)
         )
 
         received_images = 0

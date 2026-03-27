@@ -1,6 +1,6 @@
 # Stage 1: Build Environment for C/C++ Artifacts
 # Use the final base image for the builder to ensure consistency.
-FROM python:3.9-slim AS builder
+FROM python:3.14-slim AS builder
 
 LABEL stage="builder"
 
@@ -67,7 +67,7 @@ RUN make install
 
 # Stage 2: Final Runtime and Test Environment
 # This stage creates the final, lean image.
-FROM python:3.9-slim
+FROM python:3.14-slim
 
 LABEL stage="runtime"
 ARG TEST_DIR="tests/daq_control"

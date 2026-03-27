@@ -4,9 +4,35 @@ import os
 import multiprocessing
 import socket
 import asyncio
+from pathlib import Path
 from panoseti_grpc.daq_control.client import DaqControlClient
 # Import the serve function
 from panoseti_grpc.daq_control.server import serve
+
+
+# ---------------------------------------------------------------------------
+# Shared polling utilities — preferred over hardcoded time.sleep() waits
+# ---------------------------------------------------------------------------
+
+def wait_for_file(path, timeout=10.0, poll=0.1) -> bool:
+    """Return True once the file at `path` exists; False on timeout."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if Path(path).exists():
+            return True
+        time.sleep(poll)
+    return False
+
+
+def wait_for_pid_gone(pid, timeout=10.0, poll=0.1) -> bool:
+    """Return True once the given PID no longer exists; False on timeout."""
+    import psutil
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not psutil.pid_exists(pid):
+            return True
+        time.sleep(poll)
+    return False
 
 SERVER_PORT = 50051
 

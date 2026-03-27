@@ -254,9 +254,15 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         if self.hashpipe_pid == -1:
             self.logger.info('No HASHPIPE instance is running.')
             return daq_control_pb2.StopDaqResponse(success=True)
-        p = psutil.Process(self.hashpipe_pid)
-        p.send_signal(signal.SIGINT)
-        await asyncio.get_running_loop().run_in_executor(None, p.wait)
+        try:
+            p = psutil.Process(self.hashpipe_pid)
+            p.send_signal(signal.SIGINT)
+            await asyncio.get_running_loop().run_in_executor(None, p.wait)
+        except psutil.NoSuchProcess:
+            # Process already gone (e.g. killed externally) — treat as stopped.
+            self.logger.info(f"HASHPIPE process (pid={self.hashpipe_pid}) no longer exists; treating as stopped.")
+            self.hashpipe_pid = -1
+            return daq_control_pb2.StopDaqResponse(success=True)
         success = is_hashpipe_running(self.hashpipe_pid)
         if success:
             self.logger.warning("HASHPIPE is still running...")

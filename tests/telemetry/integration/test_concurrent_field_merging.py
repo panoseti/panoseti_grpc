@@ -4,6 +4,7 @@ Tests for concurrent Redis HSET field-merging behavior in the Telemetry service.
 import time
 import threading
 import pytest
+from tests.telemetry.conftest import poll_redis_key, poll_redis_field
 
 
 def test_two_threads_different_fields_no_cross_contamination(grpc_client, redis_client):
@@ -50,10 +51,7 @@ def test_two_threads_different_fields_no_cross_contamination(grpc_client, redis_
 
     assert not errors, f"Threads raised exceptions: {errors}"
 
-    # Allow batcher to flush
-    time.sleep(0.5)
-
-    assert redis_client.exists(key), f"Key {key!r} must exist in Redis"
+    assert poll_redis_key(redis_client, key), f"Key {key!r} must exist in Redis"
 
     # Both lat/lon and satellites must be present — no fields lost due to race
     lat = redis_client.hget(key, "lat")
@@ -84,8 +82,9 @@ def test_rapid_field_overwrite_last_writer_wins(grpc_client, redis_client):
         })
         time.sleep(0.02)  # slight pause to keep ordering deterministic
 
-    # Allow batcher to flush
-    time.sleep(0.5)
+    # Wait for last write to land, then check final value
+    assert poll_redis_field(redis_client, key, "fix_mode", expected=modes[-1]), \
+        f"Last fix_mode {modes[-1]!r} not found in {key!r}"
 
     stored_mode = redis_client.hget(key, "fix_mode")
     assert stored_mode == modes[-1], (
@@ -117,7 +116,8 @@ def test_independent_devices_do_not_share_fields(grpc_client, redis_client):
         "fix_mode": "2D",
     })
 
-    time.sleep(0.5)
+    assert poll_redis_key(redis_client, key_a) and poll_redis_key(redis_client, key_b), \
+        "Both device keys must exist in Redis"
 
     assert redis_client.hget(key_a, "satellites") == "7"
     assert redis_client.hget(key_b, "satellites") == "12"

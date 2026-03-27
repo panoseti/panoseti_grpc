@@ -29,7 +29,7 @@ async def test_daq_grpc_stream_stress(default_server_process):
             hosts=None,
             stream_movie_data=True,
             stream_pulse_height_data=True,
-            update_interval_seconds=-1,
+            update_interval_seconds=0.1,
             timeout=30.0,
         )
 

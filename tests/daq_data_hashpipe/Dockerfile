@@ -1,6 +1,6 @@
 # Stage 1: Build Environment for C/C++ Artifacts
 # Use the final base image for the builder to ensure consistency.
-FROM python:3.9-slim AS builder
+FROM python:3.14-slim AS builder
 
 LABEL stage="builder"
 
@@ -37,15 +37,12 @@ RUN autoreconf -is && \
 # 1) Install dependencies and build the panoseti-grpc package
 WORKDIR /app
 
-# Install test dependencies
-RUN pip install pytest pytest-asyncio
-
-# Copy relevant files for panoseti-grpc package
+# Copy packaging metadata first so pip dependency layer is cached independently of source changes
 COPY pyproject.toml LICENSE README.md /app/
 COPY src ./src/
 
-# Build the panoseti-grpc package from the current repo
-RUN pip install .
+# Install the package with all dev dependencies (includes pytest, pytest-asyncio, pytest-timeout)
+RUN pip install ".[dev]"
 
 # Copy test directory
 COPY tests /app/tests
@@ -61,13 +58,12 @@ COPY "${TEST_DIR}/Makefile" .
 COPY "${TEST_DIR}/databuf.h" .
 
 RUN make
-RUN make install
 # RUN ./HSD_init.sh
 
 
 # Stage 2: Final Runtime and Test Environment
 # This stage creates the final, lean image.
-FROM python:3.9-slim
+FROM python:3.14-slim
 
 LABEL stage="runtime"
 ARG TEST_DIR="tests/daq_data_hashpipe"
@@ -101,7 +97,6 @@ COPY --from=builder /opt/venv /opt/venv
 
 # Update the shared library cache to ensure the system finds libhashpipe.so
 RUN ldconfig
-RUN apt-get remove build-essential --autoremove -y
 
 # --- Finalize ---
 # Copy test data

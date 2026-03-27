@@ -1,5 +1,5 @@
 # --- Stage 1: Builder with cached deps ---
-FROM python:3.9-slim AS builder
+FROM python:3.14-slim AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive \
     VENV_PATH=/opt/venv
@@ -33,7 +33,7 @@ COPY tests /app/tests
 #COPY src/panoseti_grpc .
 
 # --- Stage 2: Final runtime image (clean) ---
-FROM python:3.9-slim
+FROM python:3.14-slim
 
 ENV VENV_PATH=/opt/venv
 ENV PATH="$VENV_PATH/bin:$PATH"

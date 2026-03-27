@@ -1,5 +1,5 @@
 # Stage 1: Builder (Compiles dependencies)
-FROM python:3.9-slim AS builder
+FROM python:3.14-slim AS builder
 ENV VENV_PATH=/opt/venv
 RUN python3 -m venv $VENV_PATH
 ENV PATH="$VENV_PATH/bin:$PATH"
@@ -12,7 +12,7 @@ COPY src ./src/
 RUN pip install .
 
 # Stage 2: Test Runner (Includes Pytest, Redis client, Influx client)
-FROM python:3.9-slim AS runner
+FROM python:3.14-slim AS runner
 ENV VENV_PATH=/opt/venv
 ENV PATH="$VENV_PATH/bin:$PATH"
 WORKDIR /app
@@ -27,7 +27,7 @@ CMD ["python", "-m", "pytest", "-v", "tests/telemetry"]
 
 # --- NEW STAGE ---
 # Stage 3: Minimal Client (Workers)
-FROM python:3.9-slim AS client
+FROM python:3.14-slim AS client
 ENV VENV_PATH=/opt/venv
 ENV PATH="$VENV_PATH/bin:$PATH"
 WORKDIR /app

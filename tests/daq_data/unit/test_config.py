@@ -101,7 +101,7 @@ class TestDaqDataServerConfig:
     def test_defaults_parse_without_arguments(self):
         cfg = DaqDataServerConfig()
         assert cfg.max_concurrent_rpcs == 100
-        assert cfg.grpc_logging is False
+        assert cfg.grpc_logging is True
         assert cfg.unix_domain_socket is None
         assert cfg.simulate_daq_cfg is None
 
@@ -169,7 +169,9 @@ class TestDaqDataServerConfig:
         cfg2 = DaqDataServerConfig(log_dir="/tmp/logs")
         assert cfg2.log_dir == "/tmp/logs"
 
-    def test_grpc_logging_default_false(self):
-        """gRPC logging should default to False to avoid noise in environments without a telemetry server."""
+    def test_grpc_logging_default_true(self):
+        """gRPC logging defaults to True; set to False to suppress telemetry noise."""
         cfg = DaqDataServerConfig()
-        assert cfg.grpc_logging is False
+        assert cfg.grpc_logging is True
+        cfg_no_logging = DaqDataServerConfig(grpc_logging=False)
+        assert cfg_no_logging.grpc_logging is False

@@ -16,5 +16,6 @@ docker run --rm \
     -e RUN_REAL_DATA_TESTS=1 \
     $IMAGE_NAME \
     python3 -m pytest -v -s --maxfail=2 tests/daq_data_hashpipe/
+    #python3 -m pytest -v -s --maxfail=2 --timeout=120 tests/daq_data_hashpipe/
 
 echo "--- CI Test Run Completed Successfully ---"

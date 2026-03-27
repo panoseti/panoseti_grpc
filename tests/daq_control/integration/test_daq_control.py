@@ -2,6 +2,7 @@ import pytest
 import time
 import psutil
 from pathlib import Path
+from tests.daq_control.conftest import wait_for_file
 
 # Parameters reused across tests
 START_PARAMS = {
@@ -41,10 +42,9 @@ def test_start_daq(grpc_client):
 
 def test_hashpipe_log_files_created(grpc_client):
     """After StartDaq, hp_stdout.log and hp_stderr.log should exist in run_dir."""
-    time.sleep(1)  # allow background monitoring task to write initial output
     run_dir = Path(START_PARAMS["data_dir"]) / START_PARAMS["run_dir"]
-    assert (run_dir / "hp_stdout.log").exists()
-    assert (run_dir / "hp_stderr.log").exists()
+    assert wait_for_file(run_dir / "hp_stdout.log"), f"hp_stdout.log not created in {run_dir}"
+    assert wait_for_file(run_dir / "hp_stderr.log"), f"hp_stderr.log not created in {run_dir}"
 
 
 def test_start_daq_already_running(grpc_client):

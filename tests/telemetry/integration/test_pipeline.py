@@ -1,6 +1,7 @@
 import pytest
 import time
 from concurrent.futures import ThreadPoolExecutor
+from tests.telemetry.conftest import poll_redis_key, poll_redis_field
 
 
 def test_flexible_struct_flow(grpc_client, redis_client):
@@ -13,12 +14,10 @@ def test_flexible_struct_flow(grpc_client, redis_client):
     # Use "test_flex" which is defined as experimental in config
     grpc_client.log_flexible("test_flex", device_id, rnd_data)
 
-    time.sleep(0.5)
-
     # CHECK: Expect DEV_ prefix as per config
     expected_key = f"DEV_TEST-FLEX_{device_id}"
 
-    assert redis_client.exists(expected_key)
+    assert poll_redis_key(redis_client, expected_key), f"Key {expected_key!r} not found in Redis"
     # Check data content
     assert redis_client.hget(expected_key, "voltage") == "5.1"
 
@@ -41,12 +40,11 @@ def test_strict_gps_with_extras(grpc_client, redis_client):
         "extra_data": {"dilution_of_precision": 1.2}
     })
 
-    time.sleep(0.5)
-
     # CHECK: Expect Production prefix
     expected_key = f"UBLOX_ZED-F9T_{device_id}"
 
-    assert redis_client.hget(expected_key, "satellites") == "8"
+    assert poll_redis_field(redis_client, expected_key, "satellites", expected="8"), \
+        f"Field 'satellites' not found in {expected_key!r}"
     assert redis_client.hget(expected_key, "extra_dilution_of_precision") == "1.2"
 
     # Check TTL (Should be -1 aka Permanent for production)
@@ -99,10 +97,8 @@ def test_concurrent_clients(grpc_client, redis_client):
     for res in results:
         assert res == "OK"
 
-    time.sleep(1.0)
-    # Check last write
     key = f"TEST-STRICT_worker_0"
-    assert redis_client.exists(key)
+    assert poll_redis_key(redis_client, key), f"Key {key!r} not found after concurrent writes"
     assert redis_client.hget(key, "message") == "STRESS_TEST"
 
 
@@ -126,10 +122,11 @@ def test_time_series_integrity(grpc_client, redis_client):
         )
         # No sleep here! We want to hammer the server.
 
-    # Give server a moment to drain the queue
-    time.sleep(0.5)
-
     key = f"TEST-STRICT_{device_id}"
+
+    # Wait for last write to land in Redis
+    assert poll_redis_field(redis_client, key, "iteration", expected=str(num_updates - 1)), \
+        f"Final iteration not found in {key!r}"
 
     # Verify Redis holds the FINAL state
     final_iteration = redis_client.hget(key, "iteration")
@@ -151,10 +148,10 @@ def test_interleaved_clients_same_type(grpc_client, redis_client):
     grpc_client.log_strict("gnss", dev_a, {"satellites": 10, "lat": 0.0, "lon": 0.0, "fix_mode": "3D"})
     grpc_client.log_strict("gnss", dev_b, {"satellites": 5, "lat": 90.0, "lon": 0.0, "fix_mode": "2D"})
 
-    time.sleep(0.2)
-
     key_a = f"UBLOX_ZED-F9T_{dev_a}"
     key_b = f"UBLOX_ZED-F9T_{dev_b}"
+    assert poll_redis_key(redis_client, key_a) and poll_redis_key(redis_client, key_b), \
+        "Both device keys must appear in Redis"
 
     lat_a = redis_client.hget(key_a, "lat")
     lat_b = redis_client.hget(key_b, "lat")
@@ -172,10 +169,9 @@ def test_rapid_reconnect_simulation(grpc_client, redis_client):
 
     for i in range(5):
         grpc_client.log_flexible("test_flex", device_id, {"boot_count": i})
-        time.sleep(0.05)
 
-    time.sleep(0.2)
     key = f"DEV_TEST-FLEX_{device_id}"
+    assert poll_redis_key(redis_client, key), f"Key {key!r} not found after rapid reconnects"
 
     # Cast to float to handle Proto Struct behavior (4 -> 4.0)
     val = redis_client.hget(key, "boot_count")
@@ -194,8 +190,8 @@ def test_huge_payload(grpc_client, redis_client):
 
     grpc_client.log_flexible("test_flex", device_id, data)
 
-    time.sleep(0.5)
     key = f"DEV_TEST-FLEX_{device_id}"
+    assert poll_redis_field(redis_client, key, "blob"), f"Field 'blob' not found in {key!r}"
 
     val = redis_client.hget(key, "blob")
     assert len(val) == 100_000
@@ -229,8 +225,9 @@ def test_concurrent_field_merging(grpc_client, redis_client):
         exc.submit(client_temp)
         exc.submit(client_pressure)
 
-    time.sleep(0.5)
     key = f"DEV_TEST-FLEX_{device_id}"
+    assert poll_redis_field(redis_client, key, "temp") and poll_redis_field(redis_client, key, "pressure"), \
+        "Both fields must appear in Redis after concurrent writes"
 
     # Verify BOTH fields exist and have the last values
     assert float(redis_client.hget(key, "temp")) == 9.0
@@ -247,9 +244,7 @@ def test_unknown_experimental_device(grpc_client, redis_client):
     # Using a type not in TOML
     grpc_client.log_flexible("alien_tech", device_id, data)
 
-    time.sleep(0.2)
     expected_key = f"SANDBOX:alien_tech:{device_id}"
-
-    assert redis_client.exists(expected_key)
+    assert poll_redis_key(redis_client, expected_key), f"SANDBOX key {expected_key!r} not found in Redis"
     # Sandbox should also have a default TTL
     assert redis_client.ttl(expected_key) > 0

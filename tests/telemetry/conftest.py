@@ -10,6 +10,36 @@ from panoseti_grpc.telemetry.client import TelemetryClient
 from panoseti_grpc.telemetry.server import serve
 from panoseti_grpc.telemetry.logger import PanosetiLogFactory
 
+
+# ---------------------------------------------------------------------------
+# Shared polling utilities — preferred over hardcoded time.sleep() calls
+# because the RedisBatcher has a variable flush latency.
+# ---------------------------------------------------------------------------
+
+def poll_redis_key(redis_client, key, timeout=10.0, interval=0.1) -> bool:
+    """Sync poll: return True once the Redis key exists, False on timeout."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if redis_client.exists(key):
+            return True
+        time.sleep(interval)
+    return False
+
+
+def poll_redis_field(redis_client, key, field, expected=None, timeout=10.0, interval=0.1) -> bool:
+    """
+    Sync poll: return True once `redis_client.hget(key, field)` is not None.
+    If `expected` is provided, also check that the value equals str(expected).
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        val = redis_client.hget(key, field)
+        if val is not None:
+            if expected is None or val == str(expected):
+                return True
+        time.sleep(interval)
+    return False
+
 # Get Hosts from Env
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 SERVER_PORT = 50051
