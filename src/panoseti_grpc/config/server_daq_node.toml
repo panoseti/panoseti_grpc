@@ -1,0 +1,57 @@
+# ============================================================
+# PANOSETI Unified gRPC Server — DAQ Node Profile
+# Runs daq_data + daq_control.  Telemetry lives on the headnode.
+#
+# Usage:
+#   panoseti-server --profile daq_node
+#   panoseti-server --config /path/to/server_daq_node.toml
+#   HEADNODE_IP=<headnode-ip> HEADNODE_GRPC_PORT=50051 panoseti-server --profile daq_node
+#
+# When grpc_logging = true and telemetry = false, the AsyncGrpcHandler in
+# telemetry/logger.py connects to HEADNODE_IP:HEADNODE_GRPC_PORT automatically.
+# ============================================================
+
+[server]
+port = 50051
+shutdown_grace_period = 5.0
+log_dir = "/var/log/panoseti"
+grpc_logging = true
+
+[server.services]
+telemetry   = false   # telemetry runs on headnode; logs forwarded via HEADNODE_IP env var
+daq_data    = true
+daq_control = true
+
+# -------------------------------------------------------
+# DAQ Data service settings (production — real hardware)
+# -------------------------------------------------------
+[daq_data]
+init_from_default       = false
+default_hp_io_config_file = "hp_io_config_lick.json"
+unix_domain_socket      = "unix:///tmp/daq_data.sock"
+max_concurrent_rpcs     = 25
+max_read_queue_size     = 100
+min_hp_io_update_interval_seconds = 0.01
+max_client_update_interval_seconds = 60.0
+max_reader_enqueue_timeouts = 10
+max_reader_dequeue_timeouts = 10
+reader_timeout          = 60.0
+shutdown_grace_period   = 5.0
+hp_io_stop_timeout      = 10.0
+valid_data_products     = ["img8", "img16", "ph256", "ph1024"]
+grpc_logging            = true
+
+[daq_data.acquisition_methods.uds]
+enabled              = true
+data_products        = ["img8", "img16", "ph256", "ph1024"]
+socket_path_template = "/tmp/hashpipe_grpc.dp_{dp_name}.sock"
+read_timeout         = 600.0
+
+# -------------------------------------------------------
+# DAQ Control service settings
+# -------------------------------------------------------
+[daq_control]
+log_dir           = "/var/log/panoseti"
+grpc_logging      = true
+shutdown_grace_period = 5.0
+log_level         = "INFO"
