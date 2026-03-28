@@ -13,6 +13,15 @@ from pydantic import (
 from typing import Annotated
 from pathlib import Path
 
+
+class DaqControlServerConfig(BaseModel):
+    """Server-level configuration for the DaqControl gRPC service."""
+    grpc_port: int = Field(50051, ge=1024, le=65535)
+    log_dir: str = "/var/log/panoseti"
+    grpc_logging: bool = True
+    shutdown_grace_period: float = Field(5.0, ge=0)
+    log_level: str = Field("INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
+
 Uint8 = Annotated[int, Field(ge=0, le=255)]
 
 class StartDaqModel(BaseModel):

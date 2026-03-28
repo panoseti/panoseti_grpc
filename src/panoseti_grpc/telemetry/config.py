@@ -225,3 +225,15 @@ class TelemetryConfig:
             else:
                 items.append((new_key, v))
         return dict(items)
+
+
+class TelemetryServerConfig(BaseModel):
+    """Server-level configuration for the Telemetry gRPC service."""
+    grpc_port: int = Field(50051, ge=1024, le=65535)
+    redis_host: str = Field(default_factory=lambda: os.getenv("REDIS_HOST", "localhost"))
+    redis_port: int = 6379
+    redis_db: int = 0
+    uds_path: str | None = None
+    telemetry_config_path: str | None = None  # overrides env var / package default
+    shutdown_grace_period: float = Field(5.0, ge=0)
+    log_level: str = Field("INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
