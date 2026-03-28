@@ -329,6 +329,14 @@ async def serve(redis_host='localhost', redis_port=6379, redis_db: int = 0, port
 
     telemetry_pb2_grpc.add_TelemetryServicer_to_server(servicer, server)
 
+    # 2b. Enable gRPC reflection for service discovery
+    from grpc_reflection.v1alpha import reflection as grpc_reflection
+    SERVICE_NAMES = (
+        telemetry_pb2.DESCRIPTOR.services_by_name["Telemetry"].full_name,
+        grpc_reflection.SERVICE_NAME,
+    )
+    grpc_reflection.enable_server_reflection(SERVICE_NAMES, server)
+
     # 3. Bind Ports (TCP and Optional UDS)
     server.add_insecure_port(f'[::]:{port}')
     logger.info(f"gRPC Server listening on TCP port [bold]{port}[/]")
@@ -366,11 +374,14 @@ async def serve(redis_host='localhost', redis_port=6379, redis_db: int = 0, port
     logger.info("Goodbye.")
 
 
-if __name__ == "__main__":
+def main():
+    """Console script entry point (``panoseti-telemetry``)."""
     REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
     GRPC_PORT = int(os.getenv("GRPC_PORT", 50051))
-
     try:
         asyncio.run(serve(redis_host=REDIS_HOST, port=GRPC_PORT))
     except KeyboardInterrupt:
         pass
+
+if __name__ == "__main__":
+    main()

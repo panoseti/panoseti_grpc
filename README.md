@@ -45,16 +45,76 @@ client.log_flexible("example", "weather-01", {"status": "Online", "is-raining": 
 ## Environment Setup
 If you are deploying the servers on the head node or contributing to the codebase, we recommend installing `miniconda` ([link](https://www.anaconda.com/docs/getting-started/miniconda/install)), then following these steps to setup your environment:
 ```bash
-# 0. Clone this repo and go to the repo root 
+# 0. Clone this repo and go to the repo root
 git clone https://github.com/panoseti/panoseti_grpc.git
 cd panoseti_grpc
 
-# 1. Create the grpc-py39 conda environment
-conda create -n grpc-py39 python=3.9
-conda activate grpc-py39
+# 1. Create the grpc-py314 conda environment
+conda create -n grpc-py314 python=3.14
+conda activate grpc-py314
 
 # 2. Install in editable mode with development dependencies
-pip install -e .
+pip install -e ".[dev]"
+```
+
+## 🚦 Unified Server
+
+All three active services (`daq_data`, `daq_control`, `telemetry`) can run on a **single port** under a unified process. gRPC routes RPCs by proto package name automatically — no collision between services.
+
+### Quick Start
+
+```bash
+# All services on one port (default: 50051)
+panoseti-server
+
+# DAQ node: daq_data + daq_control only
+panoseti-server --profile daq_node
+
+# Head node: telemetry only
+panoseti-server --profile headnode
+
+# Custom config file
+panoseti-server --config /etc/panoseti/server.toml
+
+# List all registered services
+panoseti-server --list-services
+```
+
+### Deployment Profiles
+
+| Profile | Services | Machine |
+|---------|----------|---------|
+| `default` | telemetry + daq_data + daq_control | Single-machine dev / test |
+| `daq_node` | daq_data + daq_control | Each DAQ compute node |
+| `headnode` | telemetry | Observatory head node |
+
+On DAQ nodes (`telemetry = false`), services configured with `grpc_logging = true` automatically forward logs to the head node's telemetry endpoint via the `HEADNODE_IP` / `HEADNODE_GRPC_PORT` environment variables.
+
+### Config File Structure
+
+Bundled profiles live in `src/panoseti_grpc/config/`. A custom `server.toml` follows this structure:
+
+```toml
+[server]
+port = 50051
+shutdown_grace_period = 5.0
+log_dir = "/var/log/panoseti"
+grpc_logging = true
+
+[server.services]
+telemetry   = true
+daq_data    = true
+daq_control = true
+
+[telemetry]
+redis_host = "localhost"
+redis_port = 6379
+
+[daq_data]
+# ... DaqDataServerConfig fields ...
+
+[daq_control]
+log_dir = "/var/log/panoseti"
 ```
 
 ## 🧪 Testing
@@ -79,7 +139,7 @@ Each service has an associated script which builds the Docker containers and run
 
 ## 🚀 Adding New Services
 
-The PANOSETI gRPC architecture is designed to be extensible. If you are developing a new service (e.g., the upcoming `daq_control`), follow this standard workflow.
+The PANOSETI gRPC architecture is designed to be extensible. New services slot into the unified server without modifying `PanosetiServer` itself — only `server.py` registration and config additions are needed.
 
 ### 0. Branching Strategy
 
@@ -153,11 +213,21 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
 ```
 
-### 5. Add CI Tests
+### 5. Register with the Unified Server
+
+To make the service available via `panoseti-server`, add it to `src/panoseti_grpc/server.py`:
+
+1. Write `async def _make_<name>_servicer(cfg, shutdown_event)` that returns `(servicer, [post_start_coros])`
+2. Add `<name>: NewServiceConfig = Field(default_factory=NewServiceConfig)` to `PanosetiServerConfig`
+3. Add `<name>: bool = False` to `ServiceToggles`
+4. Call `ServiceRegistry.register(ServiceDescriptor("<name>", ...))` at module level
+5. Add a `[<name>]` section to the relevant `server*.toml` profile files
+
+### 6. Add CI Tests
 
 Finally, ensure your new service is robust by adding a test suite.
 
-1. Create a test directory: `tests/daq_control/`
-2. Add a `Dockerfile` for your test environment.
-3. Add a generic runner script in `scripts/run-ci-tests/run-daq-control-ci-test.sh`.
+1. Create a test directory: `tests/<name>/`
+2. Add a BuildKit stage to the root `Dockerfile.ci` for your test environment.
+3. Add a runner script in `scripts/run-ci-tests/run-<name>-ci-test.sh`.
 4. Create unit and integration tests with [pytest](https://docs.pytest.org/en/stable/).

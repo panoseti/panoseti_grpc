@@ -10,7 +10,6 @@ Features:
     * check the free space on disk
 """
 import os
-import functools
 import logging
 import psutil
 import shutil
@@ -37,22 +36,10 @@ from .config import (
     CleanupDataModel
 )
 from panoseti_grpc.telemetry.logger import get_logger
+from panoseti_grpc.util.error_handling import grpc_error_handler
 
 PROCESS = 'hashpipe'
 SERVER_LOG_DIR = "/var/log/panoseti"
-
-
-def grpc_error_handler(func):
-    @functools.wraps(func)
-    async def wrapper(self, request, context):
-        try:
-            return await func(self, request, context)
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            logging.exception(f"Error in {func.__name__}: {str(e)}")
-            await context.abort(grpc.StatusCode.INTERNAL, f"Internal server error: {str(e)}")
-    return wrapper
 
 
 async def _read_stream(stream: asyncio.StreamReader, log_method):
@@ -363,6 +350,14 @@ async def serve(grpc_port=50051, level=logging.DEBUG):
     servicer = DaqControlServicer(level)
     daq_control_pb2_grpc.add_DaqControlServicer_to_server(servicer, server)
 
+    # 2b. enable gRPC reflection for service discovery
+    from grpc_reflection.v1alpha import reflection as grpc_reflection
+    SERVICE_NAMES = (
+        daq_control_pb2.DESCRIPTOR.services_by_name["DaqControl"].full_name,
+        grpc_reflection.SERVICE_NAME,
+    )
+    grpc_reflection.enable_server_reflection(SERVICE_NAMES, server)
+
     # 3. bind Ports
     server.add_insecure_port(f'[::]:{grpc_port}')
 
@@ -390,10 +385,13 @@ async def serve(grpc_port=50051, level=logging.DEBUG):
     logger.info("Cleaning up servicer resources...")
     logger.info("Goodbye.")
 
-if __name__ == "__main__":
+def main():
+    """Console script entry point (``panoseti-daq-control``)."""
     GRPC_PORT = int(os.getenv("GRPC_PORT", 50051))
-
     try:
         asyncio.run(serve(GRPC_PORT, logging.DEBUG))
     except KeyboardInterrupt:
         pass
+
+if __name__ == "__main__":
+    main()

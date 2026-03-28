@@ -271,13 +271,16 @@ async def serve(server_cfg, shutdown_event=None, in_main_thread: bool = True):
     await initial_task
     logger.info("Server shut down gracefully.")
 
-if __name__ == "__main__":
+def main():
+    """Console script entry point (``panoseti-daq-data``)."""
     try:
         raw_cfg = load_package_json(daq_data_anchor_package, CFG_DIR / "daq_data_server_config.json")
         server_config = DaqDataServerConfig.model_validate(raw_cfg)
         asyncio.run(serve(server_config))
     except (KeyboardInterrupt, asyncio.CancelledError):
-        # This will now only be triggered if Ctrl+C is hit during initial setup
         print("\nServer startup interrupted.")
     finally:
         print("Exiting server process.")
+
+if __name__ == "__main__":
+    main()

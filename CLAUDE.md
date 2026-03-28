@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PANOSETI gRPC Services — a microservice architecture for the PANOSETI observatory providing real-time data access, observatory control, and telemetry via gRPC interfaces. Python 3.9+, built on asyncio and Protocol Buffers.
+PANOSETI gRPC Services — a microservice architecture for the PANOSETI observatory providing real-time data access, observatory control, and telemetry via gRPC interfaces. Python 3.14+, built on asyncio and Protocol Buffers.
 
 ## Development Setup
 
 ```bash
-conda create -n grpc-py39 python=3.9
-conda activate grpc-py39
+conda create -n grpc-py314 python=3.14
+conda activate grpc-py314
 pip install -e ".[dev]"
 ```
 
@@ -45,11 +45,26 @@ flake8 src/ tests/ scripts/   # max-line-length 120, ignores E203, W503
 ```
 
 ### Run a service locally
+
+Unified server (recommended):
 ```bash
+panoseti-server                                   # all services (default config)
+panoseti-server --profile daq_node                # daq_data + daq_control
+panoseti-server --profile headnode                # telemetry only
+panoseti-server --config /path/to/server.toml    # custom config file
+panoseti-server --list-services                   # print registered services and exit
+python -m panoseti_grpc                           # equivalent to panoseti-server
+```
+
+Individual service entry points (standalone):
+```bash
+panoseti-daq-data
+panoseti-daq-control
+panoseti-telemetry
+# or via python -m:
 python -m panoseti_grpc.daq_data.server
 python -m panoseti_grpc.daq_control.server
 python -m panoseti_grpc.telemetry.server
-python -m panoseti_grpc.ublox_control.server
 ```
 
 ## Architecture
@@ -96,8 +111,33 @@ Two storage tiers controlled by device type:
 ### U-blox Control Service
 Communicates via serial port using the UBX binary protocol (`pyubx2`). Configuration is JSON5-based (`f9t_config.json`) with position, constellation, and timepulse settings.
 
+### Unified Server
+`src/panoseti_grpc/server.py` hosts all three services on a single `grpc.aio.Server` instance (one port). gRPC routes RPCs by proto package name automatically, so there is no collision.
+
+**Deployment profiles** (`src/panoseti_grpc/config/`):
+
+| Profile | Services | Machine |
+|---------|----------|---------|
+| `default` (`server.toml`) | telemetry + daq_data + daq_control | Single-machine dev/test |
+| `daq_node` (`server_daq_node.toml`) | daq_data + daq_control | Each DAQ compute node |
+| `headnode` (`server_headnode.toml`) | telemetry | Observatory head node |
+
+**Initialization order** (`INIT_ORDER = ["telemetry", "daq_data", "daq_control"]`): telemetry servicer is registered and the port is live before other servicers are created, so their `get_logger(..., grpc_enabled=True)` calls can connect to the telemetry endpoint immediately. On a DAQ node (telemetry=false), `grpc_logging=true` means logs go to `HEADNODE_IP:HEADNODE_GRPC_PORT` via `AsyncGrpcHandler`'s existing remote connection — no code change needed.
+
+**Adding a new service (5-step checklist):**
+1. Implement servicer and proto; run `python scripts/compile_protos.py`
+2. Write `async def _make_<name>_servicer(cfg, shutdown_event) -> (servicer, [post_start_coros])` in `server.py`
+3. Add `<name>: NewServiceConfig = Field(default_factory=NewServiceConfig)` to `PanosetiServerConfig`
+4. Add `<name>: bool = False` field to `ServiceToggles`
+5. Call `ServiceRegistry.register(ServiceDescriptor("<name>", ...))` at module level in `server.py`
+
+No changes to `PanosetiServer` itself are needed.
+
 ### Shared Utilities
-`src/panoseti_grpc/panoseti_util/` — PFF file format, config-file parsing, DAQ shutdown helpers. Used across services.
+- `src/panoseti_grpc/util/` — cross-service utilities:
+  - `resources.py`: `load_package_resource()` / `load_package_json()` — importlib.resources-based file loader
+  - `error_handling.py`: `grpc_error_handler` decorator — catches unhandled exceptions and aborts with `INTERNAL` status
+- `src/panoseti_grpc/panoseti_util/` — PFF file format, config-file parsing, DAQ shutdown helpers. Used across services.
 
 ### DAQ Control Service
 Manages the Hashpipe process lifecycle on each DAQ node. `DaqControlServicer` tracks the hashpipe PID (`self.hashpipe_pid`). Key behaviors:
@@ -111,7 +151,7 @@ Manages the Hashpipe process lifecycle on each DAQ node. `DaqControlServicer` tr
 - Integration tests spin up Docker Compose stacks defined in each service's `tests/<service>/` directory. The CI scripts handle this automatically.
 - `conftest.py` files in each test directory provide server fixtures and client factories.
 - DAQ Data integration tests create isolated servers in `tempfile.TemporaryDirectory()` — no Docker needed, purely in-process.
-- DAQ Control tests build a real C++ Hashpipe binary inside Docker (see `tests/daq_control/Dockerfile`). The `test_concurrent_requests.py` and `test_process_edge_cases.py` tests use `module_id=[252]` to avoid conflicts with the main integration test (which uses `[250, 251]`).
+- DAQ Control tests build a real C++ Hashpipe binary inside Docker using the shared `Dockerfile.ci` (root of repo, BuildKit stage `daq-control-test`). The `test_concurrent_requests.py` and `test_process_edge_cases.py` tests use `module_id=[252]` to avoid conflicts with the main integration test (which uses `[250, 251]`).
 - Telemetry integration tests require a running Redis instance (provided by Docker Compose). Tests that assert Redis state after RPCs must poll with a timeout rather than using fixed `time.sleep` delays, because `RedisBatcher` introduces a flush latency.
 
 ## Key Gotchas
