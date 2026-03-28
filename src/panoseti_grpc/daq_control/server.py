@@ -46,6 +46,8 @@ def grpc_error_handler(func):
     async def wrapper(self, request, context):
         try:
             return await func(self, request, context)
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logging.exception(f"Error in {func.__name__}: {str(e)}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Internal server error: {str(e)}")
@@ -67,10 +69,9 @@ async def _monitor_hashpipe(proc: asyncio.subprocess.Process,
                              stdout_logger: logging.Logger,
                              stderr_logger: logging.Logger):
     """Pipe hashpipe stdout/stderr to their respective loggers (runs as background task)."""
-    await asyncio.gather(
-        _read_stream(proc.stdout, stdout_logger.info),
-        _read_stream(proc.stderr, stderr_logger.error),
-    )
+    async with asyncio.TaskGroup() as tg:
+        tg.create_task(_read_stream(proc.stdout, stdout_logger.info))
+        tg.create_task(_read_stream(proc.stderr, stderr_logger.error))
 
 
 class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):

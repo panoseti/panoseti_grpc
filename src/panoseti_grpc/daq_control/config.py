@@ -1,17 +1,16 @@
 """
 Daq Control Service configuration classes for validation
 """
-import tomli
 from pydantic import (
-    BaseModel, 
-    Field, 
-    field_validator, 
+    BaseModel,
+    Field,
+    field_validator,
     model_validator,
-    ValidationError, 
-    IPvAnyAddress, 
+    ValidationError,
+    IPvAnyAddress,
     DirectoryPath
 )
-from typing import Annotated, List
+from typing import Annotated
 from pathlib import Path
 
 Uint8 = Annotated[int, Field(ge=0, le=255)]
@@ -24,7 +23,7 @@ class StartDaqModel(BaseModel):
     group_ph_frames: bool
     run_dir: Path = Field(...)
     obs: str = Field(..., min_length=1, max_length=16)
-    module_id: List[Uint8] = Field(...)
+    module_id: list[Uint8] = Field(...)
     
     @model_validator(mode='after')
     def create_run_dir(self) -> 'StartDaqModel':
@@ -53,7 +52,7 @@ class StatusDaqModel(BaseModel):
 class CleanupDataModel(BaseModel):
     data_dir: DirectoryPath = Field(...)
     run_dir: Path = Field(...)
-    module_id: List[Uint8] = Field(...)
+    module_id: list[Uint8] = Field(...)
 
     @model_validator(mode='after')
     def check_run_dir(self) -> 'CleanupDataModel':
