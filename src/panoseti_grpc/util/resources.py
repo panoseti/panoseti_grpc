@@ -1,0 +1,28 @@
+"""Shared package-resource loader for all panoseti_grpc services."""
+from __future__ import annotations
+import importlib.resources as _resources
+import json
+from pathlib import Path
+from typing import Any, Callable
+
+
+def load_package_resource(package: str, fname: str | Path, parser: Callable | None = None) -> Any:
+    """Load a file bundled inside a Python package and parse it.
+
+    Args:
+        package: importlib anchor package name (e.g. ``'panoseti_grpc'``).
+        fname:   path relative to the package root
+                 (e.g. ``'daq_data/config/daq_data_server_config.json'``).
+        parser:  callable that accepts an open text-mode file object and
+                 returns the parsed data.  Defaults to ``json.load``.
+    """
+    if parser is None:
+        parser = json.load
+    resource_path = _resources.files(package).joinpath(fname)
+    with resource_path.open("r") as f:
+        return parser(f)
+
+
+def load_package_json(package: str, fname: str | Path) -> dict:
+    """Load a JSON resource file bundled inside *package*."""
+    return load_package_resource(package, fname, parser=json.load)

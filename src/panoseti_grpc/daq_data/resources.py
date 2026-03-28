@@ -14,11 +14,9 @@ from datetime import datetime
 import decimal
 import re
 
-import importlib.resources as resources
-import json
+from rich import print  # rich formatting
 
-# rich formatting
-from rich import print
+from panoseti_grpc.util.resources import load_package_json  # noqa: F401 (re-export)
 
 ## gRPC imports
 from google.protobuf.struct_pb2 import Struct
@@ -36,21 +34,6 @@ CFG_DIR = Path('daq_data/config')
 
 daq_data_anchor_package = "panoseti_grpc"
 
-def load_package_json(package, fname):
-    """Define the resource path relative to the package root
-    Args:
-        - package: refers to a path in the package (e.g., 'package.daq_data.config' )
-        - fname:  refers to the file within the package (e.g., 'hp_io_config_simulate.json')
-
-    """
-    resource_path = resources.files(package).joinpath(fname)
-
-    # 2. Use 'as_file' to obtain a path-like object that can be opened
-    #    This is necessary because the resource might be inside a zip file
-    with resource_path.open('r') as f:
-        data = json.load(f)
-
-    return data
 
 def _parse_dp_name(filename: str, dp_name_re = re.compile(r'\.dp_([a-zA-Z0-9]+)\.')) -> str:
     """Extracts the data product name (e.g., 'img16') from a PFF filename."""
