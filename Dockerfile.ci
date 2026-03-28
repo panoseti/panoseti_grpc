@@ -15,6 +15,7 @@
 #   telemetry-runner         pytest tests/telemetry  (used by docker-compose)
 #   telemetry-client         dummy_worker.py  (used by docker-compose for workers)
 #   ublox-test               pytest tests/ublox_control
+#   unified-server-test      pytest tests/unified_server  (requires Redis sidecar)
 #
 # CI scripts in scripts/run-ci-tests/ build and run these stages directly.
 # Docker-compose files for daq_control and telemetry reference this file with
@@ -224,3 +225,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 CMD ["python", "-m", "pytest", "-v", "tests/ublox_control"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: unified-server-test
+# Tests all three services co-hosted on a single port.  The test runner
+# starts PanosetiServer in a subprocess (no separate server container needed).
+# Requires a Redis sidecar (provided by docker-compose).
+# daq_data runs in UDS simulation mode — no hashpipe binary required.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM base AS unified-server-test
+
+RUN pip install redis grpcio-reflection
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+CMD ["python", "-m", "pytest", "-v", "--timeout=90", "tests/unified_server/"]
