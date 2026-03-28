@@ -160,21 +160,20 @@ class TelemetryClient:
             timestamp=self._get_timestamp()
         )
 
-        if device_type == "gnss":
-            payload = telemetry_pb2.GnssPayload()
-            ParseDict(data, payload)
-            req.gnss.CopyFrom(payload)
-
-        elif device_type == "dew":
-            payload = telemetry_pb2.DewPayload()
-            ParseDict(data, payload)
-            req.dew.CopyFrom(payload)
-
-        else:
-            raise ValueError(
-                f"Unsupported strict device_type: '{device_type}'. "
-                f"Check telemetry_config.toml or use log_flexible() for R&D."
-            )
+        match device_type:
+            case "gnss":
+                payload = telemetry_pb2.GnssPayload()
+                ParseDict(data, payload)
+                req.gnss.CopyFrom(payload)
+            case "dew":
+                payload = telemetry_pb2.DewPayload()
+                ParseDict(data, payload)
+                req.dew.CopyFrom(payload)
+            case _:
+                raise ValueError(
+                    f"Unsupported strict device_type: '{device_type}'. "
+                    f"Check telemetry_config.toml or use log_flexible() for R&D."
+                )
 
         self._send(req)
 

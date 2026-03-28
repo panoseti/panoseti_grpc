@@ -3,10 +3,10 @@ Telemetry Service configuration classes for validation and
 """
 import json
 import time
-import tomli
+import tomllib
 from enum import IntEnum
 from pydantic import BaseModel, Field, field_validator, ValidationError
-from typing import Dict, Type, Optional, Any, Literal
+from typing import Any, Literal
 import os
 
 
@@ -38,17 +38,17 @@ class LogSchema(BaseModel):
     severity: LogSeverity = Field(default=LogSeverity.INFO)
 
     # Source info (Optional)
-    file_path: Optional[str] = None
-    line_number: Optional[int] = None
-    function_name: Optional[str] = None
+    file_path: str | None = None
+    line_number: int | None = None
+    function_name: str | None = None
 
     # --- System Metadata (New Fields) ---
-    process_id: Optional[int] = None
-    thread_name: Optional[str] = None
+    process_id: int | None = None
+    thread_name: str | None = None
 
     # Optional because development environments might not be git repos
-    git_commit: Optional[str] = None
-    git_branch: Optional[str] = None
+    git_commit: str | None = None
+    git_branch: str | None = None
 
     # --- Payload ---
     # We accept a raw string (from gRPC) but validate it isn't massive.
@@ -83,13 +83,13 @@ class GnssModel(BaseModel):
     fix_mode: str
     # Core + Extensions Pattern: "extra_data" is the safe extension point
     # Use a default_factory (or default to None) to avoid cross-instance state leakage.
-    extra_data: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    extra_data: dict[str, Any] | None = Field(default_factory=dict)
 
 
 class DewModel(BaseModel):
     temp_c: float = Field(ge=-50, le=100)
     humidity: float = Field(ge=0, le=100)
-    extra_data: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    extra_data: dict[str, Any] | None = Field(default_factory=dict)
 
 
 class PayloadTestModel(BaseModel):
@@ -97,7 +97,7 @@ class PayloadTestModel(BaseModel):
     value: float
     message: str
     active: bool
-    extra_data: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    extra_data: dict[str, Any] | None = Field(default_factory=dict)
 
     @field_validator('message')
     def must_be_uppercase(cls, v):
@@ -106,7 +106,7 @@ class PayloadTestModel(BaseModel):
         return v
 
 
-SCHEMA_MAP: Dict[str, Type[BaseModel]] = {
+SCHEMA_MAP: dict[str, type[BaseModel]] = {
     "gnss": GnssModel,
     "dew": DewModel,
     "test": PayloadTestModel,
@@ -123,7 +123,7 @@ class DeviceConfig(BaseModel):
     mode: str = Field(default="production", pattern="^(production|experimental)$")
     redis_prefix: str
     ttl_seconds: int = Field(default=0, ge=0)
-    description: Optional[str] = ""
+    description: str | None = ""
 
     @field_validator('redis_prefix')
     def validate_prefix(cls, v, info):
@@ -137,7 +137,7 @@ class DeviceConfig(BaseModel):
 
 
 class TelemetryConfig:
-    def __init__(self, devices: Dict[str, DeviceConfig]):
+    def __init__(self, devices: dict[str, DeviceConfig]):
         self.devices = devices
 
     @classmethod
@@ -156,7 +156,7 @@ class TelemetryConfig:
             raise FileNotFoundError(f"Config file not found: {path}")
 
         with open(path, "rb") as f:
-            data = tomli.load(f)
+            data = tomllib.load(f)
 
         parsed_devices = {}
         raw_devices = data.get("devices", {})
@@ -203,7 +203,7 @@ class TelemetryConfig:
                 model = SCHEMA_MAP[device_type](**data)
                 clean_data = model.model_dump()
             except ValidationError as e:
-                raise ValueError(f"Schema Violation for {device_type}: {e}")
+                raise ValueError(f"Schema Violation for {device_type}: {e}") from e
         else:
             # Should not happen if config and code are synced
             raise ValueError(f"No schema defined for production type '{device_type}'")
@@ -216,7 +216,7 @@ class TelemetryConfig:
 
         return self._flatten_dict(clean_data)
 
-    def _flatten_dict(self, d: Dict, parent_key: str = '', sep: str = '_') -> Dict:
+    def _flatten_dict(self, d: dict, parent_key: str = '', sep: str = '_') -> dict:
         items = []
         for k, v in d.items():
             new_key = f"{parent_key}{sep}{k}" if parent_key else k

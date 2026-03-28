@@ -161,6 +161,8 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
 
             return telemetry_pb2.StatusResponse(success=True, message="Queued")
 
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             # We log the error locally so the server admin sees it
             logger.warning(f"Log Ingest Rejected: {e}")
@@ -178,22 +180,23 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
 
         try:
             # 1. Determine Payload Source & Type
-            if request.HasField("gnss"):
-                payload_source = "gnss"
-                raw_data = self._proto_to_dict(request.gnss)
-            elif request.HasField("dew"):
-                payload_source = "dew"
-                raw_data = self._proto_to_dict(request.dew)
-            elif request.HasField("test"):
-                payload_source = "test"
-                raw_data = self._proto_to_dict(request.test)
-            elif request.HasField("flexible"):
-                payload_source = "flexible"
-                raw_data = self._proto_to_dict(request.flexible)
-            else:
-                msg = "Invalid Request: No payload field provided (gnss, dew, flexible, etc)."
-                logger.warning(msg)
-                return telemetry_pb2.StatusResponse(success=False, message=msg)
+            match request.WhichOneof("payload"):
+                case "gnss":
+                    payload_source = "gnss"
+                    raw_data = self._proto_to_dict(request.gnss)
+                case "dew":
+                    payload_source = "dew"
+                    raw_data = self._proto_to_dict(request.dew)
+                case "test":
+                    payload_source = "test"
+                    raw_data = self._proto_to_dict(request.test)
+                case "flexible":
+                    payload_source = "flexible"
+                    raw_data = self._proto_to_dict(request.flexible)
+                case _:
+                    msg = "Invalid Request: No payload field provided (gnss, dew, flexible, etc)."
+                    logger.warning(msg)
+                    return telemetry_pb2.StatusResponse(success=False, message=msg)
 
             # Update identifiers
             device_id = request.device_id or raw_data.get("device_id", "N/A")
@@ -270,6 +273,8 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
 
             return telemetry_pb2.StatusResponse(success=True)
 
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.exception("Internal Server Error processing ReportStatus")
             await context.abort(grpc.StatusCode.INTERNAL, str(e))

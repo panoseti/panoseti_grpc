@@ -47,7 +47,6 @@ dependencies = [
     "aiofiles",
 #    "pygnssutils",
     "pydantic>=2.12",
-    "tomli",
     "requests",
     "GitPython"
 ]
