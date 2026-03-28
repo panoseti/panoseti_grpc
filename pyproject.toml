@@ -69,6 +69,7 @@ docs = [
 
 [project.scripts]
 panoseti-server      = "panoseti_grpc.unified_main:main"
+pseti-cli            = "panoseti_grpc.cli:main"
 panoseti-daq-data    = "panoseti_grpc.daq_data.server:main"
 panoseti-daq-control = "panoseti_grpc.daq_control.server:main"
 panoseti-telemetry   = "panoseti_grpc.telemetry.server:main"
