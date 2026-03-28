@@ -146,22 +146,21 @@ class ClientManager:
     async def get_writer_access(self, context, force: bool = False):
         """A context manager to safely acquire exclusive 'writer' access."""
         uid = uuid.uuid4()
-        await self._writer_lock.acquire()
-        try:
+        async with self._writer_lock:
             self.logger.debug(f"Writer ({uid}) acquired writer lock.")
-            if self._active_readers > 0:
-                if not force:
-                    active_ips = [rs.client_ip for rs in self._readers if rs.is_allocated]
-                    msg = f"Cannot modify server state: {self._active_readers} clients are streaming: {active_ips}"
-                    await context.abort(grpc.StatusCode.FAILED_PRECONDITION, msg)
-                else:
-                    self.logger.warning("Forcing write access by cancelling all active readers.")
-            await self.cancel_all_readers()
-            yield uid
-        finally:
-            self._cancel_readers_event.clear()
-            self._writer_lock.release()
-            self.logger.debug(f"Writer ({uid}) released writer lock.")
+            try:
+                if self._active_readers > 0:
+                    if not force:
+                        active_ips = [rs.client_ip for rs in self._readers if rs.is_allocated]
+                        msg = f"Cannot modify server state: {self._active_readers} clients are streaming: {active_ips}"
+                        await context.abort(grpc.StatusCode.FAILED_PRECONDITION, msg)
+                    else:
+                        self.logger.warning("Forcing write access by cancelling all active readers.")
+                await self.cancel_all_readers()
+                yield uid
+            finally:
+                self._cancel_readers_event.clear()
+                self.logger.debug(f"Writer ({uid}) released writer lock.")
 
     @asynccontextmanager
     async def get_reader_access(self, context, hp_io_task_manager: HpIoTaskManager):

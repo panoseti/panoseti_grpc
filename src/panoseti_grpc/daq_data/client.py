@@ -7,7 +7,7 @@ Requires the following to work:
 Run this on the headnode to configure the u-blox GNSS receivers in remote domes.
 """
 import asyncio
-from typing import Set, List, Callable, Tuple, Any, Dict, Generator, AsyncIterator, Union, AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, AsyncIterator, Callable, Generator
 import logging
 import os
 import json
@@ -60,8 +60,8 @@ class DaqDataClient:
 
     def __init__(
         self,
-        daq_config: Union[str, Path, Dict[str, Any]],
-        network_config: Optional[Union[str, Path, Dict[str, Any]]],
+        daq_config: str | Path | dict[str, Any],
+        network_config: str | Path | dict[str, Any] | None,
         log_level: int =logging.INFO
     ):
         """Initializes the DaqDataClient with DAQ and network configurations.
@@ -181,7 +181,7 @@ class DaqDataClient:
             return False # Re-raise the exception
         return True # Suppress expected exceptions
 
-    def get_valid_daq_hosts(self) -> List[str]:
+    def get_valid_daq_hosts(self) -> list[str]:
         """
         Returns a set of valid DAQ hosts that responded successfully to a ping.
 
@@ -218,14 +218,14 @@ class DaqDataClient:
         self.valid_daq_hosts.add(host)
         return True
 
-    def validate_daq_hosts(self, hosts: Optional[Union[List[str], str]]) -> List[str]:
+    def validate_daq_hosts(self, hosts: list[str] | str | None) -> list[str]:
         """
         Validates that a given list of hosts are active and reachable.
 
         If the input list is empty or None, it defaults to all known valid hosts.
 
         Args:
-            hosts (Union[List[str], str]): A single host or list of hosts to validate.
+            hosts (list[str] | str): A single host or list of hosts to validate.
 
         Returns:
             List[str]: A list of validated hostnames or IP addresses.
@@ -253,7 +253,7 @@ class DaqDataClient:
             raise ConnectionError("No valid daq hosts found")
         return list(host_set)
 
-    def reflect_services(self, hosts: Union[List[str], str]) -> str:
+    def reflect_services(self, hosts: list[str] | str | None) -> str:
         """
         Discovers and lists all available gRPC services and RPCs on the specified hosts.
 
@@ -261,7 +261,7 @@ class DaqDataClient:
         registered services, providing a human-readable summary.
 
         Args:
-            hosts (Union[List[str], str]): One or more hosts to query. If empty, queries all
+            hosts (list[str] | str): One or more hosts to query. If empty, queries all
                 known valid hosts.
 
         Returns:
@@ -297,14 +297,14 @@ class DaqDataClient:
 
     def stream_images(
         self,
-        hosts: Optional[Union[List[str], str]],
+        hosts: list[str] | str | None,
         stream_movie_data: bool,
         stream_pulse_height_data: bool,
         update_interval_seconds: float,
-        module_ids: Union[Tuple[int], Tuple[()]]=(),
+        module_ids: tuple[int, ...] | tuple[()]=(),
         wait_for_ready=False,
         parse_pano_images=True,
-        timeout=36_000
+        timeout=36_000.0
     ) ->  Generator[dict[str, Any], Any, Any]:
         """Establishes a real-time stream of PANOSETI image data.
 
@@ -313,7 +313,7 @@ class DaqDataClient:
         that will run indefinitely.
 
         Args:
-            hosts (Union[List[str], str]): The DAQ host(s) to stream from.
+            hosts (list[str] | str): The DAQ host(s) to stream from.
             stream_movie_data (bool): If True, request movie-mode images.
             stream_pulse_height_data (bool): If True, request pulse-height images.
             update_interval_seconds (float): The requested server-side update interval.
@@ -366,7 +366,7 @@ class DaqDataClient:
                         yield stream_images_response
         return response_generator()
 
-    def init_sim(self, hosts: Optional[Union[List[str], str]], hp_io_cfg: Optional[Dict] = None, timeout=10.0) -> bool:
+    def init_sim(self, hosts: list[str] | str | None, hp_io_cfg: dict | None = None, timeout=10.0) -> bool:
         """
         A convenience method for initializing a simulated run using a JSON config file.
 
@@ -375,7 +375,7 @@ class DaqDataClient:
         live observatory hardware.
 
         Args:
-            hosts (Union[List[str], str]): The hostname or IP address of the DAQ node.
+            hosts (list[str] | str): The hostname or IP address of the DAQ node.
             hp_io_cfg (Dict, optional): The simulation config. Defaults to None.
             timeout (float, optional): The timeout in seconds for the RPC call. Defaults to 10.0.
 
@@ -391,14 +391,14 @@ class DaqDataClient:
         return self.init_hp_io(hosts, config_to_send, timeout)
 
 
-    def init_hp_io(self, hosts: Optional[Union[List[str], str]], hp_io_cfg: dict, timeout=10.0) -> bool:
+    def init_hp_io(self, hosts: list[str] | str | None, hp_io_cfg: dict, timeout=10.0) -> bool:
         """Initializes or reconfigures the HpIoManager task on the server.
 
         This is a prerequisite for streaming data. It tells the server which
         directory to monitor for data or whether to start a simulation.
 
         Args:
-            hosts (Union[List[str], str]): One or more DAQ hosts to initialize.
+            hosts (list[str] | str): One or more DAQ hosts to initialize.
             hp_io_cfg (dict): A configuration dictionary containing parameters like
                 'data_dir', 'simulate_daq', 'force', etc.
             timeout (float, optional): Timeout in seconds for the RPC call. Defaults to 10.0.
@@ -474,9 +474,9 @@ class AioDaqDataClient:
 
     def __init__(
         self,
-        daq_config: Union[str, Path, Dict[str, Any]],
-        network_config: Optional[Union[str, Path, Dict[str, Any]]],
-        stop_event: Optional[asyncio.Event] = None,
+        daq_config: str | Path | dict[str, Any],
+        network_config: str | Path | dict[str, Any] | None,
+        stop_event: asyncio.Event | None = None,
         log_level: int = logging.INFO,
     ):
         """Initializes the AioDaqDataClient.
@@ -486,7 +486,7 @@ class AioDaqDataClient:
                 or a pre-loaded dictionary. Must contain a 'daq_nodes' key.
             network_config (Optional[Union[str, Path, Dict]]): Path to a
                 network_config.json file or a dictionary for port forwarding.
-            stop_event (Optional[asyncio.Event]): An event to signal graceful
+            stop_event (asyncio.Event | None): An event to signal graceful
                 shutdown of long-running streams.
             log_level (int): The logging verbosity level (e.g., logging.INFO).
         """
@@ -600,7 +600,7 @@ class AioDaqDataClient:
             return False # Re-raise the exception
         return True # Suppress expected exceptions
 
-    async def get_valid_daq_hosts(self) -> List[str]:
+    async def get_valid_daq_hosts(self) -> list[str]:
         """
         Returns a set of valid DAQ hosts that responded successfully to a ping.
 
@@ -637,14 +637,14 @@ class AioDaqDataClient:
         self.valid_daq_hosts.add(host)
         return True
 
-    async def validate_daq_hosts(self, hosts: Union[List[str], str]) -> List[str]:
+    async def validate_daq_hosts(self, hosts: list[str] | str | None) -> list[str]:
         """
         Validates that a given list of hosts are active and reachable.
 
         If the input list is empty or None, it defaults to all known valid hosts.
 
         Args:
-            hosts (Union[List[str], str]): A single host or list of hosts to validate.
+            hosts (list[str] | str): A single host or list of hosts to validate.
 
         Returns:
             List[str]: A list of validated hostnames or IP addresses.
@@ -672,7 +672,7 @@ class AioDaqDataClient:
             raise ConnectionError("No valid daq hosts found")
         return list(host_set)
 
-    async def reflect_services(self, hosts: Union[List[str], str]) -> str:
+    async def reflect_services(self, hosts: list[str] | str) -> str:
         """
         Discovers and lists all available gRPC services and RPCs on the specified hosts.
 
@@ -680,7 +680,7 @@ class AioDaqDataClient:
         registered services, providing a human-readable summary.
 
         Args:
-            hosts (Union[List[str], str]): One or more hosts to query. If empty, queries all
+            hosts (list[str] | str): One or more hosts to query. If empty, queries all
                 known valid hosts.
 
         Returns:
@@ -716,14 +716,14 @@ class AioDaqDataClient:
 
     async def stream_images(
             self,
-            hosts: Union[List[str], str],
+            hosts: list[str] | str | None,
             stream_movie_data: bool,
             stream_pulse_height_data: bool,
             update_interval_seconds: float,
-            module_ids: Union[Tuple[int], Tuple[()]] = (),
+            module_ids: tuple[int, ...] | tuple[()] = (),
             wait_for_ready=False,
             parse_pano_images=True,
-            timeout=36_000
+            timeout=36_000.0
     ) -> AsyncIterator[dict[str, Any]]:
         """Establishes an asynchronous, real-time stream of PANOSETI image data.
 
@@ -732,7 +732,7 @@ class AioDaqDataClient:
         that will run indefinitely or until timeout is reached.
 
         Args:
-            hosts (Union[List[str], str]): The DAQ host(s) to stream from.
+            hosts (list[str] | str): The DAQ host(s) to stream from.
             stream_movie_data (bool): If True, request movie-mode images.
             stream_pulse_height_data (bool): If True, request pulse-height images.
             update_interval_seconds (float): The requested server-side update interval.
@@ -812,7 +812,7 @@ class AioDaqDataClient:
 
         return response_generator()
 
-    async def init_sim(self, hosts: Union[List[str], str], hp_io_cfg: Optional[Dict]=None,
+    async def init_sim(self, hosts: list[str] | str, hp_io_cfg: dict | None=None,
                        timeout=5.0) -> bool:
         """
         Asynchronously initializes a simulated run using a JSON config file.
@@ -822,7 +822,7 @@ class AioDaqDataClient:
         live observatory hardware.
 
         Args:
-            hosts (Union[List[str], str]): The hostname or IP address of the DAQ node.
+            hosts (list[str] | str): The hostname or IP address of the DAQ node.
             hp_io_cfg (dict, optional): The simulation config. Defaults to None.
             timeout (float, optional): The timeout in seconds for the RPC call. Defaults to 5.0.
 
@@ -840,14 +840,14 @@ class AioDaqDataClient:
         return await self.init_hp_io(hosts, config_to_send, timeout)
 
 
-    async def init_hp_io(self, hosts: Union[List[str], str], hp_io_cfg: dict, timeout=10.0) -> bool:
+    async def init_hp_io(self, hosts: list[str] | str | None, hp_io_cfg: dict, timeout=10.0) -> bool:
         """Asynchronously initializes or reconfigures the HpIoManager on the server.
 
         This coroutine sends concurrent InitHpIo requests to all specified hosts
         and waits for them to complete.
 
         Args:
-            hosts (Union[List[str], str]): One or more DAQ hosts to initialize.
+            hosts (list[str] | str): One or more DAQ hosts to initialize.
             hp_io_cfg (dict): Configuration dictionary with parameters for the
                 server's HpIoManager.
             timeout (float, optional): Timeout in seconds for each RPC call. Defaults to 10.0.

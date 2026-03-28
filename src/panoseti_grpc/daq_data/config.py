@@ -6,7 +6,6 @@ A ValidationError at startup is a clear, actionable signal that daq_data_server_
 has a bad value, rather than a KeyError buried in a call stack mid-observation.
 """
 from __future__ import annotations
-from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -64,7 +63,7 @@ class DaqDataServerConfig(BaseModel):
     """Top-level server configuration. Loaded from daq_data_server_config.json at startup."""
     init_from_default: bool = False
     default_hp_io_config_file: str = "hp_io_config_simulate.json"
-    unix_domain_socket: Optional[str] = None
+    unix_domain_socket: str | None = None
     max_concurrent_rpcs: int = Field(100, ge=1)
     max_read_queue_size: int = Field(50, ge=1)
     min_hp_io_update_interval_seconds: float = Field(0.001, gt=0)
@@ -76,7 +75,7 @@ class DaqDataServerConfig(BaseModel):
     hp_io_stop_timeout: float = Field(5.0, gt=0)
     valid_data_products: list[str] = ["img8", "img16", "ph256", "ph1024"]
     acquisition_methods: AcquisitionMethodsConfig = Field(default_factory=AcquisitionMethodsConfig)
-    simulate_daq_cfg: Optional[SimulateDaqConfig] = None
+    simulate_daq_cfg: SimulateDaqConfig | None = None
     # Logging — passed to get_logger()
-    log_dir: Optional[str] = None
+    log_dir: str | None = None
     grpc_logging: bool = True

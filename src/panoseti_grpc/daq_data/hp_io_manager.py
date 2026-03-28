@@ -74,31 +74,33 @@ class HpIoManager:
             self.logger.error("No data acquisition sources configured. HpIoManager cannot run.")
             return
 
-        source_tasks = [asyncio.create_task(source.run()) for source in self.data_sources]
-        processing_task = asyncio.create_task(self._processing_loop())
-
-        # Wait for all data sources to signal they are ready.
+        # Outer try catches asyncio.TimeoutError raised from the TaskGroup body (startup
+        # timeout).  Cannot mix except / except* in the same try block, so they are split.
         try:
-            self.logger.info("Waiting for all data sources to become ready.")
-            all_sources_ready = asyncio.gather(*(s.ready_event.wait() for s in self.data_sources))
-            await asyncio.wait_for(all_sources_ready, timeout=10.0)
-            self.logger.info("All data sources have reported ready.")
+            try:
+                async with asyncio.TaskGroup() as tg:
+                    for source in self.data_sources:
+                        tg.create_task(source.run())
+                    tg.create_task(self._processing_loop())
+
+                    # Wait for all data sources to signal they are ready.
+                    self.logger.info("Waiting for all data sources to become ready.")
+                    async with asyncio.timeout(10.0):
+                        await asyncio.gather(*(s.ready_event.wait() for s in self.data_sources))
+                    self.logger.info("All data sources have reported ready.")
+
+                    await self._update_active_data_products()
+                    self.valid.set()
+                    self.logger.info("HpIoManager task started and is valid.")
+                    # TaskGroup now waits for all tasks to finish.
+            except* asyncio.CancelledError:
+                pass  # Normal shutdown path
+            except* Exception as eg:
+                for exc in eg.exceptions:
+                    self.logger.error(f"HpIoManager task error: {exc}", exc_info=exc)
         except asyncio.TimeoutError:
             self.logger.error(
                 "Timeout waiting for all data sources to become ready. HpIoManager will not be valid.")
-            for task in source_tasks + [processing_task]:
-                if not task.done():
-                    task.cancel()
-            return  # Exit without setting self.valid
-
-        await self._update_active_data_products()
-        self.valid.set()
-        self.logger.info("HpIoManager task started and is valid.")
-
-        try:
-            await asyncio.gather(processing_task, *source_tasks)
-        except Exception as e:
-            self.logger.error(f"HpIoManager run error: {e}", exc_info=True)
         finally:
             self.valid.clear()
             self.logger.info("HpIoManager task exited.")
@@ -108,7 +110,8 @@ class HpIoManager:
         self.logger.info("Starting processing loop.")
         while not self.stop_event.is_set():
             try:
-                pano_image = await asyncio.wait_for(self.data_queue.get(), timeout=self.processing_loop_timeout)
+                async with asyncio.timeout(self.processing_loop_timeout):
+                    pano_image = await self.data_queue.get()
 
                 await self._discover_module_from_image(pano_image)
 
