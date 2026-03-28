@@ -2,9 +2,9 @@ name: PANOSETI gRPC CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, feature/test-suite-hardening]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 # All test stages inherit from the shared `base` stage in Dockerfile.ci.
 # BuildKit caches the base layer across jobs via GitHub Actions cache,
