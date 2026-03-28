@@ -42,8 +42,8 @@ services:
   test_runner:
     build:
       context: ../../
-      dockerfile: tests/telemetry/Dockerfile
-      target: runner  # Uses the full image with pytest
+      dockerfile: Dockerfile.ci
+      target: telemetry-runner  # Uses the full image with pytest
     hostname: headnode-runner
     environment:
       - REDIS_HOST=redis
@@ -76,8 +76,8 @@ services:
   worker-1: &worker
     build:
       context: ../../
-      dockerfile: tests/telemetry/Dockerfile
-      target: client   # <--- Uses the minimal image
+      dockerfile: Dockerfile.ci
+      target: telemetry-client   # <--- Uses the minimal image
     hostname: worker-1
     environment:
       - HEADNODE_IP=test_runner # Points to the test_runner container

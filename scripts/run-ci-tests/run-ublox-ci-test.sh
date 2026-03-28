@@ -5,7 +5,7 @@ set -e
 IMAGE_NAME="panoseti-ublox-ci"
 
 echo "--- Building CI Docker Image: $IMAGE_NAME ---"
-docker build -t $IMAGE_NAME -f tests/ublox_control/Dockerfile .
+docker build -t $IMAGE_NAME --target ublox-test -f Dockerfile.ci .
 
 echo "--- Running Integration Tests ---"
 # Run the tests inside the container.
