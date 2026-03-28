@@ -2,130 +2,150 @@ name: PANOSETI gRPC CI
 
 on:
   push:
-    branches: [ main, tests, dev, telemetry-service]
+    branches: [main, dev]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+# All test stages inherit from the shared `base` stage in Dockerfile.ci.
+# BuildKit caches the base layer across jobs via GitHub Actions cache,
+# so the pip install only runs once per commit tree.
 
 jobs:
-  daq-data-build-and-test:
-    runs-on: ubuntu-latest
-    steps:
-      # Checks-out repository
-      - name: Checkout repository
-        uses: actions/checkout@v3
 
-      # Set up Docker Buildx
-      # enables advanced features like multi-platform builds and cache management.
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      #Build the Docker image with cache enabled
-      # This step builds the image and pushes the cache to the GitHub Actions cache.
-      # The 'load: true' flag makes the image available to subsequent steps in the same job.
-      - name: Build and cache Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: tests/daq_data/Dockerfile
-          load: true # Makes the image available for the next step
-          tags: panoseti-grpc-test-daq-data:latest
-          cache-from: type=gha # Pulls cache from GitHub Actions cache
-          cache-to: type=gha,mode=max # Pushes cache to GitHub Actions cache
-
-      # Run tests inside the now-cached Docker container
-      - name: Run Pytest in container
-        run: docker run --rm panoseti-grpc-test-daq-data:latest
-
-  ublox-control-build-and-test:
-    runs-on: ubuntu-latest
-    steps:
-      # Checks-out repository
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      # Set up Docker Buildx
-      # enables advanced features like multi-platform builds and cache management.
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      #Build the Docker image with cache enabled
-      # This step builds the image and pushes the cache to the GitHub Actions cache.
-      # The 'load: true' flag makes the image available to subsequent steps in the same job.
-      - name: Build and cache Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: tests/ublox_control/Dockerfile
-          load: true # Makes the image available for the next step
-          tags: panoseti-grpc-test-ublox-control:latest
-          cache-from: type=gha # Pulls cache from GitHub Actions cache
-          cache-to: type=gha,mode=max # Pushes cache to GitHub Actions cache
-
-      # Run tests inside the now-cached Docker container
-      - name: Run Pytest in container
-        run: docker run --rm panoseti-grpc-test-ublox-control:latest
-  real-daq-robustness-tests:
-    name: Real DAQ Robustness Tests
+  # ─────────────────────────────────────────────────────────────────────────
+  # DAQ Data — pure Python tests, no external services required.
+  # Runs all of tests/daq_data/ inside the daq-data-test Dockerfile.ci stage.
+  # ─────────────────────────────────────────────────────────────────────────
+  daq-data-test:
+    name: DAQ Data Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and cache Docker image for real DAQ tests
+      - name: Build daq-data-test image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: tests/daq_data_hashpipe/Dockerfile
+          file: Dockerfile.ci
+          target: daq-data-test
           load: true
-          tags: panoseti-grpc-test-real-daq:latest
+          tags: panoseti-daq-data-test:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Run Real DAQ Robustness Tests in container
+      - name: Run DAQ Data tests
+        run: docker run --rm panoseti-daq-data-test:ci
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # DAQ Data Hashpipe — integration tests against a compiled hashpipe binary.
+  # Requires --shm-size=2g for shared memory segments.
+  # ─────────────────────────────────────────────────────────────────────────
+  daq-data-hashpipe-test:
+    name: DAQ Data Hashpipe Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build daq-data-hashpipe-test image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.ci
+          target: daq-data-hashpipe-test
+          load: true
+          tags: panoseti-daq-data-hashpipe-test:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Hashpipe DAQ Data tests
         env:
-          # This environment variable enables the hashpipe_pcap_runner fixture
           RUN_REAL_DATA_TESTS: "1"
         run: |
           docker run --rm \
             --shm-size=2g \
             --env RUN_REAL_DATA_TESTS=${RUN_REAL_DATA_TESTS} \
-            panoseti-grpc-test-real-daq:latest \
+            panoseti-daq-data-hashpipe-test:ci \
             python3 -m pytest -s -v --maxfail=2 tests/daq_data_hashpipe/
 
-  telemetry-service-build-and-test:
-    name: Telemetry Service Integration Tests
+  # ─────────────────────────────────────────────────────────────────────────
+  # Telemetry — requires Redis + InfluxDB sidecars (provided by docker-compose).
+  # Uses tests/telemetry/docker-compose.test.yml which also spins up
+  # multiple worker containers to test distributed log ingestion.
+  # ─────────────────────────────────────────────────────────────────────────
+  telemetry-test:
+    name: Telemetry Service Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # We can leverage the existing cache setup by building the test runner image via buildx first,
-      # but for simplicity and reliability with multi-container setups,
-      # we will let Docker Compose handle the build.
-
-      - name: Run Telemetry Docker Compose Tests
+      - name: Run Telemetry tests (Docker Compose)
         run: |
-          cd tests/telemetry
-          # Run the compose stack.
-          # --abort-on-container-exit: stops Redis/Influx once pytest finishes
-          # --exit-code-from test_runner: fails the CI job if pytest fails
-          docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from test_runner
-  
-  daq-control-service-build-and-test:
-    name: Daq Control Service Integration Tests
+          docker compose -f tests/telemetry/docker-compose.test.yml up \
+            --build \
+            --abort-on-container-exit \
+            --exit-code-from test_runner
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose -f tests/telemetry/docker-compose.test.yml down \
+            --volumes --remove-orphans
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # DAQ Control — integration tests against a compiled hashpipe binary.
+  # Uses tests/daq_control/docker-compose.test.yml.
+  # ─────────────────────────────────────────────────────────────────────────
+  daq-control-test:
+    name: DAQ Control Service Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Run Daq Control Docker Compose Tests
+      - name: Run DAQ Control tests (Docker Compose)
         run: |
-          cd tests/daq_control
-          # Run the compose stack.
-          # --abort-on-container-exit: stops Redis/Influx once pytest finishes
-          # --exit-code-from test_runner: fails the CI job if pytest fails
-          docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from test_runner
+          docker compose -f tests/daq_control/docker-compose.test.yml up \
+            --build \
+            --abort-on-container-exit \
+            --exit-code-from test_runner
 
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose -f tests/daq_control/docker-compose.test.yml down \
+            --volumes --remove-orphans
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Unified Server — all three services on one port.
+  # Requires Redis (for the Telemetry service). The docker-compose provides
+  # a Redis sidecar so all integration tests run without skipping.
+  # DAQ Data runs in UDS simulation mode — no hashpipe binary needed.
+  # ─────────────────────────────────────────────────────────────────────────
+  unified-server-test:
+    name: Unified Server Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Unified Server tests (Docker Compose with Redis)
+        run: |
+          docker compose -f tests/unified_server/docker-compose.test.yml up \
+            --build \
+            --abort-on-container-exit \
+            --exit-code-from test_runner
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose -f tests/unified_server/docker-compose.test.yml down \
+            --volumes --remove-orphans
