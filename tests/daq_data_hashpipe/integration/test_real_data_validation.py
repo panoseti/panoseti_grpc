@@ -129,7 +129,7 @@ async def test_frame_arrival_rate_is_reasonable(default_server_process):
 
         stream = await client.stream_images(
             hosts=None,
-            stream_movie_data=True, stream_pulse_height_data=False,
+            stream_movie_data=True, stream_pulse_height_data=True,
             update_interval_seconds=0.1,
             timeout=15.0,
         )
