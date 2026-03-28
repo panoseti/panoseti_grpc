@@ -28,8 +28,15 @@ Each service has a CI shell script that sets up Docker dependencies and runs pyt
 ./scripts/run-ci-tests/run-daq-data-ci-test.sh
 ./scripts/run-ci-tests/run-daq-control-test.sh
 ./scripts/run-ci-tests/run-telemetry-ci-test.sh
+./scripts/run-ci-tests/run-unified-server-ci-test.sh  # all three services on one port
 ./scripts/run-ci-tests/run-ublox-ci-test.sh
 ./scripts/run-ci-tests/run-hashpipe-daq-data-ci.sh   # requires real/simulated Hashpipe hardware
+```
+
+Run unified server tests locally (unit tests require no services; integration tests skip gracefully without Redis):
+```bash
+pytest tests/unified_server/unit/ -v
+pytest tests/unified_server/integration/ -v --timeout=90
 ```
 
 Run a single test file directly:
@@ -54,6 +61,18 @@ panoseti-server --profile headnode                # telemetry only
 panoseti-server --config /path/to/server.toml    # custom config file
 panoseti-server --list-services                   # print registered services and exit
 python -m panoseti_grpc                           # equivalent to panoseti-server
+```
+
+Observatory CLI (`pseti-cli`) for a running server:
+```bash
+pseti-cli status                      # probe all services and print table
+pseti-cli reflect                     # list services via gRPC reflection
+pseti-cli telemetry log --message '{"event":"test"}'
+pseti-cli daq-data ping
+pseti-cli daq-data init-sim           # init simulation mode
+pseti-cli daq-data stream --seconds 5
+pseti-cli daq-control status
+pseti-cli --host mynode --port 50051 status  # connect to remote
 ```
 
 Individual service entry points (standalone):
