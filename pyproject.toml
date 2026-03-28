@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "panoseti-grpc"
-version = "0.4.0"
+version = "0.4.1"
 description = "gRPC for the PANOSETI project."
 readme = "README.md"
 requires-python = ">=3.14"
 authors = [
     { name="Nicolas Rault-Wang"},
-    { name="Ben Godfrey"}
+    { name="Ben Godfrey"},
+    { name="Wei Liu"}
 ]
 license-files = [ "LICENSE" ]
 keywords = [
@@ -39,8 +40,8 @@ dependencies = [
     "json5",
     "pyserial",
     "pyubx2",
-    "seaborn",
-    "matplotlib",
+    # "seaborn",
+    # "matplotlib",
     "pandas",
     "numpy",
     "psutil",
