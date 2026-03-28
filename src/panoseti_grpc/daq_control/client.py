@@ -1,5 +1,7 @@
 import grpc
+from typing import Any
 from panoseti_grpc.generated import daq_control_pb2, daq_control_pb2_grpc
+from google.protobuf.json_format import MessageToDict
 
 class DaqControlClient:
     """
@@ -91,13 +93,13 @@ class DaqControlClient:
                 raise ValueError(f"Server rejected data: {resp.message}")
             status = {}
             status['hashpipe_running'] = resp.hashpipe_running
-            status['disk_usage'] = resp.disk_usage
-            status['run_dirs'] = resp.run_dirs
+            status['disk_usage'] = dict(resp.disk_usage)
+            status['run_dirs'] = list(resp.run_dirs)
             return resp.success, status
         except grpc.RpcError as e:
             raise ConnectionError(f"gRPC failed: {e.details()}")
     
-    def CleanupData(self, parameters):
+    def CleanupData(self, parameters) -> dict[str, Any]:
         """
         Docstring for StatusDaq
         
@@ -113,8 +115,13 @@ class DaqControlClient:
         request.module_id.extend(parameters['module_id'])
         try:
             resp = self.stub.CleanupData(request)
-            if not resp.success:
-                raise ValueError(f"Server rejected data: {resp.message}")
-            return resp.success
+            resp_dict = MessageToDict(
+                resp,
+                always_print_fields_with_no_presence=True,
+                preserving_proto_field_name=True
+            )
+            # if not resp.success:
+            #     raise ValueError(f"Server rejected data: {resp.message}")
+            return resp_dict
         except grpc.RpcError as e:
             raise ConnectionError(f"gRPC failed: {e.details()}")

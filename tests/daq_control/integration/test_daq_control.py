@@ -55,8 +55,8 @@ def test_start_daq_already_running(grpc_client):
 
 def test_cleanup_data_while_running(grpc_client):
     """CleanupData must be rejected while hashpipe is running."""
-    with pytest.raises(ValueError):
-        grpc_client.CleanupData(CLEANUP_PARAMS)
+    # with pytest.raises(ValueError):
+    assert grpc_client.CleanupData(CLEANUP_PARAMS)['success'] is False
 
 
 def test_status_daq_hashpipe_running(grpc_client):
@@ -99,4 +99,4 @@ def test_status_daq_run_dirs(grpc_client):
 
 def test_cleanup_data(grpc_client):
     """CleanupData removes the run directory after hashpipe is stopped."""
-    assert grpc_client.CleanupData(CLEANUP_PARAMS) is True
+    assert grpc_client.CleanupData(CLEANUP_PARAMS)['success'] is True

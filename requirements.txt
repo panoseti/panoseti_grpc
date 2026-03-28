@@ -30,7 +30,7 @@ numpy>=1.26.4
 #jupyter>=1.1.1
 
 # panoseti utils
-netifaces >= 0.11.0
+# netifaces >= 0.11.0
 psutil >= 7.0.0
 
 # testing

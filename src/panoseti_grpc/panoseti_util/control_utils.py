@@ -78,22 +78,6 @@ def create_logger(logfile, tag, mode='w'):
         logger.handlers.clear()
     logger.addHandler(handler)
 
-# our IP address on local network (192.x.x.x)
-# see https://pypi.org/project/netifaces/
-#
-# def local_ip():
-#     ips = []
-#     for ifname in netifaces.interfaces():
-#         addrs = netifaces.ifaddresses(ifname)
-#         for a, b in addrs.items():
-#             for c in b:
-#                 z = c['addr']
-#                 if (z.startswith('192.')):
-#                     ips.append(z)
-#     if not ips:
-#         raise Exception("can't get local IP")
-#     else:
-#         return ips
 
 def local_ip():
     ips = []

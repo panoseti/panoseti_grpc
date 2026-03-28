@@ -15,6 +15,7 @@ import logging
 import psutil
 import shutil
 from pathlib import Path
+from pydantic import ValidationError
 
 import asyncio
 import signal
@@ -320,7 +321,12 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             self.logger.warning(msg)
             return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
         creq = self._request_to_dict(request)
-        vreq = CleanupDataModel(**creq)
+        try:
+            vreq = CleanupDataModel(**creq)
+        except ValidationError as e:
+            msg = f"Validation Error: {e}"
+            return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
+            
         datadir = vreq.data_dir
         rundir = vreq.run_dir
         module_id = vreq.module_id
