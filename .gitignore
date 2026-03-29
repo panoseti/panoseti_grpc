@@ -220,3 +220,6 @@ daq_data/logs
 # data simulation
 daq_data/simulated_data_dir/module_*
 loki-data/
+
+# pcap files
+*.pcapng

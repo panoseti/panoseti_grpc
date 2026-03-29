@@ -58,7 +58,7 @@ def hashpipe_pcap_runner():
 
     # Create the directory structure that `make_run_dirs` in start.py would create.
     # The gRPC server (via HpIoManager) will look for data inside base_dir/module_X/run_name/
-    module_ids = [1, 254]
+    module_ids = [250]
     cfg_str = ""
     for mid in module_ids:
         module_dir = base_dir / "module_{}".format(mid) / run_name

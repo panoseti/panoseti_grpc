@@ -150,8 +150,7 @@ COPY --from=daq-data-hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so* /u
 RUN ldconfig
 
 # Test data (pcapng capture for tcpreplay-based tests).
-COPY tests/daq_data_hashpipe/PH_onsky_NGC7331_1pixTrig_Anytrig1.5pe__20250801_102213_965_filtered2.pcapng \
-     /app/test_data.pcapng
+COPY tests/data/TEST_10k-pkts_MM+PH_flasher_20260321.pcapng /app/test_data.pcapng
 
 CMD ["python", "-m", "pytest", "-v", "-s", "--maxfail=2", "tests/daq_data_hashpipe/"]
 

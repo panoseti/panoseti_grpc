@@ -287,7 +287,7 @@ def cmd_daq_data_init_sim(args: argparse.Namespace) -> int:
     logger = get_logger("pseti-cli.daq-data", grpc_enabled=args.grpc_logging)
 
     try:
-        hp_io_cfg = load_package_json("panoseti_grpc.daq_data", "hp_io_config_simulate.json")
+        hp_io_cfg = load_package_json("panoseti_grpc", "daq_data/config/hp_io_config_simulate.json")
         hp_io_cfg["simulate_daq"] = True
         hp_io_cfg["force"] = True
     except Exception as e:
@@ -313,7 +313,7 @@ def cmd_daq_data_init_sim(args: argparse.Namespace) -> int:
         console.print("[green]✓[/green] DaqData simulation mode initialized.")
         return 0
     else:
-        console.print(f"[red]✗ InitHpIo returned success=False: {resp.message}[/red]")
+        console.print(f"[red]✗ InitHpIo returned success=False: {resp.error_message}[/red]")
         return 1
 
 
@@ -335,7 +335,6 @@ async def _stream_images(host: str, port: int, seconds: float, timeout: float) -
     """
     frames_received = 0
     deadline = time.monotonic() + seconds if seconds > 0 else float("inf")
-
     try:
         async with grpc.aio.insecure_channel(f"{host}:{port}") as channel:
             stub = daq_data_pb2_grpc.DaqDataStub(channel)
@@ -350,11 +349,11 @@ async def _stream_images(host: str, port: int, seconds: float, timeout: float) -
                     call.cancel()
                     break
                 frames_received += 1
-                module_id = resp.module_id
-                frame_id = resp.frame_id
-                dp = "movie" if resp.HasField("movie") else "ph"
+                module_id = resp.pano_image.module_id
+                frame_number = resp.pano_image.frame_number
+                dp = "movie" if resp.pano_image.type == daq_data_pb2.PanoImage.MOVIE else "ph"
                 console.print(
-                    f"frame #{frame_id:6d}  module={module_id}  type={dp}"
+                    f"frame #{frame_number:6d}  module={module_id}  type={dp}"
                 )
     except grpc.aio.AioRpcError as e:
         if e.code() == grpc.StatusCode.CANCELLED:

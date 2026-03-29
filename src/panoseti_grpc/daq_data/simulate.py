@@ -173,6 +173,7 @@ class SimulationManager:
         sim_cfg = self.server_cfg.simulate_daq_cfg
         if not sim_cfg:
             self.logger.error("`simulate_daq_cfg` not found in server configuration.")
+            self.logger.critical(f"{self.server_cfg=}")
             return False
 
         if sim_cfg.simulation_mode != "uds":
