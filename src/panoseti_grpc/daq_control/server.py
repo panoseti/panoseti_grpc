@@ -166,6 +166,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         # 2. check the parameters
         dreq = self._request_to_dict(request)
         vreq = StartDaqModel(**dreq)
+        vreq_dict = vreq.model_dump(mode='json', exclude_unset=True)
         # 3. get the parameters
         datadir = vreq.data_dir
         run_dir = vreq.run_dir
@@ -226,10 +227,17 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         asyncio.create_task(_monitor_hashpipe(proc, hp_stdout_logger, hp_stderr_logger))
         # get the hashpipe pid
         self.hashpipe_pid = proc.pid
-        success = is_hashpipe_running(self.hashpipe_pid)
+        
+        WAIT_TIMEOUT = 5  # seconds
+        POLL_INTERVAL = 0.05  # seconds
+        for _ in range(int(WAIT_TIMEOUT / POLL_INTERVAL)):
+            success = is_hashpipe_running(self.hashpipe_pid)
+            if success:
+                break
+            await asyncio.sleep(POLL_INTERVAL)
         self.logger.info(f"HASHPIPE instance status: {success}; PID: {self.hashpipe_pid}")
         if not success:
-            msg = 'HASHPIPE start failed.'
+            msg = f'HASHPIPE start failed. \n{vreq_dict=} \n{cmd=}'
         else:
             msg = ''
         return daq_control_pb2.StartDaqResponse(success=success, message=msg)
