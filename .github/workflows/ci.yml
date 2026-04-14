@@ -13,6 +13,33 @@ on:
 jobs:
 
   # ─────────────────────────────────────────────────────────────────────────
+  # Lint — Ruff linting + formatting and MyPy type checking.
+  # ─────────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Run Linter
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.ci
+          target: qa-linter
+          load: true
+          tags: panoseti-lint:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Lint checks
+        run: docker run --rm panoseti-lint:ci
+
+  # ─────────────────────────────────────────────────────────────────────────
   # DAQ Data — pure Python tests, no external services required.
   # Runs all of tests/daq_data/ inside the daq-data-test Dockerfile.ci stage.
   # ─────────────────────────────────────────────────────────────────────────

@@ -31,6 +31,8 @@ def compile_protos():
             f'-I{PROTOS_DIR}',
             f'--python_out={OUT_DIR}',
             f'--grpc_python_out={OUT_DIR}',
+            f'--mypy_out={OUT_DIR}',
+            f'--mypy_grpc_out={OUT_DIR}',
             os.path.join(PROTOS_DIR, proto)
         ])
     
@@ -38,12 +40,12 @@ def compile_protos():
 
 def fix_relative_imports():
     """
-    Patches generated _pb2.py files to use relative imports.
+    Patches generated _pb2.py and .pyi files to use relative imports.
     Changes 'import daq_data_pb2' -> 'from . import daq_data_pb2'
     """
     print("Patching relative imports...")
     for filename in os.listdir(OUT_DIR):
-        if filename.endswith(".py"):
+        if filename.endswith(".py") or filename.endswith(".pyi"):
             filepath = os.path.join(OUT_DIR, filename)
             with open(filepath, 'r') as f:
                 content = f.read()

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "panoseti-grpc"
-version = "0.4.3"
+version = "0.4.4"
 description = "gRPC for the PANOSETI project."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -59,6 +59,10 @@ dev = [
     "pytest-timeout",
     "black",
     "flake8",
+    "ruff>=0.15",
+    "mypy>=1.20.0",
+    "mypy-protobuf",
+    "types-protobuf",
     "ipython",
 ]
 docs = [
@@ -105,6 +109,20 @@ target-version = ["py39"]
 [tool.flake8]
 max-line-length = 120
 extend-ignore = ["E203", "W503"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+exclude = ["src/panoseti_grpc/generated"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+ignore_missing_imports = true
+exclude = ["src/panoseti_grpc/generated"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"

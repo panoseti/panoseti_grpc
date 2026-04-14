@@ -223,3 +223,9 @@ loki-data/
 
 # pcap files
 *.pcapng
+
+# Redis cache
+dump.rdb
+
+# cpp project
+cpp_daq_data/

@@ -1,0 +1,46 @@
+# ── Global settings ──────────────────────────────────────────────────────────
+
+[settings]
+default_parallel = 4
+
+# ── Lint tasks ───────────────────────────────────────────────────────────────
+# All lint tasks run concurrently. Output lines are prefixed with the task name.
+
+[lint.ruff]
+command     = "docker build --target qa-linter -f Dockerfile.ci -t panoseti-qa-linter . && docker run --rm panoseti-qa-linter python -m ruff check src/ tests/ scripts/"
+description = "Ruff lint (Python)"
+
+[lint.ruff_format]
+command     = "docker run --rm panoseti-qa-linter python -m ruff format --check src/ tests/ scripts/"
+description = "Ruff format check"
+
+[lint.mypy]
+command     = "docker run --rm panoseti-qa-linter python -m mypy src/ tests/ scripts/"
+description = "MyPy static type check"
+
+# ── Test tasks ────────────────────────────────────────────────────────────────
+# Sequential execution.
+
+[test.daq_data]
+command     = "docker build -t panoseti-daq-data-ci --target daq-data-test -f Dockerfile.ci . && docker run --rm panoseti-daq-data-ci python3 -m pytest -v -s --maxfail=2 tests/daq_data/"
+description = "DAQ Data service integration tests"
+
+[test.daq_control]
+command     = "docker compose -f tests/daq_control/docker-compose.test.yml up --build --exit-code-from test_runner --abort-on-container-exit && docker compose -f tests/daq_control/docker-compose.test.yml down"
+description = "DAQ Control service integration tests"
+
+[test.telemetry]
+command     = "docker compose -f tests/telemetry/docker-compose.test.yml up --build --exit-code-from test_runner --abort-on-container-exit && docker compose -f tests/telemetry/docker-compose.test.yml down --volumes --remove-orphans"
+description = "Telemetry service integration tests (requires Redis)"
+
+[test.ublox]
+command     = "docker build -t panoseti-ublox-ci --target ublox-test -f Dockerfile.ci . && docker run --rm panoseti-ublox-ci python3 -m pytest -v -s --maxfail=2 tests/ublox_control/"
+description = "U-blox control service integration tests"
+
+[test.unified_server]
+command     = "docker compose -f tests/unified_server/docker-compose.test.yml up --build --exit-code-from test_runner --abort-on-container-exit && docker compose -f tests/unified_server/docker-compose.test.yml down --volumes --remove-orphans"
+description = "Unified server integration tests"
+
+[test.hashpipe_daq_data]
+command     = "docker build -t panoseti-hashpipe-daq-data-ci --target daq-data-hashpipe-test -f Dockerfile.ci . && docker run --rm --shm-size=2g -e RUN_REAL_DATA_TESTS=1 panoseti-hashpipe-daq-data-ci python3 -m pytest -v -s --maxfail=2 tests/daq_data_hashpipe/"
+description = "Hashpipe DAQ Data integration tests (requires real/simulated hardware)"

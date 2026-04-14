@@ -21,17 +21,24 @@ pip install -e ".[dev]"
 # Recompile all .proto files → generates src/panoseti_grpc/generated/*_pb2.py and *_pb2_grpc.py
 python scripts/compile_protos.py
 ```
-
 ### Testing
-Each service has a CI shell script that sets up Docker dependencies and runs pytest:
+Unified QA runner (recommended):
+```bash
+python tests/qa.py all                # Run all linters and test suites
+python tests/qa.py lint               # Run linters (Ruff, MyPy)
+python tests/qa.py telemetry          # Run specific test suite (e.g. telemetry)
+```
+
+Individual service CI shell scripts (legacy):
 ```bash
 ./scripts/run-ci-tests/run-daq-data-ci-test.sh
 ./scripts/run-ci-tests/run-daq-control-test.sh
 ./scripts/run-ci-tests/run-telemetry-ci-test.sh
-./scripts/run-ci-tests/run-unified-server-ci-test.sh  # all three services on one port
+./scripts/run-ci-tests/run-unified-server-ci-test.sh
 ./scripts/run-ci-tests/run-ublox-ci-test.sh
-./scripts/run-ci-tests/run-hashpipe-daq-data-ci.sh   # requires real/simulated Hashpipe hardware
+./scripts/run-ci-tests/run-hashpipe-daq-data-ci.sh
 ```
+
 
 Run unified server tests locally (unit tests require no services; integration tests skip gracefully without Redis):
 ```bash

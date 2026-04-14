@@ -241,3 +241,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 CMD ["python", "-m", "pytest", "-v", "--timeout=90", "tests/unified_server/"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: qa-linter
+# Runs Ruff and MyPy to verify code quality and type safety.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM base AS qa-linter
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Ensure we have all dev dependencies for linting
+RUN pip install ruff mypy mypy-protobuf types-protobuf
+
+# Default command: check everything.
+# We exclude 'generated/' via pyproject.toml configuration.
+CMD ["sh", "-c", "python -m ruff check src/ tests/ scripts/ && python -m ruff format --check src/ tests/ scripts/ && python -m mypy src/ tests/ scripts/"]

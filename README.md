@@ -121,9 +121,22 @@ log_dir = "/var/log/panoseti"
 
 We use a comprehensive CI pipeline (GitHub Actions) to verify every commit. You can—and should—run these same tests locally before pushing code.
 
-### Run CI Tests Locally via Bash Scripts (Recommended)
+### Unified QA Runner (Recommended)
 
-To run a CI test locally, use one of the scripts in `scripts/run-ci-tests/`.
+The most efficient way to run quality checks and tests is via the unified QA runner:
+
+```bash
+# Run all linters and test suites
+python tests/qa.py all
+
+# Run specific tasks
+python tests/qa.py lint
+python tests/qa.py telemetry
+```
+
+### Run CI Tests Locally via Bash Scripts
+
+Alternatively, you can use the individual scripts in `scripts/run-ci-tests/`.
 Each service has an associated script which builds the Docker containers and runs the appropriate test suites.
 
 #### Examples:
