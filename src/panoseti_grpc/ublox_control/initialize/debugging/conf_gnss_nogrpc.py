@@ -13,6 +13,7 @@ import csv
 import re
 import sys
 import time
+from typing import Any
 
 import json5 as json
 import serial
@@ -41,7 +42,7 @@ LAYER_ORDER = ["RAM", "BBR", "FLASH", "DEFAULT"]  # FLASH may NAK VALGET; ok if 
 _HEXKEY_RE = re.compile(r"^CFG_0x([0-9A-Fa-f]{8})$")
 
 
-def _to_float(x):
+def _to_float(x: Any) -> None:
     """
     Helper function to see if a value is a number
     """
@@ -51,7 +52,7 @@ def _to_float(x):
         return None
 
 
-def _fmt_val(v, dtype):
+def _fmt_val(v: Any, dtype: Any) -> None:
     """
     Helper function for printing out types/units in register descriptions
     """
@@ -90,7 +91,7 @@ def _layers_mask(names: list[str]) -> int:
     return mask
 
 
-def _merge_cfg_kvmap(dst: dict, kvmap: dict) -> None:
+def _merge_cfg_kvmap(dst: dict[Any], kvmap: dict[Any]) -> None:
     """
     Not used anymore. Was used when trying to figure out format of I/O
     """
@@ -98,7 +99,7 @@ def _merge_cfg_kvmap(dst: dict, kvmap: dict) -> None:
         _merge_cfg_one(dst, k, v)
 
 
-def _log_plan(cfg_items):
+def _log_plan(cfg_items: Any) -> None:
     """
     Prints out registers / info about them if you set verbose mode on
     """
@@ -111,7 +112,7 @@ def _log_plan(cfg_items):
         )
 
 
-def _await_ack(ser, timeout=3.0) -> bool:
+def _await_ack(ser: Any, timeout: Any = 3.0) -> bool:
     """
     Wait for UBX-ACK-ACK or UBX-ACK-NAK after a command.
     """
@@ -134,7 +135,7 @@ def _norm_name(s: str) -> str:
     return s.strip().replace("-", "_").upper()
 
 
-def _fmt_eng(value, dtype, scale_str, unit_str):
+def _fmt_eng(value: Any, dtype: Any, scale_str: Any, unit_str: Any) -> None:
     """
     Return (eng_value_str, unit_str_shown). If scale is numeric, eng = raw * scale.
     If scale is '-' or not numeric, we just append the unit (if any).
@@ -167,13 +168,13 @@ def _fmt_eng(value, dtype, scale_str, unit_str):
         return f"{vnum:g}", u
 
 
-def _split_scaled_llh(lat_deg, lon_deg, h_m):
+def _split_scaled_llh(lat_deg: Any, lon_deg: Any, h_m: Any) -> None:
     """
     Convert latitude, longitude, and height into F9T units (F9P finds its own)
     """
 
     # INT + HP parts: INT in 1e-7 deg (lat/lon), cm (height). HP in 1e-9 deg, 0.1 mm (height).
-    def ll_to_int_hp(deg):
+    def ll_to_int_hp(deg: Any) -> None:
         tot_1e9 = int(round(deg * 1e9))
         int_1e7 = int(tot_1e9 // 100)  # truncate to 1e-7 deg
         hp_1e9 = int(tot_1e9 - int_1e7 * 100)  # residual in 1e-9 deg
@@ -189,7 +190,7 @@ def _split_scaled_llh(lat_deg, lon_deg, h_m):
     return lat_i, lat_hp, lon_i, lon_hp, h_cm, h_hp
 
 
-def _merge_cfg_one(dst: dict, k, v):
+def _merge_cfg_one(dst: dict[Any], k: Any, v: Any) -> None:
     """
     Take a config key and add it to the config dictionary (register key is agnostic to form)
     """
@@ -214,7 +215,7 @@ def _merge_cfg_one(dst: dict, k, v):
     dst[kid] = v
 
 
-def _merge_cfg_results(dst: dict, parsed) -> None:
+def _merge_cfg_results(dst: dict[Any], parsed: Any) -> None:
     """
     Normalize any CFG-VALGET payload into {numeric_keyid: value}.
     Handles:
@@ -223,11 +224,11 @@ def _merge_cfg_results(dst: dict, parsed) -> None:
       - attributes named like CFG_* (incl. CFG_0xXXXXXXXX)
     """
     cfg = getattr(parsed, "cfgData", None) or getattr(parsed, "cfgdata", None)
-    if isinstance(cfg, dict):
+    if isinstance(cfg, dict[Any]):
         for k, v in cfg.items():
             _merge_cfg_one(dst, k, v)
             return
-    if isinstance(cfg, list):
+    if isinstance(cfg, list[Any]):
         for k, v in cfg:
             _merge_cfg_one(dst, k, v)
             return
@@ -266,7 +267,7 @@ def _merge_cfg_results(dst: dict, parsed) -> None:
                 break
 
 
-def _to_cfg_items(entries):
+def _to_cfg_items(entries: Any) -> None:
     """
     Returns a list of dicts with {'name','id','value'}.
     We send by ID for robustness, but keep name for printing.
@@ -296,7 +297,7 @@ def _to_cfg_items(entries):
     return out
 
 
-def poll_mon_ver(ser, timeout=2.5):
+def poll_mon_ver(ser: Any, timeout: Any = 2.5) -> None:
     """
     Checking to see if there is a device
     """
@@ -321,7 +322,7 @@ def poll_mon_ver(ser, timeout=2.5):
     raise RuntimeError("No MON-VER response")
 
 
-def resolve_keyid(k):
+def resolve_keyid(k: Any) -> None:
     """
     Old way of converting register to a key id
     """
@@ -334,7 +335,9 @@ def resolve_keyid(k):
     return kid
 
 
-def send_cfg_valset_grouped(ser, cfg_items, layers_mask, verbose=False, sleep_after_signal=0.3):
+def send_cfg_valset_grouped(
+    ser: Any, cfg_items: Any, layers_mask: Any, verbose: Any = False, sleep_after_signal: Any = 0.3
+) -> None:
     """
     Apply CFG items in sensible groups so the GNSS engine restarts once:
     - Group 1: CFG_SIGNAL_*  (atomic transaction; optional short pause after)
@@ -343,7 +346,7 @@ def send_cfg_valset_grouped(ser, cfg_items, layers_mask, verbose=False, sleep_af
     Returns a flat list of ACK booleans (one per chunk).
     """
 
-    def _send_chunks(pairs, transactional=True, tag=""):
+    def _send_chunks(pairs: Any, transactional: Any = True, tag: Any = "") -> None:
         """
         Send in chunks -- Max 64 keys per message
         """
@@ -364,13 +367,13 @@ def send_cfg_valset_grouped(ser, cfg_items, layers_mask, verbose=False, sleep_af
             acks.append(ok)
         return acks
 
-    def _order_other(items):
+    def _order_other(items: Any) -> None:
         """
         Order how messages are sent. Configure constellation settings first followed by
         mode setting, followed by output pulse settings, followed by output protocol settings
         """
 
-        def prio(n):
+        def prio(n: Any) -> None:
             return (
                 0
                 if n.startswith("CFG_TMODE_")
@@ -399,7 +402,7 @@ def send_cfg_valset_grouped(ser, cfg_items, layers_mask, verbose=False, sleep_af
     return acks
 
 
-def poll_cfg(ser, key_ids, layer_name: str, position: int = 0):
+def poll_cfg(ser: Any, key_ids: Any, layer_name: str, position: int = 0) -> None:
     """
     Check config values to make sure things were sucessfully set
     """
@@ -426,7 +429,7 @@ def poll_cfg(ser, key_ids, layer_name: str, position: int = 0):
                 if all(k in results for k in chunk):
                     break
                 cfg = getattr(parsed, "cfgData", None) or getattr(parsed, "cfgdata", None)
-                if isinstance(cfg, dict):
+                if isinstance(cfg, dict[Any]):
                     _merge_cfg_results(results, cfg)
                 else:
                     # fallback: keyIDn / valn pairs
@@ -447,7 +450,7 @@ def poll_cfg(ser, key_ids, layer_name: str, position: int = 0):
     return results
 
 
-def load_regdesc_csv(path: str):
+def load_regdesc_csv(path: str) -> None:
     """
     Load  CSV into two dicts:
       by_id[int_keyid]  -> {name, id, dtype, scale, unit, default, desc}
@@ -498,7 +501,7 @@ def load_regdesc_csv(path: str):
     return by_id, by_name
 
 
-def build_tmode_fixed_from_json(pos: dict, acc_m: float):
+def build_tmode_fixed_from_json(pos: dict[Any], acc_m: float) -> None:
     """
     Add position coordinates to the list of registers to set. Needed for ZED-F9T
     where position is assumed fixed
@@ -530,7 +533,7 @@ def build_tmode_fixed_from_json(pos: dict, acc_m: float):
     return items
 
 
-def describe_plan(cfg_items, db_by_id, db_by_name):
+def describe_plan(cfg_items: Any, db_by_id: Any, db_by_name: Any) -> None:
     """
     Print a doc line for every key we're about to write, including
     engineering units using CSV scale+unit.
@@ -564,7 +567,7 @@ def describe_plan(cfg_items, db_by_id, db_by_name):
         )
 
 
-def initial_probe(ser, verbose=False):
+def initial_probe(ser: Any, verbose: Any = False) -> None:
     """
     Poll a couple of registers to check if things are alive
     """
@@ -572,7 +575,7 @@ def initial_probe(ser, verbose=False):
     info = poll_mon_ver(ser)
     if verbose:
 
-        def _clean(b):
+        def _clean(b: Any) -> None:
             return b.decode(errors="ignore").strip("\x00")
 
         print(
@@ -590,7 +593,7 @@ def initial_probe(ser, verbose=False):
     print(f"[VALGET] TP1 freq: {tp1.get(0x40050024)}, TP2 freq: {tp2.get(0x40050026)}")
 
 
-def poll_one_by_id(ser, keyid: int, layer: int = 0, pos: int = 0, timeout=3.0):
+def poll_one_by_id(ser: Any, keyid: int, layer: int = 0, pos: int = 0, timeout: Any = 3.0) -> None:
     """
     Poll a single register
     """
@@ -622,7 +625,7 @@ def poll_one_by_id(ser, keyid: int, layer: int = 0, pos: int = 0, timeout=3.0):
 
 
 '''
-def poll_cfg_layers(ser, key_ids):
+def poll_cfg_layers( ser: Any, key_ids: Any) -> None:
     """
     Poll registers across a layer 
     """
@@ -631,7 +634,7 @@ def poll_cfg_layers(ser, key_ids):
     for lname in LAYER_ORDER:
         if not remaining:
             break
-        got = poll_cfg(ser, list(remaining), lname)
+        got = poll_cfg(ser,list[Any](remaining), lname)
         for kid, val in got.items():
             winners[kid] = (val, lname)
         remaining -= set(got.keys())
@@ -639,7 +642,7 @@ def poll_cfg_layers(ser, key_ids):
 '''
 
 
-def detect_model(ser) -> str:
+def detect_model(ser: Any) -> str:
     """
     Get the model of the device being used (way to distinguish between F9P and F9T)
     """
@@ -696,7 +699,7 @@ def get_f9t_unique_id(ser: serial.Serial, timeout: float = 3.0) -> str:
 
 
 # add helper
-def lock_config(ser, layers: list[str]) -> list[bool]:
+def lock_config(ser: Any, layers: list[str]) -> list[bool]:
     """
     Set CFG_SEC_CFG_LOCK=1 on each requested layer in order.
     Returns a list of ACK booleans, one per layer lock attempt.
@@ -717,7 +720,7 @@ class _HelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescrip
     pass
 
 
-def parse_args():
+def parse_args() -> None:
     ap = argparse.ArgumentParser(
         prog="conf_gnss",
         description="Configure u-blox GNSS receivers (F9T/F9P) from a JSON plan and verify\n Currently only verifies a single layer",
@@ -753,7 +756,7 @@ def parse_args():
     return ap.parse_args()
 
 
-def get_unique_id(ser, timeout=2.0):
+def get_unique_id(ser: Any, timeout: Any = 2.0) -> None:
     """
     Poll UBX-SEC-UNIQID (class 0x27, id 0x03). Returns 5-byte UID or None.
     Works even if pyubx2 doesn't know the SEC-UNIQID name.
@@ -794,7 +797,7 @@ def get_unique_id(ser, timeout=2.0):
     return None
 
 
-def main():
+def main() -> None:
     """
     Set options, load JSON configuration file, write/check registers
     """

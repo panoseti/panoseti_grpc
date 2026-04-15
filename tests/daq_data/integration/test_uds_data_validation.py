@@ -33,10 +33,10 @@ HP_IO_SIM = {
 }
 
 
-async def _collect_frames(client, n: int, **stream_kwargs) -> list[dict]:
+async def _collect_frames(client, n: int, **stream_kwargs) -> list[dict[Any]]:
     """Collect `n` frames from a fresh StreamImages call and return them."""
     stream = await client.stream_images(hosts=None, **stream_kwargs)
-    frames: list[dict] = []
+    frames: list[dict[Any]] = []
     async for img in stream:
         frames.append(img)
         if len(frames) >= n:

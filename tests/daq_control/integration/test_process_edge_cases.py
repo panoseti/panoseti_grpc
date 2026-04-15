@@ -4,6 +4,7 @@ crash detection via SIGKILL, stale-PID handling, log-file placement,
 and disk-usage response completeness.
 """
 
+from typing import Any
 import os
 import signal
 import time
@@ -43,7 +44,7 @@ CLEANUP_PARAMS = {
 }
 
 
-def _find_hashpipe_pid():
+def _find_hashpipe_pid() -> None:
     """Return the PID of a running hashpipe process, or None."""
     for proc in psutil.process_iter(["pid", "cmdline"]):
         try:
@@ -54,7 +55,7 @@ def _find_hashpipe_pid():
     return None
 
 
-def test_hashpipe_crash_detection(grpc_client):
+def test_hashpipe_crash_detection( grpc_client: Any) -> None:
     """
     After StartDaq, forcibly kill the hashpipe process with SIGKILL.
     StatusDaq must subsequently report hashpipe_running=False.
@@ -91,7 +92,7 @@ def test_hashpipe_crash_detection(grpc_client):
         pass
 
 
-def test_stop_daq_with_stale_pid(grpc_client):
+def test_stop_daq_with_stale_pid( grpc_client: Any) -> None:
     """
     StopDaq when the cached PID is invalid (process already gone) must
     return success=True and not raise an exception.
@@ -105,7 +106,7 @@ def test_stop_daq_with_stale_pid(grpc_client):
     assert result2 is True
 
 
-def test_log_files_written_to_correct_run_dir(grpc_client):
+def test_log_files_written_to_correct_run_dir( grpc_client: Any) -> None:
     """
     After StartDaq, hp_stdout.log and hp_stderr.log must exist under
     {data_dir}/{run_dir}/ — not in the parent data_dir or elsewhere.
@@ -135,7 +136,7 @@ def test_log_files_written_to_correct_run_dir(grpc_client):
             pass
 
 
-def test_disk_usage_keys_present(grpc_client):
+def test_disk_usage_keys_present( grpc_client: Any) -> None:
     """
     StatusDaq with check_disk_usage=True must return a disk_usage struct
     containing total_disk_space, used_disk_space, and free_disk_space,

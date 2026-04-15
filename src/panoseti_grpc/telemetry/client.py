@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -5,6 +7,7 @@ import queue
 import socket
 import threading
 from queue import Full, Queue
+from typing import Any
 
 import grpc
 from google.protobuf.json_format import ParseDict
@@ -39,7 +42,7 @@ class TelemetryClient:
     Supports both Strict (Production) and Flexible (Experimental) logging.
     """
 
-    def __init__(self, host=None, port=None):
+    def __init__(self, host: str | None = None, port: int | None = None) -> None:
         """
         Initialize the client connection to the Headnode Telemetry Service server.
         Args:
@@ -79,19 +82,19 @@ class TelemetryClient:
         self.channel.subscribe(self._on_channel_state_change)
         self.stub = telemetry_pb2_grpc.TelemetryStub(self.channel)
 
-    def _on_channel_state_change(self, connectivity):
+    def _on_channel_state_change(self, connectivity: grpc.ChannelConnectivity) -> None:
         # This runs in a background thread whenever connection state changes
         if connectivity == grpc.ChannelConnectivity.TRANSIENT_FAILURE:
             print(f"⚠️ Telemetry Connection Lost to [{self.target}] - Retrying...")
         elif connectivity == grpc.ChannelConnectivity.READY:
             print(f"✅ Telemetry Connection Active / Restored to [{self.target}]")
 
-    def _get_timestamp(self):
+    def _get_timestamp(self) -> Timestamp:
         ts = Timestamp()
         ts.GetCurrentTime()
         return ts
 
-    def _send(self, request):
+    def _send(self, request: telemetry_pb2.StatusRequest) -> None:
         try:
             resp = self.stub.ReportStatus(request)
             if not resp.success:
@@ -99,7 +102,7 @@ class TelemetryClient:
         except grpc.RpcError as e:
             raise ConnectionError(f"gRPC failed: {e.details()}") from e
 
-    def log_flexible(self, device_type: str, device_id: str, data: dict):
+    def log_flexible(self, device_type: str, device_id: str, data: dict[str, Any]) -> None:
         """
         Experimental Mode Logging.
 
@@ -115,7 +118,7 @@ class TelemetryClient:
         )
         self._send(req)
 
-    def log_test(self, device_id: str, iteration: int, value: float, message: str, active: bool):
+    def log_test(self, device_id: str, iteration: int, value: float, message: str, active: bool) -> None:
         """
         Strict Mode: Test Payload.
         Used for CI/CD pipeline health checks.
@@ -127,7 +130,7 @@ class TelemetryClient:
         )
         self._send(req)
 
-    def log_strict(self, device_type: str, device_id: str, data: dict):
+    def log_strict(self, device_type: str, device_id: str, data: dict[str, Any]) -> None:
         """
         Production Mode Logging.
 
@@ -143,13 +146,13 @@ class TelemetryClient:
 
         match device_type:
             case "gnss":
-                payload = telemetry_pb2.GnssPayload()
-                ParseDict(data, payload)
-                req.gnss.CopyFrom(payload)
+                gnss_payload = telemetry_pb2.GnssPayload()
+                ParseDict(data, gnss_payload)
+                req.gnss.CopyFrom(gnss_payload)
             case "dew":
-                payload = telemetry_pb2.DewPayload()
-                ParseDict(data, payload)
-                req.dew.CopyFrom(payload)
+                dew_payload = telemetry_pb2.DewPayload()
+                ParseDict(data, dew_payload)
+                req.dew.CopyFrom(dew_payload)
             case _:
                 raise ValueError(
                     f"Unsupported strict device_type: '{device_type}'. "
@@ -160,16 +163,16 @@ class TelemetryClient:
 
     def send_log_future(
         self,
-        service,
-        severity,
-        message,
-        timestamp=None,
-        file_path="",
-        line_number=0,
-        function_name="",
-        process_id=0,
-        thread_name="",
-    ):
+        service: str,
+        severity: int,
+        message: str,
+        timestamp: float | None = None,
+        file_path: str = "",
+        line_number: int = 0,
+        function_name: str = "",
+        process_id: int = 0,
+        thread_name: str = "",
+    ) -> grpc.Future:
         ts = Timestamp()
         if timestamp:
             ts.FromSeconds(int(timestamp))
@@ -195,11 +198,11 @@ class TelemetryClient:
 
 
 class AsyncGrpcHandler(logging.Handler):
-    def __init__(self, grpc_client, service_name, queue_size=1000):
+    def __init__(self, grpc_client: TelemetryClient | None, service_name: str, queue_size: int = 1000) -> None:
         super().__init__()
         self.grpc_client = grpc_client
         self.service_name = service_name
-        self.queue = Queue(maxsize=queue_size)
+        self.queue: Queue[dict[str, Any]] = Queue(maxsize=queue_size)
 
         if grpc_client is not None:
             # Start the background worker
@@ -209,7 +212,7 @@ class AsyncGrpcHandler(logging.Handler):
         else:
             print("LogShipper is disabled because grpc_client is not available.")
 
-    def emit(self, record):
+    def emit(self, record: logging.LogRecord) -> None:
         try:
             msg = self.format(record)
             # Python's LogRecord already captures these!
@@ -236,14 +239,17 @@ class AsyncGrpcHandler(logging.Handler):
         except Exception:
             self.handleError(record)
 
-    def _worker(self):
-        while not self._stop_event.is_set():
+    def _worker(self) -> None:
+        while hasattr(self, "_stop_event") and not self._stop_event.is_set():
             try:
                 # 1. Get from queue (Blocking wait for new logs)
                 payload = self.queue.get(timeout=0.5)
             except queue.Empty:
                 continue
             try:
+                if self.grpc_client is None:
+                    continue
+
                 # Unwrap and Enrich JSON
                 raw_msg = payload["msg"]
                 final_json_str = ""
@@ -286,7 +292,7 @@ class AsyncGrpcHandler(logging.Handler):
 
             self.queue.task_done()
 
-    def _on_rpc_done(self, future):
+    def _on_rpc_done(self, future: grpc.Future) -> None:
         """
         Called by gRPC background thread when the request finishes (or times out).
         """
@@ -299,21 +305,22 @@ class AsyncGrpcHandler(logging.Handler):
             #     print(f"{status_code}: {e.details()}")
             pass
 
-    def close(self):
+    def close(self) -> None:
         """
         Stops the worker thread.
         NOTE: We generally do NOT close the self.client here because it might
         be shared by other loggers. The Client's channel cleans up on process exit.
         """
-        self._stop_event.set()
-        if self.worker.is_alive():
+        if hasattr(self, "_stop_event"):
+            self._stop_event.set()
+        if hasattr(self, "worker") and self.worker.is_alive():
             self.worker.join(timeout=1.0)
         super().close()
 
 
 def make_grpc_logger(
     service_name: str,
-    grpc_client: TelemetryClient = None,
+    grpc_client: TelemetryClient | None = None,
     queue_size: int = 1000,
     level: int = logging.INFO,
     attach_to_root: bool = False,
@@ -357,14 +364,11 @@ def make_grpc_logger(
     if grpc_client is None:
         try:
             grpc_client = TelemetryClient()
-            assert isinstance(grpc_client, TelemetryClient), (
-                f"grpc_client='{grpc_client}' is not an instance of TelemetryClient"
-            )
         except Exception as e:
             logging.exception(e)
 
     # 2. Create the gRPC Handler (Always do this)
-    grpc_handler = AsyncGrpcHandler(grpc_client, service_name)
+    grpc_handler = AsyncGrpcHandler(grpc_client, service_name, queue_size=queue_size)
 
     # 3. Attach gRPC Handler (Idempotent check)
     if not any(isinstance(h, AsyncGrpcHandler) for h in target_logger.handlers):

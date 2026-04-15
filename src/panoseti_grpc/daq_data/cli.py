@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
 import asyncio
 import json
@@ -7,6 +9,7 @@ import os.path
 import signal
 import time
 from pathlib import Path
+from typing import Any
 
 from rich import print
 from rich.pretty import pprint
@@ -21,12 +24,12 @@ CFG_DIR = Path("daq_data/config")
 
 async def run_pulse_height_distribution(
     addc: AioDaqDataClient,
-    host: str,
+    host: str | None,
     plot_update_interval: float,
-    module_ids: tuple[int],
+    module_ids: list[int],
     shutdown_event: asyncio.Event,
-    durations_seconds=(5, 10, 30),
-):
+    durations_seconds: tuple[int, ...] = (5, 10, 30),
+) -> None:
     """Streams pulse-height images and updates max pixel distribution histograms."""
     if len(module_ids) == 0:
         print("no module_ids specified, using data from all modules to make ph distribution")
@@ -37,28 +40,29 @@ async def run_pulse_height_distribution(
         host,
         stream_movie_data=False,
         stream_pulse_height_data=True,
-        update_interval_seconds=-1,
-        module_ids=module_ids,
+        update_interval_seconds=-1.0,
+        module_ids=tuple(module_ids),
         parse_pano_images=True,
     )
     ph_dist = PulseHeightDistribution(durations_seconds, module_ids, plot_update_interval)
     async for parsed_pano_image in stream_images_responses:
         if shutdown_event.is_set():
             break
-        ph_dist.update(parsed_pano_image)
+        if isinstance(parsed_pano_image, dict):
+            ph_dist.update(parsed_pano_image)
 
 
 async def run_pano_image_preview(
     addc: AioDaqDataClient,
-    host: str,
+    host: str | None,
     stream_movie_data: bool,
     stream_pulse_height_data: bool,
     update_interval_seconds: float,
     plot_update_interval: float,
-    module_ids: tuple[int],
+    module_ids: list[int],
     shutdown_event: asyncio.Event,
     wait_for_ready: bool = False,
-):
+) -> None:
     """Streams PanoImages from an active observing run."""
     # Make the RPC call
     stream_images_responses = await addc.stream_images(
@@ -66,32 +70,33 @@ async def run_pano_image_preview(
         stream_movie_data=stream_movie_data,
         stream_pulse_height_data=stream_pulse_height_data,
         update_interval_seconds=update_interval_seconds,
-        module_ids=module_ids,
+        module_ids=tuple(module_ids),
         parse_pano_images=True,
         wait_for_ready=wait_for_ready,
     )
     previewer = PanoImagePreviewer(
-        stream_movie_data, stream_pulse_height_data, module_ids, plot_update_interval=plot_update_interval
+        stream_movie_data, stream_pulse_height_data, tuple(module_ids), plot_update_interval=plot_update_interval
     )
     async for parsed_pano_image in stream_images_responses:
         if shutdown_event.is_set():
             break
-        previewer.update(parsed_pano_image)
+        if isinstance(parsed_pano_image, dict):
+            previewer.update(parsed_pano_image)
 
 
 async def run_speed_test(
     addc: AioDaqDataClient,
-    host: str,
-    module_ids: tuple[int],
+    host: str | None,
+    module_ids: list[int],
     shutdown_event: asyncio.Event,
-):
+) -> None:
     # Stream images of all types as fast as possible
     stream_images_responses = await addc.stream_images(
         host,
         stream_movie_data=True,
         stream_pulse_height_data=True,
-        update_interval_seconds=-1,
-        module_ids=module_ids,
+        update_interval_seconds=-1.0,
+        module_ids=tuple(module_ids),
         parse_pano_images=True,
     )
     # ph_dist = PulseHeightDistribution(durations_seconds, module_ids, plot_update_interval)
@@ -110,7 +115,7 @@ async def run_speed_test(
             ref_t = curr_t
 
 
-async def do_ping_fn(addc, host):
+async def do_ping_fn(addc: AioDaqDataClient, host: str | None) -> None:
     if host is None:
         raise ValueError("--host must be specified for --ping")
     if await addc.ping(host):
@@ -119,13 +124,13 @@ async def do_ping_fn(addc, host):
         print(f"PING {host=}: [red] failed [/red]")
 
 
-async def do_list_hosts_fn(addc):
+async def do_list_hosts_fn(addc: AioDaqDataClient) -> None:
     print("DAQ host status (True = valid, False = invalid):")
     host_status_dict = await addc.get_daq_host_status()
     pprint(host_status_dict, expand_all=True)
 
 
-async def do_reflect_services_fn(addc: AioDaqDataClient, host):
+async def do_reflect_services_fn(addc: AioDaqDataClient, host: str | None) -> None:
     print("-------------- ReflectServices --------------")
     try:
         services = await addc.reflect_services(host)
@@ -134,7 +139,9 @@ async def do_reflect_services_fn(addc: AioDaqDataClient, host):
         print(f"Error reflecting services: {e}")
 
 
-async def do_init_fn(addc, host, hp_io_cfg, timeout=15.0):
+async def do_init_fn(
+    addc: AioDaqDataClient, host: str | None, hp_io_cfg: dict[str, Any], timeout: float = 15.0
+) -> None:
     print("-------------- InitHpIo --------------")
     if host is None:
         print("Initializing hp_io thread on all hosts")
@@ -143,7 +150,8 @@ async def do_init_fn(addc, host, hp_io_cfg, timeout=15.0):
     await addc.init_hp_io(host, hp_io_cfg, timeout=timeout)
 
 
-def parse_log_level(log_level):
+def parse_log_level(log_level: str) -> int:
+    log_level = log_level.lower()
     if log_level == "debug":
         return logging.DEBUG
     elif log_level == "info":
@@ -158,34 +166,36 @@ def parse_log_level(log_level):
         raise ValueError(f"Invalid log level: {log_level}")
 
 
-def load_hp_io_cfg(args):
-    hp_io_cfg = None
+def load_hp_io_cfg(args: argparse.Namespace) -> tuple[dict[str, Any] | None, bool]:
+    hp_io_cfg: dict[str, Any] | None = None
     do_init = False
     if args.init_sim or args.cfg_path is not None:
         do_init = True
+        hp_io_cfg_path: Path | str | None
         if args.init_sim:
             hp_io_cfg_path = CFG_DIR / "hp_io_config_simulate.json"
         elif args.cfg_path is not None:
-            hp_io_cfg_path = f"{args.cfg_path}"
+            hp_io_cfg_path = str(args.cfg_path)
         else:
             hp_io_cfg_path = None
 
         # try to open the config file
         if hp_io_cfg_path is None:
             raise ValueError("Either --init-sim or --init must be specified with a valid config path")
-        elif not hp_io_cfg_path and not os.path.exists(hp_io_cfg_path):
+        
+        if isinstance(hp_io_cfg_path, (str, Path)) and not os.path.exists(hp_io_cfg_path):
             raise FileNotFoundError(f"Config file not found: '{os.path.abspath(hp_io_cfg_path)}'")
-        else:
-            with open(hp_io_cfg_path) as f:
-                hp_io_cfg = json.load(f)
+        
+        with open(hp_io_cfg_path) as f:
+            hp_io_cfg = json.load(f)
     return hp_io_cfg, do_init
 
 
-async def run_demo_api(args):
+async def run_demo_api(args: argparse.Namespace) -> None:
     # Graceful Shutdown Setup
     shutdown_event = asyncio.Event()
 
-    def _signal_handler(*_):
+    def _signal_handler(*_: Any) -> None:
         logging.getLogger("daq_data.client").info("Shutdown signal received, closing client stream...")
         shutdown_event.set()
 
@@ -215,7 +225,7 @@ async def run_demo_api(args):
         if do_reflect_services:
             await do_reflect_services_fn(addc, host)
 
-        if do_init:
+        if do_init and hp_io_cfg is not None:
             # concurrently send init commands to all DAQ nodes
             print(f"Initializing hp_io thread with config: {hp_io_cfg}")
             await do_init_fn(addc, host, hp_io_cfg)
@@ -260,7 +270,8 @@ async def run_demo_api(args):
                 )
                 plot_tasks.append(plot_speed_task)
             # use gather to concurrently do different plots
-            await asyncio.gather(*plot_tasks)
+            if plot_tasks:
+                await asyncio.gather(*plot_tasks)
 
 
 if __name__ == "__main__":

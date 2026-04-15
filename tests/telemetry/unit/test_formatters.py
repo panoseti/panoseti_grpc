@@ -6,7 +6,7 @@ import pytest
 from panoseti_grpc.telemetry.client import AsyncGrpcHandler, TelemetryClient
 
 
-def test_extra_context_merging():
+def test_extra_context_merging() -> None:
     """
     Verify that `logger.info("msg", extra={"user": "nico"})`
     is correctly formatted into the final message.

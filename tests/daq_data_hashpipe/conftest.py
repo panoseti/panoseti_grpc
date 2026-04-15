@@ -1,3 +1,4 @@
+from typing import Any
 import asyncio
 import copy
 import json
@@ -26,13 +27,13 @@ TEST_CFG_DIR = Path("tests/daq_data/config")
 TEST_CFG_DIR.mkdir(exist_ok=True)
 
 
-def is_utility_available(name):
+def is_utility_available( name: Any) -> None:
     """Check if a command-line utility is in the system PATH."""
     return subprocess.run(["which", name], capture_output=True).returncode == 0
 
 
 @pytest.fixture(scope="session")
-def hashpipe_pcap_runner():
+def hashpipe_pcap_runner() -> None:
     """
     A session-scoped fixture that creates a realistic hashpipe run environment,
     starts tcpreplay to feed it data from a pcap file, and launches the
@@ -186,7 +187,7 @@ def hashpipe_pcap_runner():
 
 
 @pytest.fixture(scope="session")
-def server_config_base():
+def server_config_base() -> None:
     """Provides a base server configuration dictionary."""
     with open(TEST_CFG_DIR / "daq_data_server_config.json") as f:
         cfg = json.load(f)
@@ -194,7 +195,7 @@ def server_config_base():
 
 
 @pytest.fixture(scope="session")
-def uds_sim_server_config(server_config_base):
+def uds_sim_server_config( server_config_base: Any) -> None:
     cfg = copy.deepcopy(server_config_base)
     cfg["simulate_daq_cfg"]["simulation_mode"] = "uds"
     dps = ["img8", "img16", "ph256", "ph1024"]
@@ -389,7 +390,7 @@ async def async_client(default_server_process):
 
 
 @pytest.fixture
-def sync_client(default_server_process):
+def sync_client( default_server_process: Any) -> None:
     """Provides a connected DaqDataClient for API tests."""
     daq_config = {
         "daq_nodes": [{"ip_addr": default_server_process["ip_addr"], "data_dir": default_server_process["data_dir"]}]
@@ -399,7 +400,7 @@ def sync_client(default_server_process):
 
 
 @pytest.fixture
-def sample_pano_image():
+def sample_pano_image() -> None:
     header_dict = {"test_field": "test_value"}
     return PanoImage(
         type=PanoImage.Type.MOVIE,

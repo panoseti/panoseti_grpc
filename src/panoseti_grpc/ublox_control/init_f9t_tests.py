@@ -4,7 +4,7 @@ Test cases for the InitF9t RPC.
 These functions verify a specified F9t is properly configured.
 Each function must have type Callable[..., Tuple[bool, str]] as the example below:
 
-    def is_even(n: int) -> Tuple[bool, str]:
+    def is_even(n: int)-> Tuple[bool, str]:
         if n % 2 == 0:
             return True, f"{n} is even"
         else:
@@ -12,6 +12,7 @@ Each function must have type Callable[..., Tuple[bool, str]] as the example belo
 """
 
 import os
+from typing import Any
 
 from pyubx2 import POLL, UBX_PAYLOADS_POLL, UBX_PROTOCOL, UBXMessage, UBXReader
 from pyubx2.ubxhelpers import cfgkey2name
@@ -40,7 +41,7 @@ def is_device_valid(device: str) -> tuple[bool, str]:
         return False, f"'{device}' does not exist"
 
 
-def is_os_posix():
+def is_os_posix() -> None:
     """Verify the server is running in a POSIX environment."""
     if os.name == "posix":
         return True, "detected a POSIX-compliant system"
@@ -61,7 +62,7 @@ async def poll_nav_messages(send_queue) -> tuple[bool, str]:
     return True, f"sent {count} messages: " + test_msg
 
 
-def check_f9t_dataflow(f9t_cfg):
+def check_f9t_dataflow(f9t_cfg: Any) -> None:
     """
     Verify all packets specified in the 'packet_ids' fields of cfg are being received.
     NOTE: for now this is hardcoded for UBX packets.

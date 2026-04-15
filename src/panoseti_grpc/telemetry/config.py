@@ -2,6 +2,8 @@
 Telemetry Service configuration classes for validation and
 """
 
+from __future__ import annotations
+
 import json
 import os
 import time
@@ -58,7 +60,8 @@ class LogSchema(BaseModel):
     payload_json: str = Field(..., max_length=1_000_000)
 
     @field_validator("service_name")
-    def prevent_high_cardinality(cls, v):
+    @classmethod
+    def prevent_high_cardinality(cls, v: str) -> str:
         """
         Prevent dynamic names like 'process_12345' from becoming labels.
         This protects Loki from index explosion.
@@ -70,7 +73,8 @@ class LogSchema(BaseModel):
         return v.lower()
 
     @field_validator("payload_json")
-    def validate_json_structure(cls, v):
+    @classmethod
+    def validate_json_structure(cls, v: str) -> str:
         try:
             json.loads(v)
         except ValueError:
@@ -102,7 +106,8 @@ class PayloadTestModel(BaseModel):
     extra_data: dict[str, Any] | None = Field(default_factory=dict)
 
     @field_validator("message")
-    def must_be_uppercase(cls, v):
+    @classmethod
+    def must_be_uppercase(cls, v: str) -> str:
         if not v.isupper():
             raise ValueError("Message must be uppercase")
         return v
@@ -130,34 +135,35 @@ class DeviceConfig(BaseModel):
     description: str | None = ""
 
     @field_validator("redis_prefix")
-    def validate_prefix(cls, v, info):
+    @classmethod
+    def validate_prefix(cls, v: str, info: Any) -> str:
         # We need access to the 'mode' field to validate this rule.
         # Pydantic v2 validation allows access to other fields via 'info' context if needed.
         # For simple robustness, we enforce the "DEV_" rule if mode is experimental.
-        if "mode" in info.data and info.data["mode"] == "experimental":
+        if hasattr(info, "data") and "mode" in info.data and info.data["mode"] == "experimental":
             if not v.startswith("DEV_"):
                 raise ValueError(f"Experimental prefix '{v}' must start with 'DEV_'")
         return v
 
 
 class TelemetryConfig:
-    def __init__(self, devices: dict[str, DeviceConfig]):
+    def __init__(self, devices: dict[str, DeviceConfig]) -> None:
         self.devices = devices
 
     @classmethod
-    def load(cls, path: str):
+    def load(cls, path: str | None = None) -> TelemetryConfig:
         """Loads TOML config and parses into DeviceConfig objects."""
-        if not os.path.exists(path):
+        if path is None or not os.path.exists(path):
             # Fallback for installed package resources
             try:
                 from . import resources as r
 
-                path = r.get_config_path()
+                path = str(r.get_config_path())
             except ImportError:
                 pass
 
         # If still missing, try generic fallback or fail
-        if not os.path.exists(path):
+        if path is None or not os.path.exists(path):
             raise FileNotFoundError(f"Config file not found: {path}")
 
         with open(path, "rb") as f:
@@ -191,7 +197,7 @@ class TelemetryConfig:
             return 3600  # Unknown types die after 1 hour
         return self.devices[device_type].ttl_seconds
 
-    def validate_and_flatten(self, device_type: str, data: dict) -> dict:
+    def validate_and_flatten(self, device_type: str, data: dict[str, Any]) -> dict[str, Any]:
         """
         Validates data if Production. Flattens data for Redis.
         """
@@ -216,13 +222,14 @@ class TelemetryConfig:
         # 3. Flatten (Handling nested 'extra_data')
         if "extra_data" in clean_data and clean_data["extra_data"]:
             extras = clean_data.pop("extra_data")
-            for k, v in extras.items():
-                clean_data[f"extra_{k}"] = v
+            if isinstance(extras, dict):
+                for k, v in extras.items():
+                    clean_data[f"extra_{k}"] = v
 
         return self._flatten_dict(clean_data)
 
-    def _flatten_dict(self, d: dict, parent_key: str = "", sep: str = "_") -> dict:
-        items = []
+    def _flatten_dict(self, d: dict[str, Any], parent_key: str = "", sep: str = "_") -> dict[str, Any]:
+        items: list[tuple[str, Any]] = []
         for k, v in d.items():
             new_key = f"{parent_key}{sep}{k}" if parent_key else k
             if isinstance(v, dict):

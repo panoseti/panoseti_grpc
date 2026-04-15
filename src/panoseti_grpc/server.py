@@ -39,10 +39,10 @@ import importlib.resources as _importlib_resources
 import logging
 import signal
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import grpc
 from grpc_reflection.v1alpha import reflection
@@ -77,10 +77,10 @@ class ServiceDescriptor:
     name: str
     """Logical service name; must match a field on :class:`PanosetiServerConfig`."""
 
-    servicer_factory: Callable
+    servicer_factory: Callable[[Any, asyncio.Event], Coroutine[Any, Any, tuple[Any, list[Coroutine[Any, Any, None]]]]]
     """Async factory: ``async (cfg, shutdown_event) -> (servicer, [post_start_coros])``."""
 
-    add_to_server_fn: Callable
+    add_to_server_fn: Callable[[Any, grpc.aio.Server], None]
     """gRPC registration function, e.g. ``add_DaqDataServicer_to_server``."""
 
     service_names_for_reflection: list[str]
@@ -138,14 +138,30 @@ class PanosetiServerConfig(BaseModel):
     services: ServiceToggles = Field(default_factory=ServiceToggles)
 
     # Per-service sub-configs; keys must match ServiceDescriptor.config_field values
-    telemetry: TelemetryServerConfig = Field(default_factory=TelemetryServerConfig)
-    daq_data: DaqDataServerConfig = Field(default_factory=DaqDataServerConfig)
-    daq_control: DaqControlServerConfig = Field(default_factory=DaqControlServerConfig)
+    telemetry: TelemetryServerConfig = Field(
+        default_factory=lambda: TelemetryServerConfig(grpc_port=50051, shutdown_grace_period=5.0, log_level="INFO")
+    )
+    daq_data: DaqDataServerConfig = Field(
+        default_factory=lambda: DaqDataServerConfig(
+            max_concurrent_rpcs=100,
+            max_read_queue_size=50,
+            min_hp_io_update_interval_seconds=0.001,
+            max_client_update_interval_seconds=60.0,
+            max_reader_enqueue_timeouts=2,
+            max_reader_dequeue_timeouts=3,
+            reader_timeout=5.0,
+            shutdown_grace_period=5.0,
+            hp_io_stop_timeout=5.0,
+        )
+    )
+    daq_control: DaqControlServerConfig = Field(
+        default_factory=lambda: DaqControlServerConfig(grpc_port=50051, shutdown_grace_period=5.0, log_level="INFO")
+    )
 
     model_config = {"extra": "ignore"}
 
     @classmethod
-    def _parse_toml_dict(cls, raw: dict) -> PanosetiServerConfig:
+    def _parse_toml_dict(cls, raw: dict[str, Any]) -> PanosetiServerConfig:
         """Validate a raw TOML dict.
 
         The TOML uses a ``[server]`` section for server-level settings and
@@ -153,8 +169,9 @@ class PanosetiServerConfig(BaseModel):
         This method merges the ``[server]`` sub-dict into the top level so
         Pydantic can find ``port``, ``services``, etc. directly.
         """
-        server_section = raw.pop("server", {})
-        merged = {**server_section, **raw}
+        raw_copy = raw.copy()
+        server_section = raw_copy.pop("server", {})
+        merged = {**server_section, **raw_copy}
         return cls.model_validate(merged)
 
     @classmethod
@@ -197,202 +214,158 @@ class PanosetiServerConfig(BaseModel):
 
 
 async def _make_telemetry_servicer(
-    cfg: TelemetryServerConfig,
-    shutdown_event: asyncio.Event,
-) -> tuple[Any, list]:
-    """Connect to Redis and create a TelemetryServicer."""
-    import redis.asyncio as redis_asyncio
+    cfg: TelemetryServerConfig, shutdown_event: asyncio.Event
+) -> tuple[Any, list[Coroutine[Any, Any, None]]]:
+    import redis.asyncio as redis
 
-    from panoseti_grpc.telemetry.resources import get_config_path
     from panoseti_grpc.telemetry.server import TelemetryServicer
 
-    # Resolve config path: explicit cfg override → env var → package default
-    if cfg.telemetry_config_path:
-        p = Path(cfg.telemetry_config_path)
-        config_path = p if p.exists() else get_config_path()
-    else:
-        config_path = get_config_path()
+    r = redis.Redis(host=cfg.redis_host, port=cfg.redis_port, db=cfg.redis_db, decode_responses=True)
+    # Ping to check connection
+    await cast(Any, r.ping())
 
-    # Connect to Redis with retries (mirrors telemetry/server.py logic)
-    r = None
-    max_retries = 10
-    for attempt in range(max_retries):
-        try:
-            _logger.info(
-                f"Connecting to Redis at {cfg.redis_host}:{cfg.redis_port} (attempt {attempt + 1}/{max_retries})..."
-            )
-            r = redis_asyncio.Redis(
-                host=cfg.redis_host,
-                port=cfg.redis_port,
-                db=cfg.redis_db,
-                decode_responses=True,
-            )
-            await r.ping()
-            _logger.info("Redis connection established.")
-            break
-        except redis_asyncio.ConnectionError as e:
-            _logger.warning(f"Redis connection failed: {e}")
-            if attempt < max_retries - 1:
-                await asyncio.sleep(2)
-            else:
-                raise RuntimeError(
-                    f"Could not connect to Redis at {cfg.redis_host}:{cfg.redis_port} after {max_retries} attempts."
-                ) from e
+    # We need a path here, but TelemetryServicer currently takes Path.
+    # If not provided in cfg, use internal default.
+    from panoseti_grpc.telemetry.resources import get_config_path
 
+    config_path = Path(cfg.telemetry_config_path) if cfg.telemetry_config_path else get_config_path()
     servicer = TelemetryServicer(config_path, r)
     return servicer, []
 
 
 async def _make_daq_data_servicer(
-    cfg: DaqDataServerConfig,
-    shutdown_event: asyncio.Event,
-) -> tuple[Any, list]:
+    cfg: DaqDataServerConfig, shutdown_event: asyncio.Event
+) -> tuple[Any, list[Coroutine[Any, Any, None]]]:
     from panoseti_grpc.daq_data.server import DaqDataServicer
 
     servicer = DaqDataServicer(cfg)
-    # start_initial_task must run after server.start()
+    # Start initial task in the background
     return servicer, [servicer.start_initial_task()]
 
 
 async def _make_daq_control_servicer(
-    cfg: DaqControlServerConfig,
-    shutdown_event: asyncio.Event,
-) -> tuple[Any, list]:
+    cfg: DaqControlServerConfig, shutdown_event: asyncio.Event
+) -> tuple[Any, list[Coroutine[Any, Any, None]]]:
     from panoseti_grpc.daq_control.server import DaqControlServicer
+    from panoseti_grpc.telemetry.logger import LoggerConfig
 
-    level = getattr(logging, cfg.log_level, logging.INFO)
+    # Convert string log level to int
+    level = LoggerConfig.normalize_level(cfg.log_level)
     servicer = DaqControlServicer(level=level)
     return servicer, []
 
 
-# ---------------------------------------------------------------------------
-# Built-in service registrations
-# ---------------------------------------------------------------------------
-
-for _desc in [
+# Register core services
+ServiceRegistry.register(
     ServiceDescriptor(
         name="telemetry",
         servicer_factory=_make_telemetry_servicer,
         add_to_server_fn=telemetry_pb2_grpc.add_TelemetryServicer_to_server,
-        service_names_for_reflection=[
-            telemetry_pb2.DESCRIPTOR.services_by_name["Telemetry"].full_name,
-        ],
+        service_names_for_reflection=[telemetry_pb2.DESCRIPTOR.services_by_name["Telemetry"].full_name],
         config_field="telemetry",
-    ),
+    )
+)
+
+ServiceRegistry.register(
     ServiceDescriptor(
         name="daq_data",
         servicer_factory=_make_daq_data_servicer,
         add_to_server_fn=daq_data_pb2_grpc.add_DaqDataServicer_to_server,
-        service_names_for_reflection=[
-            daq_data_pb2.DESCRIPTOR.services_by_name["DaqData"].full_name,
-        ],
+        service_names_for_reflection=[daq_data_pb2.DESCRIPTOR.services_by_name["DaqData"].full_name],
         config_field="daq_data",
-    ),
+    )
+)
+
+ServiceRegistry.register(
     ServiceDescriptor(
         name="daq_control",
         servicer_factory=_make_daq_control_servicer,
         add_to_server_fn=daq_control_pb2_grpc.add_DaqControlServicer_to_server,
-        service_names_for_reflection=[
-            daq_control_pb2.DESCRIPTOR.services_by_name["DaqControl"].full_name,
-        ],
+        service_names_for_reflection=[daq_control_pb2.DESCRIPTOR.services_by_name["DaqControl"].full_name],
         config_field="daq_control",
-    ),
-]:
-    ServiceRegistry.register(_desc)
+    )
+)
 
 
 # ---------------------------------------------------------------------------
 # PanosetiServer
 # ---------------------------------------------------------------------------
 
+# Services are started in this order.
+INIT_ORDER = ["telemetry", "daq_data", "daq_control"]
+
 
 class PanosetiServer:
-    """Unified gRPC server that hosts multiple PANOSETI services on one port.
+    """The unified gRPC server."""
 
-    Services are instantiated in :attr:`INIT_ORDER`.  Telemetry is always
-    first so that the gRPC logging endpoint is available before other
-    servicers emit their first log RPCs.
-    """
+    @staticmethod
+    async def run(cfg: PanosetiServerConfig) -> None:
+        """Instantiates and runs the unified gRPC server."""
+        _logger.info(f"Starting PANOSETI Unified Server on port {cfg.port}")
 
-    INIT_ORDER = ["telemetry", "daq_data", "daq_control"]
+        shutdown_event = asyncio.Event()
 
-    def __init__(self, cfg: PanosetiServerConfig) -> None:
-        self.cfg = cfg
-        self._server: grpc.aio.Server | None = None
-        self._servicers: dict[str, Any] = {}
-        self._shutdown_event = asyncio.Event()
+        def _handle_signal() -> None:
+            _logger.info("Shutdown signal received.")
+            shutdown_event.set()
 
-    async def start(self) -> None:
-        """Build the gRPC server, register all enabled services, and start listening."""
-        self._server = grpc.aio.server()
-        all_service_names: list[str] = []
-        post_start_coros: list = []
-
-        for name in self.INIT_ORDER:
-            if not getattr(self.cfg.services, name, False):
-                continue
-            descriptor = ServiceRegistry.get(name)
-            service_cfg = getattr(self.cfg, descriptor.config_field)
-
-            _logger.info(f"Initialising service: {name}")
-            servicer, extra_coros = await descriptor.servicer_factory(service_cfg, self._shutdown_event)
-            descriptor.add_to_server_fn(servicer, self._server)
-            self._servicers[name] = servicer
-            all_service_names.extend(descriptor.service_names_for_reflection)
-            post_start_coros.extend(extra_coros)
-
-        if not self._servicers:
-            raise RuntimeError("No services are enabled. Check [server.services] in server.toml.")
-
-        reflection.enable_server_reflection(all_service_names + [reflection.SERVICE_NAME], self._server)
-        self._server.add_insecure_port(f"[::]:{self.cfg.port}")
-        await self._server.start()
-        _logger.info(f"PanosetiServer started on port {self.cfg.port} with services: {list(self._servicers)}")
-
-        # Post-start tasks (e.g. DaqDataServicer.start_initial_task)
-        for coro in post_start_coros:
-            asyncio.create_task(coro)
-
-    async def wait_for_shutdown(self) -> None:
-        """Block until the shutdown event is set."""
-        await self._shutdown_event.wait()
-        await self._stop()
-
-    async def _stop(self) -> None:
-        """Ordered shutdown: servicers in reverse init order, then gRPC server."""
-        for name in reversed(self.INIT_ORDER):
-            servicer = self._servicers.get(name)
-            if servicer and hasattr(servicer, "shutdown"):
-                _logger.info(f"Shutting down service: {name}")
-                try:
-                    await servicer.shutdown()
-                except Exception as e:
-                    _logger.error(f"Error shutting down {name}: {e}", exc_info=True)
-
-        if self._server:
-            _logger.info(f"Stopping gRPC server (grace={self.cfg.shutdown_grace_period}s)...")
-            await self._server.stop(self.cfg.shutdown_grace_period)
-
-        _logger.info("PanosetiServer stopped.")
-
-    def _install_signal_handlers(self) -> None:
-        """Attach SIGINT/SIGTERM to the shutdown event (main thread only)."""
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
-            try:
-                loop.add_signal_handler(sig, self._shutdown_event.set)
-            except RuntimeError as e:
-                _logger.warning(f"Could not install signal handler for {sig}: {e}")
+            loop.add_signal_handler(sig, _handle_signal)
 
-    @classmethod
-    async def run(
-        cls,
-        cfg: PanosetiServerConfig,
-        in_main_thread: bool = True,
-    ) -> None:
-        """Convenience entry point: create, start, wait for shutdown."""
-        server = cls(cfg)
+        server = grpc.aio.server()
+
+        active_servicers = []
+        post_start_coros: list[Coroutine[Any, Any, None]] = []
+        reflection_service_names = [reflection.SERVICE_NAME]
+
+        # Instantiate enabled services
+        for svc_name in INIT_ORDER:
+            if not getattr(cfg.services, svc_name):
+                continue
+
+            descriptor = ServiceRegistry.get(svc_name)
+            svc_cfg = getattr(cfg, descriptor.config_field)
+
+            _logger.info(f"Initialising service: {svc_name}")
+            servicer, coros = await descriptor.servicer_factory(svc_cfg, shutdown_event)
+
+            descriptor.add_to_server_fn(servicer, server)
+            active_servicers.append(servicer)
+            post_start_coros.extend(coros)
+            reflection_service_names.extend(descriptor.service_names_for_reflection)
+
+        # Enable reflection
+        reflection.enable_server_reflection(reflection_service_names, server)
+
+        # Bind port
+        server.add_insecure_port(f"[::]:{cfg.port}")
+
+        # Start server
         await server.start()
-        if in_main_thread:
-            server._install_signal_handlers()
-        await server.wait_for_shutdown()
+        _logger.info("gRPC server is live.")
+
+        # Run any post-start background tasks
+        background_tasks = [asyncio.create_task(c) for c in post_start_coros]
+
+        # Wait for shutdown
+        await shutdown_event.wait()
+
+        # Stop sequence
+        _logger.info(f"Stopping server (grace period {cfg.shutdown_grace_period}s)...")
+        await server.stop(cfg.shutdown_grace_period)
+
+        # Call shutdown on all servicers that implement it
+        for s in active_servicers:
+            if hasattr(s, "shutdown"):
+                await s.shutdown()
+
+        # Cancel background tasks
+        for t in background_tasks:
+            if not t.done():
+                t.cancel()
+
+        if background_tasks:
+            await asyncio.gather(*background_tasks, return_exceptions=True)
+
+        _logger.info("Unified Server stopped.")

@@ -6,6 +6,7 @@ All tests require RUN_REAL_DATA_TESTS=1 and are gated by the
 `hashpipe_pcap_runner` session fixture.
 """
 
+from typing import Any
 from __future__ import annotations
 
 import asyncio
@@ -27,7 +28,7 @@ HP_IO_REAL = {
 }
 
 
-async def _init_and_collect(server_ip: str, n: int, **stream_kwargs) -> list[dict]:
+async def _init_and_collect(server_ip: str, n: int, **stream_kwargs) -> list[dict[Any]]:
     """Helper: init the server for real DAQ, collect n frames, return them."""
     daq_config = {"daq_nodes": [{"ip_addr": server_ip}]}
     async with AioDaqDataClient(daq_config, network_config=None) as client:
@@ -39,7 +40,7 @@ async def _init_and_collect(server_ip: str, n: int, **stream_kwargs) -> list[dic
             timeout=30.0,
             **stream_kwargs,
         )
-        frames: list[dict] = []
+        frames: list[dict[Any]] = []
         async with asyncio.timeout(30.0):
             async for img in stream:
                 frames.append(img)
@@ -101,7 +102,7 @@ async def test_frame_header_has_required_fields(default_server_process):
         assert header, f"Frame has no header: {f}"
 
         if f["type"] == "MOVIE":
-            # Multi-quabo header: expect quabo_0 sub-dict
+            # Multi-quabo header: expect quabo_0 sub-dict[Any]
             assert "quabo_0" in header, f"MOVIE frame header missing 'quabo_0' key. Keys: {list(header.keys())}"
             q0 = header["quabo_0"]
             for field in ("tv_sec", "tv_usec"):

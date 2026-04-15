@@ -11,6 +11,7 @@ Covers:
   - Production keys never gain a TTL, even after multiple writes
 """
 
+from typing import Any
 from __future__ import annotations
 
 import time
@@ -24,7 +25,7 @@ from tests.telemetry.conftest import poll_redis_field, poll_redis_key
 # ---------------------------------------------------------------------------
 
 
-def _unique(prefix: str) -> str:
+def _unique(prefix: str)-> str:
     """Generate a unique device ID using the current time in ms."""
     return f"{prefix}_{int(time.time() * 1000)}"
 
@@ -34,7 +35,7 @@ def _unique(prefix: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def test_unknown_device_type_stays_in_sandbox(grpc_client, redis_client):
+def test_unknown_device_type_stays_in_sandbox( grpc_client: Any, redis_client: Any) -> None:
     """
     An unknown device_type must be routed to SANDBOX:{type}:{device_id} and
     must NOT appear in the main hash namespace.
@@ -53,7 +54,7 @@ def test_unknown_device_type_stays_in_sandbox(grpc_client, redis_client):
         assert k == sandbox_key, f"Unknown device appeared outside SANDBOX: {k!r}"
 
 
-def test_extra_data_flattening_with_prefix(grpc_client, redis_client):
+def test_extra_data_flattening_with_prefix( grpc_client: Any, redis_client: Any) -> None:
     """
     When log_strict provides extra_data, the nested fields must be stored as
     flattened Redis hash fields with the 'extra_' prefix.
@@ -85,7 +86,7 @@ def test_extra_data_flattening_with_prefix(grpc_client, redis_client):
     assert redis_client.hget(key, "extra_hdop") == "0.9"
 
 
-def test_strict_schema_rejects_invalid_satellite_count(grpc_client):
+def test_strict_schema_rejects_invalid_satellite_count( grpc_client: Any) -> None:
     """
     log_strict('gnss', ...) must raise ValueError when satellites > 100
     (the schema maximum).
@@ -103,7 +104,7 @@ def test_strict_schema_rejects_invalid_satellite_count(grpc_client):
         )
 
 
-def test_strict_schema_rejects_out_of_range_coordinates(grpc_client):
+def test_strict_schema_rejects_out_of_range_coordinates( grpc_client: Any) -> None:
     """
     Latitude > 90 is outside the valid range and must be rejected.
     """
@@ -120,7 +121,7 @@ def test_strict_schema_rejects_out_of_range_coordinates(grpc_client):
         )
 
 
-def test_large_payload_within_limit(grpc_client, redis_client):
+def test_large_payload_within_limit( grpc_client: Any, redis_client: Any) -> None:
     """
     A 100 KB flexible payload must be accepted and stored in its entirety.
     """
@@ -136,7 +137,7 @@ def test_large_payload_within_limit(grpc_client, redis_client):
     assert len(stored) == 100_000, f"Expected stored blob length 100000, got {len(stored)}"
 
 
-def test_production_key_ttl_remains_permanent_after_multiple_writes(grpc_client, redis_client):
+def test_production_key_ttl_remains_permanent_after_multiple_writes( grpc_client: Any, redis_client: Any) -> None:
     """
     A production (strict/gnss) device key must have TTL == -1 after both the
     first and subsequent writes — i.e., the server never sets a TTL on it.
@@ -161,7 +162,7 @@ def test_production_key_ttl_remains_permanent_after_multiple_writes(grpc_client,
     assert ttl == -1, f"Production key {key!r} acquired TTL={ttl} after writes (should always be -1 / no expiry)"
 
 
-def test_consecutive_field_overwrites_last_writer_wins(grpc_client, redis_client):
+def test_consecutive_field_overwrites_last_writer_wins( grpc_client: Any, redis_client: Any) -> None:
     """
     Rapid consecutive updates to the same field must result in the final value
     being stored — no intermediate value should survive.
@@ -181,7 +182,7 @@ def test_consecutive_field_overwrites_last_writer_wins(grpc_client, redis_client
     assert float(final) == float(UPDATES - 1), f"Expected counter={float(UPDATES - 1)}, got {final}"
 
 
-def test_two_device_types_do_not_share_namespace(grpc_client, redis_client):
+def test_two_device_types_do_not_share_namespace( grpc_client: Any, redis_client: Any) -> None:
     """
     Writing to device_type='gnss' and device_type='test_flex' with the same
     device_id must create two separate Redis keys in different namespaces.

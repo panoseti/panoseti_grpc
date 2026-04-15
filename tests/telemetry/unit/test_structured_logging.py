@@ -6,7 +6,7 @@ from panoseti_grpc.telemetry.client import AsyncGrpcHandler, TelemetryClient
 
 
 class TestStructuredLogic:
-    def test_automatic_string_wrapping(self):
+    def test_automatic_string_wrapping(self) -> None:
         """
         Verify that if the user logs a plain string (not JSON),
         the handler wraps it in {"text": "..."} automatically.
@@ -33,7 +33,7 @@ class TestStructuredLogic:
         assert "_meta" in sent_json
         assert "Hello World" in sent_json
 
-    def test_context_capture(self):
+    def test_context_capture(self) -> None:
         """
         Verify that file path and line number are correctly extracted
         from the Python LogRecord and passed to gRPC.

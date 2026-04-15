@@ -33,17 +33,13 @@ from queue import Queue
 from sys import argv
 from threading import Event, Thread
 from time import sleep
+from typing import Any
 
 from pyubx2 import POLL, UBX_PAYLOADS_POLL, UBX_PROTOCOL, UBXMessage, UBXReader
 from serial import Serial
 
 
-def io_data(
-    ubr: UBXReader,
-    readqueue: Queue,
-    sendqueue: Queue,
-    stop: Event,
-):
+def io_data(ubr: UBXReader, readqueue: Queue[Any], sendqueue: Queue[Any], stop: Event) -> None:
     """
     THREADED
     Read and parse inbound UBX data and place
@@ -71,7 +67,7 @@ def io_data(
             continue
 
 
-def process_data(queue: Queue, stop: Event):
+def process_data(queue: Queue[Any], stop: Event) -> None:
     """
     THREADED
     Get UBX data from queue and display.
@@ -84,7 +80,7 @@ def process_data(queue: Queue, stop: Event):
             queue.task_done()
 
 
-def main(**kwargs):
+def main(**kwargs: Any) -> None:
     """
     Main routine.
     """

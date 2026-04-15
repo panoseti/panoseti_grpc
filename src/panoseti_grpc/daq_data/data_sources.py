@@ -14,6 +14,7 @@ import stat
 import struct
 from io import BytesIO
 from json import loads
+from typing import Any, cast
 
 from google.protobuf.json_format import ParseDict
 from google.protobuf.struct_pb2 import Struct
@@ -27,7 +28,13 @@ from .state import DataProductState, get_dp_config
 class BaseDataSource(abc.ABC):
     """Abstract base class for a data acquisition source."""
 
-    def __init__(self, config: dict, logger: logging.Logger, data_queue: asyncio.Queue, stop_event: asyncio.Event):
+    def __init__(
+        self,
+        config: dict[str, Any],
+        logger: logging.Logger,
+        data_queue: asyncio.Queue[PanoImage],
+        stop_event: asyncio.Event,
+    ) -> None:
         self.config = config
         self.logger = logger
         self.data_queue = data_queue
@@ -35,7 +42,7 @@ class BaseDataSource(abc.ABC):
         self.ready_event = asyncio.Event()
 
     @abc.abstractmethod
-    async def run(self):
+    async def run(self) -> None:
         """The main entry point to start watching for and producing data."""
         pass
 
@@ -49,9 +56,15 @@ class UdsDataSource(BaseDataSource):
 
     SOCKET_BUFFER_SIZE = 2048 * 100
 
-    def __init__(self, config: dict, logger: logging.Logger, data_queue: asyncio.Queue, stop_event: asyncio.Event):
+    def __init__(
+        self,
+        config: dict[str, Any],
+        logger: logging.Logger,
+        data_queue: asyncio.Queue[PanoImage],
+        stop_event: asyncio.Event,
+    ) -> None:
         super().__init__(config, logger, data_queue, stop_event)
-        self.dp_name = self.config["dp_name"]
+        self.dp_name: str = self.config["dp_name"]
 
         socket_path_template = self.config.get("socket_path_template")
         if not socket_path_template:
@@ -60,22 +73,22 @@ class UdsDataSource(BaseDataSource):
         self.socket_path = socket_path_template.format(dp_name=self.dp_name)
         self.dp_config: DataProductState = get_dp_config([self.dp_name])[self.dp_name]
         self.server: asyncio.AbstractServer | None = None
-        self.read_timeout = config.get("read_timeout", 60.0)
-        self.client_handler_tasks: set[asyncio.Task] = set()
+        self.read_timeout: float = config.get("read_timeout", 60.0)
+        self.client_handler_tasks: set[asyncio.Task[None]] = set()
 
-    async def _client_connection_wrapper(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+    async def _client_connection_wrapper(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         """Wraps the client handler to track its task lifecycle."""
         task = asyncio.create_task(self._handle_client(reader, writer))
         self.client_handler_tasks.add(task)
 
-        def on_task_done(t):
+        def on_task_done(t: asyncio.Task[None]) -> None:
             self.client_handler_tasks.discard(t)
             client_info = writer.get_extra_info("peername")
             self.logger.info(f"Client handler task for {client_info} on {self.socket_path} has finished.")
 
         task.add_done_callback(on_task_done)
 
-    async def run(self):
+    async def run(self) -> None:
         """Creates, binds, and listens on the UDS socket file."""
         self.logger.info(f"Starting UDS receiver for '{self.dp_name}' on {self.socket_path}")
 
@@ -159,7 +172,7 @@ class UdsDataSource(BaseDataSource):
         Batches all three reads inside a single wait_for to reduce Task creation overhead.
         """
 
-        async def _reads():
+        async def _reads() -> tuple[int, bytes, bytes, int]:
             nonlocal header_size
             module_id_bytes = await reader.readexactly(2)
             module_id = int.from_bytes(module_id_bytes, "big")
@@ -177,7 +190,7 @@ class UdsDataSource(BaseDataSource):
 
         return await asyncio.wait_for(_reads(), self.read_timeout)
 
-    async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+    async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         """Handles a Hashpipe client connection, parsing [module_id][PFF frame] messages."""
         client_info = writer.get_extra_info("peername")
         self.logger.info(f"New client connection on {self.socket_path} from {client_info}")
@@ -196,10 +209,10 @@ class UdsDataSource(BaseDataSource):
                     self.dp_config.bytes_per_pixel,
                 )
                 pano_image = PanoImage(
-                    type=self.dp_config.pano_image_type,
+                    type=cast(Any, self.dp_config.pano_image_type),
                     header=ParseDict(header, Struct()),
                     image_array=img_array,
-                    shape=self.dp_config.image_shape,
+                    shape=list(self.dp_config.image_shape),
                     bytes_per_pixel=self.dp_config.bytes_per_pixel,
                     file=f"uds_{self.dp_name}",
                     frame_number=frame_count,

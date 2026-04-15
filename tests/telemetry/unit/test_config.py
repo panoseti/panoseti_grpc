@@ -5,7 +5,7 @@ from panoseti_grpc.telemetry.config import DeviceConfig, DewModel, GnssModel, Pa
 
 
 # 1. Test Key Generation & whitelist logic
-def test_redis_key_formatting():
+def test_redis_key_formatting() -> None:
     # FIX: Use DeviceConfig objects
     devices = {
         "gps": DeviceConfig(mode="production", redis_prefix="UBLOX_ZED-F9T_"),
@@ -22,7 +22,7 @@ def test_redis_key_formatting():
 
 
 # 2. Test Flattening Logic (The R&D Hook)
-def test_payload_flattening():
+def test_payload_flattening() -> None:
     # FIX: Must be 'production' mode to trigger the schema validation & extra_data flattening logic
     # Also need to use a type that exists in SCHEMA_MAP (like 'gps' mapping to GnssModel)
     devices = {"gnss": DeviceConfig(mode="production", redis_prefix="GPS_")}
@@ -46,7 +46,7 @@ def test_payload_flattening():
 
 
 # 3. Test Pydantic Constraints
-def test_dew_model_constraints():
+def test_dew_model_constraints() -> None:
     # Good Case
     valid = DewModel(temp_c=25.0, humidity=40.0)
     assert valid.temp_c == 25.0
@@ -62,7 +62,7 @@ def test_dew_model_constraints():
 
 
 # 4. Test GNSS Model Validation
-def test_gnss_validation():
+def test_gnss_validation() -> None:
     # Valid
     valid = GnssModel(satellites=4, lat=37.7, lon=-122.4, fix_mode="3D")
     assert valid.satellites == 4
@@ -74,7 +74,7 @@ def test_gnss_validation():
 
 
 # 5. Test Custom Validator (Uppercase Message)
-def test_custom_validator():
+def test_custom_validator() -> None:
     # Valid
     valid = PayloadTestModel(iteration=1, value=1.0, message="HELLO", active=True)
     assert valid.message == "HELLO"
@@ -86,7 +86,7 @@ def test_custom_validator():
 
 
 # 6. Test Empty/Null Data Handling
-def test_partial_payload_filling():
+def test_partial_payload_filling() -> None:
     # Pydantic models usually require all fields unless marked Optional
     # Let's verify that missing fields raise errors
     with pytest.raises(ValidationError) as exc:
@@ -95,7 +95,7 @@ def test_partial_payload_filling():
 
 
 # 7. Test Extra Fields Behavior
-def test_forbid_unknown_fields_in_strict_model():
+def test_forbid_unknown_fields_in_strict_model() -> None:
     # By default, Pydantic might ignore extra fields, but we want to ensure
     # users aren't sending typos thinking they are being recorded.
     # Note: If your Config doesn't set extra='forbid', this test confirms they are ignored/allowed.
@@ -113,7 +113,7 @@ def test_forbid_unknown_fields_in_strict_model():
 
 
 # 8. Test Complex Nested 'extra_data' Flattening
-def test_deep_extra_data_flattening():
+def test_deep_extra_data_flattening() -> None:
     devices = {"gnss": DeviceConfig(mode="production", redis_prefix="GPS_")}
     cfg = TelemetryConfig(devices)
 
@@ -142,7 +142,7 @@ def test_deep_extra_data_flattening():
 
 
 # 9. Test Type Coercion (Feature, not bug)
-def test_type_coercion():
+def test_type_coercion() -> None:
     # Pydantic attempts to cast types. sending string "5" for an int field should work.
     data = {"iteration": "5", "value": "10.5", "message": "OK", "active": "true"}
     model = PayloadTestModel(**data)
@@ -152,7 +152,7 @@ def test_type_coercion():
 
 
 # 10. Test Validator Logic on Edge Cases
-def test_gnss_edge_coordinates():
+def test_gnss_edge_coordinates() -> None:
     # Test strictly valid coordinates
     assert GnssModel(satellites=0, lat=90.0, lon=180.0, fix_mode="0").lat == 90.0
     assert GnssModel(satellites=0, lat=-90.0, lon=-180.0, fix_mode="0").lat == -90.0
@@ -163,7 +163,7 @@ def test_gnss_edge_coordinates():
 
 
 # 11. Test Prefix Enforcement
-def test_experimental_prefix_enforcement():
+def test_experimental_prefix_enforcement() -> None:
     with pytest.raises(ValidationError) as exc:
         DeviceConfig(mode="experimental", redis_prefix="WRONG_PREFIX_")
     assert "must start with 'DEV_'" in str(exc.value)
@@ -174,7 +174,7 @@ def test_experimental_prefix_enforcement():
 
 
 # 12. Test TTL Logic
-def test_ttl_retrieval():
+def test_ttl_retrieval() -> None:
     # FIX: Construct with DeviceConfig
     devices = {
         "prod_gps": DeviceConfig(mode="production", redis_prefix="GPS_", ttl_seconds=0),
@@ -188,7 +188,7 @@ def test_ttl_retrieval():
 
 
 # 13. Test Validation Skipping for Experimental
-def test_experimental_skips_validation():
+def test_experimental_skips_validation() -> None:
     # Setup config with one experimental type
     from panoseti_grpc.telemetry.config import DeviceConfig
 
@@ -205,7 +205,7 @@ def test_experimental_skips_validation():
     assert result["nested_a"] == 1
 
 
-def test_strict_enforces_schema():
+def test_strict_enforces_schema() -> None:
     from panoseti_grpc.telemetry.config import DeviceConfig
 
     # 'gnss' is hardcoded in SCHEMA_MAP in config.py

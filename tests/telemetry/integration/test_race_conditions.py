@@ -1,3 +1,4 @@
+from typing import Any
 import json
 import logging
 import random
@@ -9,7 +10,7 @@ from panoseti_grpc.telemetry.logger import get_logger
 LOG_KEY = "logs:ingress"
 
 
-def test_concurrent_loggers_race_condition(redis_client):
+def test_concurrent_loggers_race_condition( redis_client: Any) -> None:
     """
     Spins up multiple logger instances in different threads to ensure
     the gRPC server handles concurrent connections without dropping logs.
@@ -20,7 +21,7 @@ def test_concurrent_loggers_race_condition(redis_client):
 
     start_len = redis_client.llen(LOG_KEY)
 
-    def worker_logger(worker_id):
+    def worker_logger( worker_id: Any) -> None:
         # Each thread gets its own logger instance (simulating different modules)
         # They share the same gRPC port but are distinct clients
         # client = TelemetryClient(host="localhost", port=50051)
@@ -72,7 +73,7 @@ def test_concurrent_loggers_race_condition(redis_client):
         assert worker_counts[i] == logs_per_thread, f"Worker {i} missing logs! Got {worker_counts[i]}"
 
 
-def test_server_enforces_log_schema(grpc_client, redis_client):
+def test_server_enforces_log_schema( grpc_client: Any, redis_client: Any) -> None:
     """
     Verifies that the Server strictly enforces the LogSchema from config.py.
     This checks if the 'host' and 'service_name' validators are working.

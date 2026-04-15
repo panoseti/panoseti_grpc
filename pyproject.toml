@@ -134,6 +134,11 @@ strict = true
 ignore_missing_imports = true
 exclude = ["src/panoseti_grpc/generated"]
 
+[[tool.mypy.overrides]]
+module = "panoseti_grpc.generated.*"
+ignore_errors = true
+follow_imports = "skip"
+
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = "-ra -q"

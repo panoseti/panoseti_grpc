@@ -52,16 +52,17 @@ def get_config_path() -> Path:
         return Path(__file__).parent / "telemetry_config.toml"
 
 
-def get_sw_info():
+def get_sw_info() -> dict[str, str] | str:
     try:
         import git
     except ImportError:
         return "GitPython not installed"
     try:
         repo = git.Repo(search_parent_directories=True)
-        commit = repo.head.commit.hexsha
-        branch = repo.active_branch.name
-        repo.head.commit.committed_datetime.strftime("%Y-%m-%d %H:%M:%S")
+        commit = str(repo.head.commit.hexsha)
+        branch = str(repo.active_branch.name)
+        # We don't use this date yet, but keeping it for context
+        # repo.head.commit.committed_datetime.strftime("%Y-%m-%d %H:%M:%S")
         sw_info = {
             "commit": commit,
             "branch": branch,

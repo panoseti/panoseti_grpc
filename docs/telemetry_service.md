@@ -10,7 +10,7 @@ The **PANOSETI Telemetry Service** is a high-throughput, distributed aggregation
     * Non-blocking architecture to ensure logging never crashes observations.
 * **Observability:** Built-in latency tracking, rich logging, and CLI visualization tools.
 * **Hybrid Schema Strategy:**
-    * **Production Mode:** Strictly validated schemas (Pydantic) for critical hardware.
+    * **Production Mode:** Strictly validated schemas (Pydantic 2.x) for critical hardware.
     * **Experimental Mode:** Flexible JSON logging for R&D and rapid prototyping.
 * **Hot/Cold Storage Architecture:**
   * **Redis:** O(1) access to the *current* state of every device.
@@ -78,9 +78,9 @@ client = TelemetryClient("localhost", 50051)
 # --- SCENARIO A: Logging Production Data ---
 # Must match the schema for 'gnss' (lat, lon, satellites, etc.)
 client.log_strict("gnss", "dome_01", {
+    "satellites": 12,
     "lat": 37.3382,
     "lon": -121.8863,
-    "satellites": 12,
     "fix_mode": "3D",
     # You can add extra fields safely via 'extra_data' without breaking schema
     "extra_data": {"dilution": 1.5}
@@ -214,7 +214,8 @@ Visit `http://HEADNODE_IP:3100/ready` to check if Loki is accepting logs.
 class ChillerModel(BaseModel):
     water_temp: float
     flow_rate: float
-    extra_data: Optional[Dict[str, Any]] = {}
+    # Use Pydantic 2.x Field with default_factory for dicts
+    extra_data: dict[str, Any] | None = Field(default_factory=dict)
 
 ```
 

@@ -49,7 +49,7 @@ async def run_capture(args):
             print("\nCapture stopped by user.")
 
 
-def main():
+def main() -> None:
     """Sets up argument parsing and dispatches commands."""
     parser = argparse.ArgumentParser(description="UbloxControl gRPC Client CLI")
     parser.add_argument("--hosts", nargs="+", default=["localhost:50051"], help="List of server hosts to connect to.")

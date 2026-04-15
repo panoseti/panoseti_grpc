@@ -1,3 +1,4 @@
+from typing import Any
 import json
 import logging
 import time
@@ -11,7 +12,7 @@ from panoseti_grpc.telemetry.logger import get_logger
 LOG_KEY = "logs:ingress"
 
 
-def wait_for_service_log(redis_client, service_name, retries=20):
+def wait_for_service_log( redis_client: Any, service_name: Any, retries: Any = 20) -> None:
     """
     Polls Redis for the specific service log.
     Now looks at the TAIL of the list (most recent logs).
@@ -32,7 +33,7 @@ def wait_for_service_log(redis_client, service_name, retries=20):
     return None
 
 
-def test_unserializable_payload_handling(redis_client, start_grpc_server):
+def test_unserializable_payload_handling( redis_client: Any, start_grpc_server: Any) -> None:
     service_name = "BAD_DATA_TEST"
     logger = get_logger(service_name, grpc_enabled=True)
 
@@ -51,7 +52,7 @@ def test_unserializable_payload_handling(redis_client, start_grpc_server):
     assert "invalid" in data["payload_json"]
 
 
-def test_huge_payload_logging(redis_client):
+def test_huge_payload_logging( redis_client: Any) -> None:
     service_name = "HUGE_LOG_TEST"
     client = TelemetryClient(host="localhost", port=50051)
 
@@ -69,11 +70,11 @@ def test_huge_payload_logging(redis_client):
 
     payload = json.loads(data["payload_json"])
     # Handle both wrapped dicts and raw strings
-    content = payload.get("text", payload) if isinstance(payload, dict) else payload
+    content = payload.get("text", payload) if isinstance(payload,dict[Any]) else payload
     assert len(content) == 5000
 
 
-def test_handler_survives_queue_overflow():
+def test_handler_survives_queue_overflow() -> None:
     """
     Verifies that the AsyncGrpcHandler swallows the queue.Full exception
     and protects the main application thread from crashing when under load.
@@ -117,7 +118,7 @@ def test_handler_survives_queue_overflow():
     handler._stop_event.set()
 
 
-def test_metadata_context_propagation(redis_client, start_grpc_server):
+def test_metadata_context_propagation( redis_client: Any, start_grpc_server: Any) -> None:
     """
     Verifies that rich Python metadata (function name, filename, line number)
     survives the gRPC serialization loop and arrives in Redis.
@@ -125,7 +126,7 @@ def test_metadata_context_propagation(redis_client, start_grpc_server):
     service_name = "META_TEST"
     logger = get_logger(service_name, grpc_enabled=True)
 
-    def internal_function():
+    def internal_function() -> None:
         logger.info("Inside Function")  # Line X
 
     internal_function()
@@ -151,7 +152,7 @@ def test_metadata_context_propagation(redis_client, start_grpc_server):
 
 
 # --- NEW TEST 4: Severity Level Mapping ---
-def test_severity_level_propagation(redis_client, start_grpc_server):
+def test_severity_level_propagation( redis_client: Any, start_grpc_server: Any) -> None:
     """
     Verifies that Python logging levels (WARNING, ERROR, CRITICAL)
     are correctly mapped to the Telemetry Protocol Enums in Redis.

@@ -6,6 +6,7 @@ services disabled by the profile return gRPC UNIMPLEMENTED — not a
 connection error (the server IS running on that port).
 """
 
+from typing import Any
 from __future__ import annotations
 
 import json
@@ -30,7 +31,7 @@ from tests.unified_server.conftest import (
 # ---------------------------------------------------------------------------
 
 
-def test_headnode_enables_telemetry(start_headnode_server, redis_client):
+def test_headnode_enables_telemetry( start_headnode_server: Any, redis_client: Any) -> None:
     """In the headnode profile, Telemetry Log RPCs succeed."""
     client = TelemetryClient(host="localhost", port=HEADNODE_PORT)
     future = client.send_log_future(
@@ -42,7 +43,7 @@ def test_headnode_enables_telemetry(start_headnode_server, redis_client):
     assert result.success, "Telemetry log on headnode server returned success=False"
 
 
-def test_headnode_disables_daq_data(start_headnode_server):
+def test_headnode_disables_daq_data( start_headnode_server: Any) -> None:
     """In the headnode profile, DaqData Ping returns UNIMPLEMENTED (not a conn error)."""
     with grpc.insecure_channel(f"localhost:{HEADNODE_PORT}") as channel:
         stub = daq_data_pb2_grpc.DaqDataStub(channel)
@@ -53,7 +54,7 @@ def test_headnode_disables_daq_data(start_headnode_server):
         )
 
 
-def test_headnode_disables_daq_control(start_headnode_server, tmp_path):
+def test_headnode_disables_daq_control( start_headnode_server: Any, tmp_path: Any) -> None:
     """In the headnode profile, DaqControl StatusDaq returns UNIMPLEMENTED."""
     with grpc.insecure_channel(f"localhost:{HEADNODE_PORT}") as channel:
         stub = daq_control_pb2_grpc.DaqControlStub(channel)
@@ -75,7 +76,7 @@ def test_headnode_disables_daq_control(start_headnode_server, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_daq_node_enables_daq_data(start_daq_node_server):
+def test_daq_node_enables_daq_data( start_daq_node_server: Any) -> None:
     """In the daq_node profile, DaqData Ping succeeds."""
     with grpc.insecure_channel(f"localhost:{DAQ_NODE_PORT}") as channel:
         stub = daq_data_pb2_grpc.DaqDataStub(channel)
@@ -83,7 +84,7 @@ def test_daq_node_enables_daq_data(start_daq_node_server):
         assert resp is not None
 
 
-def test_daq_node_enables_daq_control(start_daq_node_server, tmp_path):
+def test_daq_node_enables_daq_control( start_daq_node_server: Any, tmp_path: Any) -> None:
     """In the daq_node profile, DaqControl StatusDaq succeeds."""
     with grpc.insecure_channel(f"localhost:{DAQ_NODE_PORT}") as channel:
         stub = daq_control_pb2_grpc.DaqControlStub(channel)
@@ -97,7 +98,7 @@ def test_daq_node_enables_daq_control(start_daq_node_server, tmp_path):
         assert resp.success
 
 
-def test_daq_node_disables_telemetry(start_daq_node_server):
+def test_daq_node_disables_telemetry( start_daq_node_server: Any) -> None:
     """In the daq_node profile, Telemetry Log returns UNIMPLEMENTED."""
     client = TelemetryClient(host="localhost", port=DAQ_NODE_PORT)
     future = client.send_log_future(

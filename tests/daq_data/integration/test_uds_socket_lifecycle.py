@@ -4,6 +4,7 @@ abrupt-disconnect recovery, socket permissions, frame-ID monotonicity
 after re-init, and dynamic module discovery.
 """
 
+from typing import Any
 import asyncio
 import copy
 import os
@@ -25,7 +26,7 @@ pytestmark = pytest.mark.asyncio
 # ---------------------------------------------------------------------------
 
 
-def _make_server_config(server_config_base, socket_dir: Path, module_id: int = 224):
+def _make_server_config( server_config_base: Any, socket_dir: Path, module_id: int = 224) -> None:
     """Return a config where every path lives under *socket_dir*."""
     cfg = copy.deepcopy(server_config_base)
     cfg["unix_domain_socket"] = f"unix://{socket_dir / 'grpc.sock'}"
@@ -43,7 +44,7 @@ def _make_server_config(server_config_base, socket_dir: Path, module_id: int = 2
     return cfg
 
 
-async def _start_server(cfg: dict) -> tuple[asyncio.Event, asyncio.Task]:
+async def _start_server(cfg:dict[Any]) -> tuple[asyncio.Event, asyncio.Task]:
     shutdown = asyncio.Event()
     task = asyncio.create_task(serve(cfg, shutdown, in_main_thread=False))
     uds_path = Path(cfg["unix_domain_socket"].replace("unix://", ""))

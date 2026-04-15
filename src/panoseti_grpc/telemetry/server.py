@@ -9,11 +9,14 @@ Features:
 - Descriptive Error Reporting
 """
 
+from __future__ import annotations
+
 import asyncio
 import os
 import signal
 import time
 from pathlib import Path
+from typing import Any, cast
 
 import grpc
 from google.protobuf.json_format import MessageToDict
@@ -40,17 +43,17 @@ class RedisBatcher:
     This turns N network calls into 1.
     """
 
-    def __init__(self, redis_client):
+    def __init__(self, redis_client: Any) -> None:
         self.redis = redis_client
-        self.queue = asyncio.Queue()
+        self.queue: asyncio.Queue[str] = asyncio.Queue()
         self._shutdown = False
         self._worker_task = asyncio.create_task(self._worker())
 
-    async def add(self, log_json: str):
+    async def add(self, log_json: str) -> None:
         """Adds a serialized log to the batch queue."""
         await self.queue.put(log_json)
 
-    async def _worker(self):
+    async def _worker(self) -> None:
         """Background loop that flushes the queue to Redis."""
         while not self._shutdown or not self.queue.empty():
             try:
@@ -77,7 +80,7 @@ class RedisBatcher:
                 # Backoff slightly on error to prevent CPU spin
                 await asyncio.sleep(1)
 
-    async def shutdown(self):
+    async def shutdown(self) -> None:
         """Gracefully flushes remaining logs and stops worker."""
         self._shutdown = True
         # Wait for queue to empty
@@ -97,7 +100,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
     Handles data validation, flattening, and storage into Redis.
     """
 
-    def __init__(self, config_path: Path, redis_client):
+    def __init__(self, config_path: Path, redis_client: Any) -> None:
         self.config_path = config_path
         self.redis = redis_client
         self._load_config()
@@ -106,7 +109,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
         logger.info(f"TelemetryServicer initialized with config: [bold cyan]{self.config_path}[/]")
         logger.info("[bold green]Telemetry Server Online[/]", extra={"markup": True})
 
-    def _load_config(self):
+    def _load_config(self) -> None:
         """Loads or reloads the configuration."""
         try:
             self.config = TelemetryConfig.load(str(self.config_path))
@@ -114,17 +117,19 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
             logger.critical(f"Failed to load configuration: {e}")
             raise
 
-    async def shutdown(self):
+    async def shutdown(self) -> None:
         """Cleanup resources before server stop."""
         logger.info("Closing Redis connection...")
         await self.redis.aclose()
         logger.info("Redis connection closed.")
 
-    def _proto_to_dict(self, message):
+    def _proto_to_dict(self, message: Any) -> dict[str, Any]:
         """Helper to safely convert Proto to Dict for Pydantic."""
         return MessageToDict(message, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)
 
-    async def Log(self, request, context) -> telemetry_pb2.StatusResponse:
+    async def Log(
+        self, request: telemetry_pb2.LogMessage, context: grpc.aio.ServicerContext
+    ) -> telemetry_pb2.StatusResponse:
         """
         High-throughput endpoint for Logging.
         Validates schema and queues for Redis batch writing.
@@ -132,7 +137,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
         try:
             # 1. Extract Data
             # We map protobuf fields to our Pydantic Schema
-            log_data = {
+            log_data: dict[str, Any] = {
                 "host": request.host,
                 "service_name": request.service_name,
                 "timestamp": request.timestamp.seconds + request.timestamp.nanos / 1e9,
@@ -167,7 +172,9 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
             logger.warning(f"Log Ingest Rejected: {e}")
             return telemetry_pb2.StatusResponse(success=False, message=str(e))
 
-    async def ReportStatus(self, request, context):
+    async def ReportStatus(
+        self, request: telemetry_pb2.StatusRequest, context: grpc.aio.ServicerContext
+    ) -> telemetry_pb2.StatusResponse:
         start_time = time.perf_counter()
 
         # Metadata for logging
@@ -276,11 +283,18 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
         except Exception as e:
             logger.exception("Internal Server Error processing ReportStatus")
             await context.abort(grpc.StatusCode.INTERNAL, str(e))
+            # MyPy might think we need a return here if it doesn't know abort raises.
+            return telemetry_pb2.StatusResponse(success=False, message=str(e))
 
 
 async def serve(
-    redis_host="localhost", redis_port=6379, redis_db: int = 0, port=50051, uds_path=None, config_path=None
-):
+    redis_host: str = "localhost",
+    redis_port: int = 6379,
+    redis_db: int = 0,
+    port: int = 50051,
+    uds_path: str | None = None,
+    config_path: str | Path | None = None,
+) -> None:
     """
     Main entry point for running the server.
     Args:
@@ -293,7 +307,7 @@ async def serve(
     logger.info(f"Connecting to Redis at [bold]{redis_host}:{redis_port}[/]...")
 
     # --- 1. ROBUST REDIS CONNECTION (Modified) ---
-    r = None
+    r: redis.Redis | None = None
     max_retries = 10
     for i in range(max_retries):
         try:
@@ -301,9 +315,9 @@ async def serve(
                 f"Connecting to Redis at [bold]DB={redis_db}, {redis_host}:6379[/] (Attempt {i + 1}/{max_retries})..."
             )
             # Create client
-            r = redis.Redis(host=redis_host, port=6379, db=redis_db, decode_responses=True)
+            r = redis.Redis(host=redis_host, port=redis_port, db=redis_db, decode_responses=True)
             # Force a connection check
-            await r.ping()
+            await cast(Any, r.ping())
             logger.info("✅ Redis connection established.")
             break
         except redis.ConnectionError as e:
@@ -314,6 +328,9 @@ async def serve(
             else:
                 logger.critical("❌ Could not connect to Redis after multiple retries. Exiting.")
                 return  # Exit the server function gracefully (causes process to die)
+
+    if r is None:
+        return
 
     # 2. Setup gRPC Server
     server = grpc.aio.server()
@@ -354,7 +371,7 @@ async def serve(
     # 4. Graceful Shutdown Setup
     shutdown_event = asyncio.Event()
 
-    def _handle_signal(*args):
+    def _handle_signal(*args: Any) -> None:
         logger.info("Signal received. Initiating shutdown...")
         shutdown_event.set()
 
@@ -378,7 +395,7 @@ async def serve(
     logger.info("Goodbye.")
 
 
-def main():
+def main() -> None:
     """Console script entry point (``panoseti-telemetry``)."""
     REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
     GRPC_PORT = int(os.getenv("GRPC_PORT", 50051))

@@ -19,13 +19,13 @@ TEST_DATA_DIR = Path("tests/ublox_control/test_data")
 
 
 @pytest.fixture(scope="session")
-def ubx_packets_data_path():
+def ubx_packets_data_path() -> None:
     return TEST_DATA_DIR / "ubx_packets.jsonl"
 
 
 # Create a dummy server config for testing
 @pytest.fixture(scope="session")
-def server_config():
+def server_config() -> None:
     cfg = {"max_workers": 5, "max_read_queue_size": 200, "shutdown_grace_period": 0.1}
     config_path = TEST_CFG_DIR / "ublox_control_server_config.json"
     # config_path = load_package_json("panoseti_grpc.ublox_control", "config/ublox_control_server_config.json")

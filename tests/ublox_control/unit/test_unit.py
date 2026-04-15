@@ -7,13 +7,13 @@ from panoseti_grpc.ublox_control.initialize.conf_gnss import _layers_mask, _spli
 from panoseti_grpc.ublox_control.resources import get_f9t_redis_key, ubx_to_dict
 
 
-def test_get_f9t_redis_key_valid():
+def test_get_f9t_redis_key_valid() -> None:
     """Tests Redis key generation with a valid UID."""
     key = get_f9t_redis_key("ZED-F9T", "DF03A241BC", "TIM-TP")
     assert key == "UBLOX_ZED-F9T_DF03A241BC_TIM-TP"
 
 
-def test_get_f9t_redis_key_invalid():
+def test_get_f9t_redis_key_invalid() -> None:
     """Tests that an invalid UID raises a ValueError."""
     with pytest.raises(ValueError):
         get_f9t_redis_key("ZED-F9T", "INVALID", "TIM-TP")
@@ -21,7 +21,7 @@ def test_get_f9t_redis_key_invalid():
         get_f9t_redis_key("ZED-F9T", "12345", "TIM-TP")
 
 
-def test_layers_mask():
+def test_layers_mask() -> None:
     """Tests the layer mask generation function."""
     assert _layers_mask(["RAM"]) == 0x01
     assert _layers_mask(["BBR"]) == 0x02
@@ -31,7 +31,7 @@ def test_layers_mask():
         _layers_mask(["INVALID_LAYER"])
 
 
-def test_split_scaled_llh():
+def test_split_scaled_llh() -> None:
     """Tests the conversion of LLH coordinates to u-blox format."""
     lat_i, lat_hp, lon_i, lon_hp, h_cm, h_hp = _split_scaled_llh(37.4219999, -122.0840575, 12.345)
     assert lat_i == 374219999
@@ -42,7 +42,7 @@ def test_split_scaled_llh():
     assert h_hp == 50
 
 
-def test_ubx_to_dict():
+def test_ubx_to_dict() -> None:
     """Tests the conversion of a UBXMessage to a dictionary."""
     # Create a sample UBXMessage (ACK-ACK)
     msg = UBXMessage("ACK", "ACK-ACK", 0, clsID=0x05, msgID=0x01)

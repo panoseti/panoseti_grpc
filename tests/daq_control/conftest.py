@@ -1,3 +1,4 @@
+from typing import Any
 import asyncio
 import multiprocessing
 import socket
@@ -16,7 +17,7 @@ from panoseti_grpc.daq_control.server import serve
 # ---------------------------------------------------------------------------
 
 
-def wait_for_file(path, timeout=10.0, poll=0.1) -> bool:
+def wait_for_file( path: Any, timeout: Any = 10.0, poll: Any = 0.1)-> bool:
     """Return True once the file at `path` exists; False on timeout."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -26,7 +27,7 @@ def wait_for_file(path, timeout=10.0, poll=0.1) -> bool:
     return False
 
 
-def wait_for_pid_gone(pid, timeout=10.0, poll=0.1) -> bool:
+def wait_for_pid_gone( pid: Any, timeout: Any = 10.0, poll: Any = 0.1)-> bool:
     """Return True once the given PID no longer exists; False on timeout."""
     import psutil
 
@@ -41,7 +42,7 @@ def wait_for_pid_gone(pid, timeout=10.0, poll=0.1) -> bool:
 SERVER_PORT = 50051
 
 
-def _run_server_process(grpc_port):
+def _run_server_process( grpc_port: Any) -> None:
     """
     Runs the server in a separate process.
     """
@@ -50,7 +51,7 @@ def _run_server_process(grpc_port):
 
 
 @pytest.fixture(scope="session")
-def start_grpc_server():
+def start_grpc_server() -> None:
     """
     Starts the gRPC server in a separate multiprocessing.Process.
     """
@@ -86,5 +87,5 @@ def start_grpc_server():
 
 
 @pytest.fixture(scope="session")
-def grpc_client(start_grpc_server):
+def grpc_client( start_grpc_server: Any) -> None:
     return DaqControlClient(host="localhost", port=SERVER_PORT)

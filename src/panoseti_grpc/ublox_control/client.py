@@ -32,14 +32,14 @@ class UbloxControlClient:
                 client.init_f9t(...)
     """
 
-    def __init__(self, hosts: list[str], log_level: int = logging.INFO):
+    def __init__(self, hosts: list[str], log_level: int = logging.INFO) -> None:
         self.logger = make_rich_logger("ublox_control.client.sync", level=log_level)
         if not hosts:
             raise ValueError("hosts list cannot be empty")
         self.hosts = {host: {} for host in hosts}
         self.valid_hosts = set()
 
-    def __enter__(self):
+    def __enter__(self) -> None:
         for host, data in self.hosts.items():
             try:
                 channel = grpc.insecure_channel(host)
@@ -52,13 +52,13 @@ class UbloxControlClient:
                 self.logger.error(f"Timeout connecting to {host}")
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         for data in self.hosts.values():
             if data.get("channel"):
                 data["channel"].close()
         self.logger.info("All client channels closed.")
 
-    def ping(self, host: str, timeout=1.0) -> bool:
+    def ping(self, host: str, timeout: Any = 1.0) -> bool:
         """Checks if a host is responsive by verifying channel readiness."""
         if host not in self.hosts or "channel" not in self.hosts[host]:
             return False
@@ -68,7 +68,7 @@ class UbloxControlClient:
         except grpc.FutureTimeoutError:
             return False
 
-    def init_f9t(self, hosts: list[str], f9t_cfg: dict[str, Any], timeout=10.0) -> bool:
+    def init_f9t(self, hosts: list[str], f9t_cfg: dict[str, Any], timeout: Any = 10.0) -> bool:
         """Initializes the F9T device on the specified hosts."""
         success_flags = []
         for host in hosts:
@@ -119,7 +119,9 @@ class AioUbloxControlClient:
                     print(data)
     """
 
-    def __init__(self, hosts: list[str], stop_event: asyncio.Event | None = None, log_level: int = logging.INFO):
+    def __init__(
+        self, hosts: list[str], stop_event: asyncio.Event | None = None, log_level: int = logging.INFO
+    ) -> None:
         self.logger = make_rich_logger("ublox_control.client.async", level=log_level)
         if not hosts:
             raise ValueError("hosts list cannot be empty")

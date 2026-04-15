@@ -10,6 +10,8 @@ Features:
     * check the free space on disk
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
@@ -17,8 +19,10 @@ import shutil
 import signal
 from glob import glob
 from pathlib import Path
+from typing import Any
 
 import psutil
+from google.protobuf.struct_pb2 import Struct
 from pydantic import ValidationError
 
 # gRPC Imports
@@ -39,7 +43,7 @@ PROCESS = "hashpipe"
 SERVER_LOG_DIR = "/var/log/panoseti"
 
 
-async def _read_stream(stream: asyncio.StreamReader, log_method):
+async def _read_stream(stream: asyncio.StreamReader, log_method: Any) -> None:
     """Read lines from a subprocess stream and forward each line to a logger method."""
     while True:
         line = await stream.readline()
@@ -52,8 +56,10 @@ async def _read_stream(stream: asyncio.StreamReader, log_method):
 
 async def _monitor_hashpipe(
     proc: asyncio.subprocess.Process, stdout_logger: logging.Logger, stderr_logger: logging.Logger
-):
+) -> None:
     """Pipe hashpipe stdout/stderr to their respective loggers (runs as background task)."""
+    if proc.stdout is None or proc.stderr is None:
+        return
     async with asyncio.TaskGroup() as tg:
         tg.create_task(_read_stream(proc.stdout, stdout_logger.info))
         tg.create_task(_read_stream(proc.stderr, stderr_logger.error))
@@ -65,7 +71,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     Handles start daq, stop daq and status daq.
     """
 
-    def __init__(self, level=logging.INFO):
+    def __init__(self, level: int = logging.INFO) -> None:
         self.logger = get_logger(
             "daq_control_server",
             level=level,
@@ -88,26 +94,26 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             self.logger.warning("All of these HASHPIPE instances have been killed.")
             self.kill_processes(hashpipe_pids)
 
-    def _get_pids_by_name(self, name):
+    def _get_pids_by_name(self, name: str) -> tuple[int, list[int]]:
         pids = []
         for proc in psutil.process_iter(["pid", "name"]):
             if proc.info["name"] == name:
                 pids.append(proc.info["pid"])
         return len(pids), pids
 
-    def kill_processes(self, pids):
+    def kill_processes(self, pids: list[int]) -> None:
         for pid in pids:
             p = psutil.Process(pid)
             p.send_signal(signal.SIGINT)
 
-    def _create_module_config(self, datadir, module_id):
+    def _create_module_config(self, datadir: str | Path, module_id: list[int]) -> None:
         mconfig = f"{datadir}/module.config"
         self.logger.info(f"Create {mconfig}")
         with open(mconfig, "w") as f:
             for id in module_id:
                 f.write(f"{id} ")
 
-    def _setup_data_directories(self, datadir, rundir, module_id):
+    def _setup_data_directories(self, datadir: str | Path, rundir: str | Path, module_id: list[int]) -> None:
         # create directory for config files
         cdirname = f"{datadir}/{rundir}"
         self.logger.info(f"Setup rundir for configs: {cdirname}")
@@ -118,7 +124,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             self.logger.info(f"Setup rundir for data: {dirname}")
             Path(dirname).mkdir(parents=True, exist_ok=True)
 
-    def _check_disk_usage(self, datadir):
+    def _check_disk_usage(self, datadir: str | Path) -> dict[str, int]:
         usage = shutil.disk_usage(datadir)
         disk_usage = {
             "total_disk_space": usage.total,
@@ -127,13 +133,14 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         }
         return disk_usage
 
-    def _check_run_dirs(self, datadir):
+    def _check_run_dirs(self, datadir: str | Path) -> list[str]:
         return glob(f"{datadir}/*.pffd")
 
-    def _cleanup_dir(self, rundir):
+    def _cleanup_dir(self, rundir: str | Path) -> bool:
         path = Path(rundir)
         if not path.is_dir():
             self.logger.warning(f"Data Directory not exist: {rundir}")
+            return False
         else:
             self.logger.debug(f"Cleaning up {rundir}")
             shutil.rmtree(path)
@@ -144,14 +151,16 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 self.logger.debug("Cleanup failed")
                 return False
 
-    def _request_to_dict(self, request):
-        request_dict = MessageToDict(
+    def _request_to_dict(self, request: Any) -> dict[str, Any]:
+        request_dict: dict[str, Any] = MessageToDict(
             request, always_print_fields_with_no_presence=True, preserving_proto_field_name=True
         )
         return request_dict
 
     @grpc_error_handler
-    async def StartDaq(self, request, context):
+    async def StartDaq(
+        self, request: daq_control_pb2.StartDaqRequest, context: grpc.ServicerContext
+    ) -> daq_control_pb2.StartDaqResponse:
         self.logger.info("Starting HASHPIPE instance...")
         # 1. check if we already have HASHPIPE running
         n, pids = self._get_pids_by_name(PROCESS)
@@ -230,6 +239,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
         WAIT_TIMEOUT = 5  # seconds
         POLL_INTERVAL = 0.05  # seconds
+        success = False
         for _ in range(int(WAIT_TIMEOUT / POLL_INTERVAL)):
             success = is_hashpipe_running(self.hashpipe_pid)
             if success:
@@ -243,7 +253,9 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         return daq_control_pb2.StartDaqResponse(success=success, message=msg)
 
     @grpc_error_handler
-    async def StopDaq(self, request, context):
+    async def StopDaq(
+        self, request: daq_control_pb2.StopDaqRequest, context: grpc.ServicerContext
+    ) -> daq_control_pb2.StopDaqResponse:
         self.logger.info("Stop HASHPIPE instance...")
         # data dir and run dir is not used in this method
         # dreq = self._request_to_dict(request)
@@ -270,7 +282,9 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             return daq_control_pb2.StopDaqResponse(success=True)
 
     @grpc_error_handler
-    async def StatusDaq(self, request, context):
+    async def StatusDaq(
+        self, request: daq_control_pb2.DaqStatusRequest, context: grpc.ServicerContext
+    ) -> daq_control_pb2.DaqStatusResponse:
         self.logger.info("Checking Daq Node status...")
         creq = self._request_to_dict(request)
         vreq = StatusDaqModel(**creq)
@@ -285,27 +299,33 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         else:
             hashpipe_running = False
         # check free space
+        disk_usage_dict: dict[str, Any] = {}
         if vreq.check_disk_usage:
             self.logger.debug("Checking disk usage...")
-            disk_usage = self._check_disk_usage(datadir)
+            disk_usage_dict = self._check_disk_usage(datadir)
         else:
-            disk_usage = {
+            disk_usage_dict = {
                 "total_disk_space": -1,
                 "used_disk_space": -1,
                 "free_disk_space": -1,
             }
+        disk_usage_struct = Struct()
+        disk_usage_struct.update(disk_usage_dict)
+
         # check run dirs
-        run_dirs = []
+        run_dirs: list[str] = []
         if vreq.check_run_dirs:
             self.logger.debug("Checking run dirs")
             run_dirs = self._check_run_dirs(datadir)
         # return
-        return daq_control_pb2.StatusDaqResponse(
-            success=True, hashpipe_running=hashpipe_running, disk_usage=disk_usage, run_dirs=run_dirs
+        return daq_control_pb2.DaqStatusResponse(
+            success=True, hashpipe_running=hashpipe_running, disk_usage=disk_usage_struct, run_dirs=run_dirs
         )
 
     @grpc_error_handler
-    async def CleanupData(self, request, context):
+    async def CleanupData(
+        self, request: daq_control_pb2.CleanupDataRequest, context: grpc.ServicerContext
+    ) -> daq_control_pb2.CleanupDataResponse:
         self.logger.info("Cleanning up Data...")
         if self.hashpipe_pid > 0:
             self.logger.warning("Cleaning up data dir is not allowed")
@@ -333,7 +353,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         return daq_control_pb2.CleanupDataResponse(success=True)
 
 
-async def serve(grpc_port=50051, level=logging.DEBUG):
+async def serve(grpc_port: int = 50051, level: int = logging.DEBUG) -> None:
     """
     Main entry point for running the server.
     Args:
@@ -373,7 +393,7 @@ async def serve(grpc_port=50051, level=logging.DEBUG):
     # 4. graceful shutdown setup
     shutdown_event = asyncio.Event()
 
-    def _handle_signal(*args):
+    def _handle_signal(*args: Any) -> None:
         logger.info("Signal received. Initiating shutdown...")
         shutdown_event.set()
 
@@ -395,7 +415,7 @@ async def serve(grpc_port=50051, level=logging.DEBUG):
     logger.info("Goodbye.")
 
 
-def main():
+def main() -> None:
     """Console script entry point (``panoseti-daq-control``)."""
     GRPC_PORT = int(os.getenv("GRPC_PORT", 50051))
     try:

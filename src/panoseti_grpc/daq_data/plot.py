@@ -1,12 +1,18 @@
+from __future__ import annotations
+
 import textwrap
 import time
 from collections import deque
+from collections.abc import Iterable
 from datetime import datetime
+from typing import Any, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 from IPython.display import clear_output, display
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from matplotlib.ticker import MaxNLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -14,34 +20,42 @@ from panoseti_grpc.panoseti_util import pff
 
 
 class PulseHeightDistribution:
-    def __init__(self, durations_seconds, module_ids, plot_update_interval):
+    def __init__(
+        self, durations_seconds: Iterable[float], module_ids: Iterable[int], plot_update_interval: float
+    ) -> None:
         self.durations = list(durations_seconds)
         self.module_ids = list(module_ids)
         self.plot_update_interval = plot_update_interval
         self.n_durations = len(self.durations)
-        self.start_times = {mod: [time.time() for _ in range(self.n_durations)] for mod in self.module_ids}
-        self.hist_data = {mod: [deque() for _ in range(self.n_durations)] for mod in self.module_ids}
-        self.vmins = {mod: [float("inf")] * self.n_durations for mod in self.module_ids}
-        self.vmaxs = {mod: [float("-inf")] * self.n_durations for mod in self.module_ids}
+        self.start_times: dict[int, list[float]] = {
+            mod: [time.time() for _ in range(self.n_durations)] for mod in self.module_ids
+        }
+        self.hist_data: dict[int, list[deque[int]]] = {
+            mod: [deque() for _ in range(self.n_durations)] for mod in self.module_ids
+        }
+        self.vmins: dict[int, list[float]] = {mod: [float("inf")] * self.n_durations for mod in self.module_ids}
+        self.vmaxs: dict[int, list[float]] = {mod: [float("-inf")] * self.n_durations for mod in self.module_ids}
         self.module_colors = self._get_palette(self.module_ids)
         self.fig, self.axes = self._make_fig_axes()
         self.last_plot_update_time = time.time()
         self.num_rescale = 2
         self.jupyter_notebook = False  # set externally if running in notebook
 
-    def _get_palette(self, module_ids):
+    def _get_palette(self, module_ids: list[int]) -> dict[int, Any]:
         palette = sns.color_palette("husl", n_colors=len(module_ids))
         return {mod: palette[i] for i, mod in enumerate(module_ids)}
 
-    def _make_fig_axes(self):
+    def _make_fig_axes(self) -> tuple[Figure, list[Axes]]:
         height = max(2.9 * self.n_durations, 6)
         plt.ion()
         fig, axes = plt.subplots(self.n_durations, 1, figsize=(6, height))
         if self.n_durations == 1:
-            axes = [axes]
-        return fig, axes
+            axes_list = [cast(Axes, axes)]
+        else:
+            axes_list = list(cast(Iterable[Axes], axes))
+        return fig, axes_list
 
-    def _add_new_module(self, module_id):
+    def _add_new_module(self, module_id: int) -> None:
         self.module_ids.append(module_id)
         self.start_times[module_id] = [time.time()] * self.n_durations
         self.hist_data[module_id] = [deque() for _ in range(self.n_durations)]
@@ -51,10 +65,10 @@ class PulseHeightDistribution:
         self.module_colors = self._get_palette(self.module_ids)
         self.num_rescale = 2
 
-    def update(self, parsed_pano_image):
-        module_id = parsed_pano_image["module_id"]
+    def update(self, parsed_pano_image: dict[str, Any]) -> None:
+        module_id = int(parsed_pano_image["module_id"])
         pano_type = parsed_pano_image["type"]
-        image = parsed_pano_image["image_array"]
+        image = cast(np.ndarray, parsed_pano_image["image_array"])
 
         if pano_type != "PULSE_HEIGHT":
             return
@@ -81,7 +95,7 @@ class PulseHeightDistribution:
             self.plot()
             self.last_plot_update_time = curr_time
 
-    def plot(self):
+    def plot(self) -> None:
         for i, duration in enumerate(self.durations):
             ax = self.axes[i]
             ax.clear()
@@ -91,7 +105,7 @@ class PulseHeightDistribution:
             )
             # Plot histograms for all modules
             for mod in self.module_ids:
-                values = self.hist_data[mod][i]
+                values = list(self.hist_data[mod][i])
                 if values:
                     sns.histplot(
                         values,
@@ -111,12 +125,13 @@ class PulseHeightDistribution:
             self.fig.tight_layout()
             self.num_rescale -= 1
         self.fig.suptitle("Distribution of Max Pulse-Heights")
-        self.fig.canvas.draw_idle()
-        self.fig.canvas.flush_events()
+        if self.fig.canvas:
+            self.fig.canvas.draw_idle()
+            self.fig.canvas.flush_events()
 
         if self.jupyter_notebook:
-            clear_output(wait=True)
-            display(self.fig)
+            clear_output(wait=True)  # type: ignore
+            display(self.fig)  # type: ignore
 
 
 class PanoImagePreviewer:
@@ -124,28 +139,34 @@ class PanoImagePreviewer:
         self,
         stream_movie_data: bool,
         stream_pulse_height_data: bool,
-        module_id_whitelist: tuple[int] = (),
-        text_width=30,
-        font_size=8,
-        row_height=3,
-        window_size=10,
-        plot_update_interval=1.0,
-        jupyter_notebook=False,
-    ):
+        module_id_whitelist: tuple[int, ...] = (),
+        text_width: int = 30,
+        font_size: int = 8,
+        row_height: float = 3.0,
+        window_size: int = 10,
+        plot_update_interval: float = 1.0,
+        jupyter_notebook: bool = False,
+    ) -> None:
         self.stream_movie_data = stream_movie_data
         self.stream_pulse_height_data = stream_pulse_height_data
         self.module_id_whitelist = module_id_whitelist
         self.plot_update_interval = plot_update_interval
         self.last_plot_update_time = time.monotonic()
         self.jupyter_notebook = jupyter_notebook
-        self.seen_modules = set()
-        self.axes_map = {}
-        self.cbar_map = {}
-        self.im_map = {}
+        self.seen_modules: set[int] = set()
+        self.axes_map: dict[tuple[int, str], Axes] = {}
+        self.cbar_map: dict[tuple[int, str], Any] = {}
+        self.im_map: dict[tuple[int, str], Any] = {}
         self.window_size = window_size
-        self.max_pix_map = {"PULSE_HEIGHT": deque(maxlen=self.window_size), "MOVIE": deque(maxlen=self.window_size)}
-        self.min_pix_map = {"PULSE_HEIGHT": deque(maxlen=self.window_size), "MOVIE": deque(maxlen=self.window_size)}
-        self.fig = None
+        self.max_pix_map: dict[str, deque[float]] = {
+            "PULSE_HEIGHT": deque(maxlen=self.window_size),
+            "MOVIE": deque(maxlen=self.window_size),
+        }
+        self.min_pix_map: dict[str, deque[float]] = {
+            "PULSE_HEIGHT": deque(maxlen=self.window_size),
+            "MOVIE": deque(maxlen=self.window_size),
+        }
+        self.fig: Figure | None = None
         self.text_width = text_width
         self.font_size = font_size
         self.cmap = "plasma"
@@ -154,20 +175,24 @@ class PanoImagePreviewer:
         self.last_max = float("-inf")
         self.last_min = float("inf")
 
-    def setup_layout(self, modules):
+    def setup_layout(self, modules: Iterable[int]) -> None:
         """Sets up subplot layout: one row per module, two columns (PH left, Movie right)."""
         # Close any old figure
         if self.fig is not None:
             plt.close(self.fig)
-        modules = sorted(modules)
-        n_modules = len(modules)
-        self.fig, axs = plt.subplots(n_modules, 2, figsize=(self.row_height * 2.2, self.row_height * n_modules))
+        module_list = sorted(modules)
+        n_modules = len(module_list)
+        self.fig, axes = plt.subplots(n_modules, 2, figsize=(self.row_height * 2.2, self.row_height * n_modules))
+        
         if n_modules == 1:
-            axs = np.array([axs])
+            axs = np.array([axes])
+        else:
+            axs = cast(np.ndarray, axes)
+
         self.axes_map.clear()
         self.cbar_map.clear()
         self.im_map.clear()
-        for row, module_id in enumerate(modules):
+        for row, module_id in enumerate(module_list):
             # Left = PULSE_HEIGHT, Right = MOVIE
             self.axes_map[(module_id, "PULSE_HEIGHT")] = axs[row, 0]
             self.axes_map[(module_id, "MOVIE")] = axs[row, 1]
@@ -188,17 +213,17 @@ class PanoImagePreviewer:
             cbar_mov = self.fig.colorbar(im_mov, cax=cax_mov)
             self.cbar_map[(module_id, "MOVIE")] = cbar_mov
 
-        self.num_rescale = 2 * len(modules)  # layout optimization at start
+        self.num_rescale = 2 * len(module_list)  # layout optimization at start
         self.fig.tight_layout()
         if not self.jupyter_notebook:
             plt.ion()
             plt.show()
 
-    def update(self, parsed_pano_image):
-        pano_type = parsed_pano_image["type"]
-        img = parsed_pano_image["image_array"]
-        module_id = parsed_pano_image["module_id"]
-        header = parsed_pano_image["header"]
+    def update(self, parsed_pano_image: dict[str, Any]) -> None:
+        pano_type = cast(str, parsed_pano_image["type"])
+        img = cast(np.ndarray, parsed_pano_image["image_array"])
+        module_id = int(parsed_pano_image["module_id"])
+        header = cast(dict[str, Any], parsed_pano_image["header"])
         frame_number = parsed_pano_image["frame_number"]
         file = parsed_pano_image["file"]
 
@@ -207,9 +232,12 @@ class PanoImagePreviewer:
             self.seen_modules.add(module_id)
             self.setup_layout(self.seen_modules)
 
+        if self.fig is None:
+            return
+
         # Compute min and max pixels for the current image
-        curr_max = np.max(img)
-        curr_min = np.min(img)
+        curr_max = float(np.max(img))
+        curr_min = float(np.min(img))
 
         # Check if a new dynamic range will be observed
         update_clim = curr_max > self.last_max
@@ -229,13 +257,13 @@ class PanoImagePreviewer:
         im.set_data(img)
 
         if update_clim:
-            self.last_min = np.min(self.min_pix_map[pano_type])
-            self.last_max = np.max(self.max_pix_map[pano_type])
-            vmax = np.quantile(self.max_pix_map[pano_type], 0.95)
-            vmin = np.quantile(self.min_pix_map[pano_type], 0.05)
+            self.last_min = float(np.min(self.min_pix_map[pano_type]))
+            self.last_max = float(np.max(self.max_pix_map[pano_type]))
+            vmax = float(np.quantile(self.max_pix_map[pano_type], 0.95))
+            vmin = float(np.quantile(self.min_pix_map[pano_type], 0.05))
             # Avoid degenerate scale
             if vmax == vmin:
-                vmax += 1
+                vmax += 1.0
             im.set_clim(vmin, vmax)
             cbar = self.cbar_map.get((module_id, pano_type))
             if cbar:
@@ -276,15 +304,18 @@ class PanoImagePreviewer:
             self.plot()
             self.last_plot_update_time = curr_time
 
-    def plot(self):
+    def plot(self) -> None:
+        if self.fig is None:
+            return
         # For rapid updates: only trigger full redraws when absolutely needed
         if self.num_rescale > 0:
             self.fig.tight_layout()
             self.num_rescale -= 1
 
         if not self.jupyter_notebook:
-            self.fig.canvas.draw_idle()
-            self.fig.canvas.flush_events()
+            if self.fig.canvas:
+                self.fig.canvas.draw_idle()
+                self.fig.canvas.flush_events()
         else:
-            clear_output(wait=True)
-            display(self.fig)
+            clear_output(wait=True)  # type: ignore
+            display(self.fig)  # type: ignore

@@ -1,3 +1,4 @@
+from typing import Any
 import logging
 import time
 
@@ -12,7 +13,7 @@ from .test_logging_scenarios import LOG_KEY, wait_for_service_log
 
 
 # --- HELPER FOR ROBUST WAITING ---
-def wait_for_worker_logs(redis_client, session_id, min_count=1, timeout=15):
+def wait_for_worker_logs( redis_client: Any, session_id: Any, min_count: Any = 1, timeout: Any = 15) -> None:
     """
     Polls Redis until the workers report in with the specific session ID.
     Replaces brittle time.sleep() calls.
@@ -30,7 +31,7 @@ def wait_for_worker_logs(redis_client, session_id, min_count=1, timeout=15):
 # --- A. OMNI-CHANNEL LOGGING TEST ---
 
 
-def test_triple_destination_logging(tmp_path, capsys, redis_client, start_grpc_server):
+def test_triple_destination_logging( tmp_path: Any, capsys: Any, redis_client: Any, start_grpc_server: Any) -> None:
     service_name = "OMNI_TEST"
     log_dir = tmp_path / "omni_logs"
     log_dir.mkdir()
@@ -66,7 +67,7 @@ def test_triple_destination_logging(tmp_path, capsys, redis_client, start_grpc_s
 # --- B. DISTRIBUTED WORKER CONTROL TESTS ---
 
 
-def test_distributed_session_switching(redis_client, start_grpc_server):
+def test_distributed_session_switching( redis_client: Any, start_grpc_server: Any) -> None:
     """
     Validates that the worker swarm can dynamically switch sessions.
     """
@@ -106,7 +107,7 @@ def test_distributed_session_switching(redis_client, start_grpc_server):
 # --- C. ROBUSTNESS TESTS ---
 
 
-def test_queue_overflow_protection(redis_client):
+def test_queue_overflow_protection( redis_client: Any) -> None:
     service_name = "OVERFLOW_TEST"
     client = TelemetryClient(host="localhost", port=50051)
 
@@ -131,7 +132,7 @@ def test_queue_overflow_protection(redis_client):
     assert duration < 2.0, "Logging blocked main thread!"
 
 
-def test_logger_reconfiguration(tmp_path, start_grpc_server):
+def test_logger_reconfiguration( tmp_path: Any, start_grpc_server: Any) -> None:
     """
     Validates dynamic reconfiguration and strict level filtering.
     """

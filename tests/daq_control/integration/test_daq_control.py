@@ -1,3 +1,4 @@
+from typing import Any
 from pathlib import Path
 
 import pytest
@@ -35,37 +36,37 @@ CLEANUP_PARAMS = {
 }
 
 
-def test_start_daq(grpc_client):
+def test_start_daq( grpc_client: Any) -> None:
     """Verify StartDaq succeeds and hashpipe starts."""
     assert grpc_client.StartDaq(START_PARAMS) is True
 
 
-def test_hashpipe_log_files_created(grpc_client):
+def test_hashpipe_log_files_created( grpc_client: Any) -> None:
     """After StartDaq, hp_stdout.log and hp_stderr.log should exist in run_dir."""
     run_dir = Path(START_PARAMS["data_dir"]) / START_PARAMS["run_dir"]
     assert wait_for_file(run_dir / "hp_stdout.log"), f"hp_stdout.log not created in {run_dir}"
     assert wait_for_file(run_dir / "hp_stderr.log"), f"hp_stderr.log not created in {run_dir}"
 
 
-def test_start_daq_already_running(grpc_client):
+def test_start_daq_already_running( grpc_client: Any) -> None:
     """StartDaq must fail when a hashpipe instance is already running."""
     with pytest.raises(ValueError):
         grpc_client.StartDaq(START_PARAMS)
 
 
-def test_cleanup_data_while_running(grpc_client):
+def test_cleanup_data_while_running( grpc_client: Any) -> None:
     """CleanupData must be rejected while hashpipe is running."""
     # with pytest.raises(ValueError):
     assert grpc_client.CleanupData(CLEANUP_PARAMS)["success"] is False
 
 
-def test_status_daq_hashpipe_running(grpc_client):
+def test_status_daq_hashpipe_running( grpc_client: Any) -> None:
     """StatusDaq reports hashpipe_running=True while hashpipe is up."""
     _, status = grpc_client.StatusDaq({**STATUS_PARAMS_BASE, "check_hashpipe_running": True})
     assert status["hashpipe_running"] is True
 
 
-def test_status_daq_disk_usage(grpc_client):
+def test_status_daq_disk_usage( grpc_client: Any) -> None:
     """StatusDaq returns non-negative disk usage values."""
     _, status = grpc_client.StatusDaq({**STATUS_PARAMS_BASE, "check_disk_usage": True})
     du = status["disk_usage"]
@@ -74,29 +75,29 @@ def test_status_daq_disk_usage(grpc_client):
     assert du["used_disk_space"] >= 0
 
 
-def test_stop_daq(grpc_client):
+def test_stop_daq( grpc_client: Any) -> None:
     """StopDaq should successfully terminate the running hashpipe."""
     assert grpc_client.StopDaq(STOP_PARAMS) is True
 
 
-def test_stop_daq_not_running(grpc_client):
+def test_stop_daq_not_running( grpc_client: Any) -> None:
     """StopDaq is a no-op (success) when hashpipe is already stopped."""
     assert grpc_client.StopDaq(STOP_PARAMS) is True
 
 
-def test_status_daq_hashpipe_not_running(grpc_client):
+def test_status_daq_hashpipe_not_running( grpc_client: Any) -> None:
     """After StopDaq, hashpipe_running should be False."""
     _, status = grpc_client.StatusDaq({**STATUS_PARAMS_BASE, "check_hashpipe_running": True})
     assert status["hashpipe_running"] is False
 
 
-def test_status_daq_run_dirs(grpc_client):
+def test_status_daq_run_dirs( grpc_client: Any) -> None:
     """The run directory created by StartDaq should appear in run_dirs."""
     _, status = grpc_client.StatusDaq({**STATUS_PARAMS_BASE, "check_run_dirs": True})
     run_dirs = status["run_dirs"]
     assert any("test.pffd" in d for d in run_dirs)
 
 
-def test_cleanup_data(grpc_client):
+def test_cleanup_data( grpc_client: Any) -> None:
     """CleanupData removes the run directory after hashpipe is stopped."""
     assert grpc_client.CleanupData(CLEANUP_PARAMS)["success"] is True

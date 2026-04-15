@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import defaultdict
+from typing import Any
 
 from panoseti_grpc.generated.daq_data_pb2 import PanoImage
 
@@ -28,13 +29,13 @@ class HpIoManager:
     def __init__(
         self,
         server_cfg: DaqDataServerConfig,
-        hp_io_cfg: dict,
+        hp_io_cfg: dict[str, Any],
         reader_states: list[ReaderState],
         stop_event: asyncio.Event,
         valid: asyncio.Event,
-        active_data_products_queue: asyncio.Queue,
+        active_data_products_queue: asyncio.Queue[set[str]],
         logger: logging.Logger,
-    ):
+    ) -> None:
         self.server_cfg = server_cfg
         self.hp_io_cfg = hp_io_cfg
         self.reader_states = reader_states
@@ -44,7 +45,7 @@ class HpIoManager:
         self.logger = logger
         self.processing_loop_timeout = 0.75
 
-        self.data_queue = asyncio.Queue(maxsize=500)
+        self.data_queue: asyncio.Queue[PanoImage] = asyncio.Queue(maxsize=500)
         self.data_sources: list[UdsDataSource] = []
 
         self.modules: dict[int, ModuleState] = {}
@@ -55,7 +56,7 @@ class HpIoManager:
 
         self._configure_data_sources()
 
-    def _configure_data_sources(self):
+    def _configure_data_sources(self) -> None:
         """Instantiates UDS data sources based on server configuration."""
         uds_cfg = self.server_cfg.acquisition_methods.uds
         self.logger.info(f"Configuring data sources with UDS enabled={uds_cfg.enabled}.")
@@ -72,7 +73,7 @@ class HpIoManager:
                 self.data_sources.append(UdsDataSource(source_cfg, self.logger, self.data_queue, self.stop_event))
         self.logger.info(f"Configured {len(self.data_sources)} data sources: {self.data_sources}")
 
-    async def run(self):
+    async def run(self) -> None:
         """Main entry point: starts data sources and the processing loop."""
         self.logger.info("HpIoManager task starting.")
         self.valid.clear()
@@ -111,7 +112,7 @@ class HpIoManager:
             self.valid.clear()
             self.logger.info("HpIoManager task exited.")
 
-    async def _processing_loop(self):
+    async def _processing_loop(self) -> None:
         """Assigns a unique frame_id to each incoming image before caching."""
         self.logger.info("Starting processing loop.")
         while not self.stop_event.is_set():
@@ -131,13 +132,13 @@ class HpIoManager:
                 continue
         self.logger.info("Processing loop finished.")
 
-    def _cache_pano_image(self, cached_image: CachedPanoImage):
+    def _cache_pano_image(self, cached_image: CachedPanoImage) -> None:
         """Caches the received CachedPanoImage, overwriting the previous one. Synchronous — no awaits needed."""
         pano_image = cached_image.pano_image
         cache_key = "ph" if pano_image.type == PanoImage.Type.PULSE_HEIGHT else "movie"
         self.latest_data_cache[pano_image.module_id][cache_key] = cached_image
 
-    async def _discover_module_from_image(self, pano_image: PanoImage):
+    async def _discover_module_from_image(self, pano_image: PanoImage) -> None:
         """Discovers a new module or data product from a received image."""
         module_id = pano_image.module_id
         if module_id not in self.modules:
@@ -146,13 +147,13 @@ class HpIoManager:
 
         module = self.modules[module_id]
         try:
-            dp_name = get_dp_name_from_props(pano_image.type, list(pano_image.shape), pano_image.bytes_per_pixel)
+            dp_name = get_dp_name_from_props(pano_image.type, list[int](pano_image.shape), pano_image.bytes_per_pixel)
             if dp_name not in module.dp_configs:
                 module.add_dp(dp_name)
                 await self._update_active_data_products()
         except ValueError as e:
             self.logger.warning(f"Could not identify data product from image for module {module_id}: {e}")
 
-    async def _update_active_data_products(self):
+    async def _update_active_data_products(self) -> None:
         active_dps = set().union(*(m.dp_configs.keys() for m in self.modules.values()))
         await self.active_data_products_queue.put(active_dps)

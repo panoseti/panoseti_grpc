@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
 import logging
 import math
 import random
 import time
+from typing import Any
 
 from rich.console import Console
 from rich.logging import RichHandler
@@ -18,14 +21,14 @@ console = Console()
 logger = logging.getLogger("telemetry.cli")
 
 
-def setup_logging(level_name):
+def setup_logging(level_name: str) -> None:
     level = getattr(logging, level_name.upper())
     logging.basicConfig(
         level=level, format="%(message)s", datefmt="[%X]", handlers=[RichHandler(console=console, rich_tracebacks=True)]
     )
 
 
-def generate_waveforms(i):
+def generate_waveforms(i: int) -> tuple[float, int, int]:
     """
     Generates predictable waveforms for visualization.
     i: current iteration count
@@ -42,7 +45,7 @@ def generate_waveforms(i):
     return sine_val, square_val, saw_val
 
 
-def generate_payload(payload_type, iteration):
+def generate_payload(payload_type: str, iteration: int) -> tuple[str | None, dict[str, Any]]:
     """
     Generates dummy data and selects the correct client method
     based on the Strict/Experimental policy.
@@ -109,7 +112,7 @@ class SimulatedException(Exception):
     pass
 
 
-def generate_logs(logger_instance, count, delay):
+def generate_logs(logger_instance: logging.Logger, count: int, delay: float) -> None:
     """
     Generates a realistic stream of telescope observatory logs.
     Includes structured metadata, state transitions, and simulated stack traces.
@@ -123,16 +126,16 @@ def generate_logs(logger_instance, count, delay):
     weights = [0.3, 0.5, 0.19, 0.005, 0.005]
 
     # structured data generators
-    def get_cooling_data(i):
+    def get_cooling_data(i: int) -> tuple[str, dict[str, Any]]:
         # Temperature drops over time then stabilizes
-        temp = max(-20, 25 - (i * 0.5)) + random.uniform(-0.5, 0.5)
+        temp = max(-20.0, 25.0 - (i * 0.5)) + random.uniform(-0.5, 0.5)
         return "Cooling system active", {"temp_c": round(temp, 2), "power_pct": 85 if temp > -19 else 40}
 
-    def get_dome_data(i):
+    def get_dome_data(i: int) -> tuple[str, dict[str, Any]]:
         az = (i * 10) % 360
         return f"Dome rotating to azimuth {az}", {"azimuth": az, "motor_current": round(random.uniform(2.0, 2.5), 2)}
 
-    def get_observation_data(i):
+    def get_observation_data(i: int) -> tuple[str, dict[str, Any]]:
         return "Frame captured", {"exposure_ms": 100, "gain": 200, "mean_adu": int(random.gauss(1400, 50))}
 
     console.print(f"[bold green]Starting Log Simulation ({count} events)...[/]")
@@ -178,7 +181,7 @@ def generate_logs(logger_instance, count, delay):
         time.sleep(delay * random.uniform(0.5, 1.5))
 
 
-def run_sender(args):
+def run_sender(args: argparse.Namespace) -> None:
     client = TelemetryClient(host=args.host, port=args.port)
     console.print(f"[bold green]Connected to Telemetry Server at {args.host}:{args.port}[/]")
 
@@ -191,9 +194,9 @@ def run_sender(args):
     # Metrics
     success_count = 0
     fail_count = 0
-    total_latency_ms = 0
+    total_latency_ms = 0.0
     min_latency = float("inf")
-    max_latency = 0
+    max_latency = 0.0
 
     try:
         with Progress(
@@ -211,6 +214,9 @@ def run_sender(args):
                 # Pick a type (round-robin if mixed)
                 current_type = types_to_send[i % len(types_to_send)]
                 method_name, kwargs = generate_payload(current_type, i)
+
+                if method_name is None:
+                    continue
 
                 # Log payload at DEBUG level
                 logger.debug(f"Payload #{i} ({method_name}): {kwargs}")
@@ -256,7 +262,9 @@ def run_sender(args):
         print_summary(args, success_count, fail_count, min_latency, max_latency, total_latency_ms)
 
 
-def print_summary(args, success, fail, min_lat, max_lat, total_lat):
+def print_summary(
+    args: argparse.Namespace, success: int, fail: int, min_lat: float, max_lat: float, total_lat: float
+) -> None:
     """Prints a pretty summary table of the run statistics."""
     total = success + fail
     avg_lat = (total_lat / total) if total > 0 else 0.0
@@ -277,7 +285,7 @@ def print_summary(args, success, fail, min_lat, max_lat, total_lat):
     console.print(table)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="PANOSETI Telemetry CLI Data Generator")
     parser.add_argument("--host", default="localhost", help="gRPC Server Host")
     parser.add_argument("--port", type=int, default=50051, help="gRPC Server Port")

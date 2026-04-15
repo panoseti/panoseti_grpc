@@ -9,6 +9,7 @@ import abc
 import asyncio
 import logging
 from importlib import resources
+from typing import Any
 
 from panoseti_grpc.panoseti_util import pff
 
@@ -27,19 +28,21 @@ class BaseSimulationStrategy(abc.ABC):
         server_cfg: DaqDataServerConfig,
         logger: logging.Logger,
         stop_event: asyncio.Event,
-    ):
+    ) -> None:
         self.logger = logger
         self.stop_event = stop_event
         self.common_config = common_config
         self.strategy_config = strategy_config
         self.server_cfg = server_cfg
-        self.sim_created_resources = []
+        self.sim_created_resources: list[Any] = []
         self.movie_frames: list[bytes] = []
         self.ph_frames: list[bytes] = []
 
-        self.frame_limit = float("inf") if strategy_config.frame_limit < 0 else strategy_config.frame_limit
+        self.frame_limit: float = (
+            float("inf") if strategy_config.frame_limit < 0 else float(strategy_config.frame_limit)
+        )
 
-    def _load_source_data(self):
+    def _load_source_data(self) -> None:
         """Loads all PFF frames from source files into memory."""
         self.logger.info("Loading source data frames into memory for simulation.")
         source_cfg = self.common_config.source_data
@@ -69,16 +72,16 @@ class BaseSimulationStrategy(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def send_frame(self, frame_data: bytes, data_product_type: str, module_id: int, frame_num: int):
+    async def send_frame(self, frame_data: bytes, data_product_type: str, module_id: int, frame_num: int) -> None:
         """Sends a single frame using the strategy's method."""
         pass
 
     @abc.abstractmethod
-    async def cleanup(self):
+    async def cleanup(self) -> None:
         """Perform mode-specific cleanup."""
         pass
 
-    async def run(self):
+    async def run(self) -> None:
         """Main simulation loop. Assumes setup() and data loading have been completed."""
         self.logger.info(f"Starting simulation data loop with {self.__class__.__name__}")
         if not self.movie_frames or not self.ph_frames:
@@ -109,11 +112,11 @@ class BaseSimulationStrategy(abc.ABC):
 class UdsStrategy(BaseSimulationStrategy):
     """Simulates DAQ by connecting to UDS sockets and sending PFF frames (Client Role)."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._writers: dict[str, asyncio.StreamWriter] = {}
 
-    async def setup(self, num_retries=5, retry_delay=0.5) -> bool:
+    async def setup(self, num_retries: int = 5, retry_delay: float = 0.5) -> bool:
         """Connects to the UDS sockets created by the main server."""
         self.logger.info("Setting up UDS simulation (Client Role).")
         uds_cfg = self.server_cfg.acquisition_methods.uds
@@ -145,7 +148,7 @@ class UdsStrategy(BaseSimulationStrategy):
         self.logger.error("UDS sim failed to connect to all sockets.")
         return False
 
-    async def send_frame(self, frame_data: bytes, data_product_type: str, module_id: int, frame_num: int):
+    async def send_frame(self, frame_data: bytes, data_product_type: str, module_id: int, frame_num: int) -> None:
         """Sends [2-byte module_id][PFF frame] to the correct socket."""
         writer = self._writers.get(data_product_type)
         if not writer or writer.is_closing():
@@ -162,7 +165,7 @@ class UdsStrategy(BaseSimulationStrategy):
             self.logger.warning(f"UDS sim connection lost for {data_product_type}: {e}.")
             self._writers.pop(data_product_type, None)
 
-    async def cleanup(self):
+    async def cleanup(self) -> None:
         self.logger.info("Closing all UDS simulation connections...")
         for writer in self._writers.values():
             if writer and not writer.is_closing():
@@ -173,10 +176,10 @@ class UdsStrategy(BaseSimulationStrategy):
 class SimulationManager:
     """Manages the lifecycle of a DAQ simulation task."""
 
-    def __init__(self, server_cfg: DaqDataServerConfig, logger: logging.Logger):
+    def __init__(self, server_cfg: DaqDataServerConfig, logger: logging.Logger) -> None:
         self.server_cfg = server_cfg
         self.logger = logger
-        self.sim_task: asyncio.Task | None = None
+        self.sim_task: asyncio.Task[None] | None = None
         self.strategy: BaseSimulationStrategy | None = None
         self._sim_stop_event = asyncio.Event()
 
@@ -193,7 +196,7 @@ class SimulationManager:
             return False
 
         self.logger.info("Setting up environment for 'uds' simulation.")
-        strategy_config = sim_cfg.strategies.get("uds", UdsSimStrategyConfig())
+        strategy_config = sim_cfg.strategies.get("uds", UdsSimStrategyConfig(sim_module_ids=[], frame_limit=-1))
         self.strategy = UdsStrategy(sim_cfg, strategy_config, self.server_cfg, self.logger, self._sim_stop_event)
 
         self.strategy._load_source_data()
@@ -228,7 +231,7 @@ class SimulationManager:
         self.logger.info("Simulation loop started successfully.")
         return True
 
-    async def stop_simulation_loop(self):
+    async def stop_simulation_loop(self) -> None:
         """Stops the data generation loop task."""
         if not self.sim_task or self.sim_task.done():
             return
@@ -243,12 +246,12 @@ class SimulationManager:
         finally:
             self.sim_task = None
 
-    async def cleanup_environment(self):
+    async def cleanup_environment(self) -> None:
         """Cleans up any resources created by the simulation strategy."""
         if self.strategy:
             self.logger.info("Cleaning up simulation environment...")
             await self.strategy.cleanup()
             self.strategy = None
 
-    def data_flow_valid(self) -> bool | None:
-        return self.sim_task and not self.sim_task.done()
+    def data_flow_valid(self) -> bool:
+        return self.sim_task is not None and not self.sim_task.done()

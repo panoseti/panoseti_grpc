@@ -2,6 +2,7 @@
 Unit tests for daq_control/config.py Pydantic validation models.
 """
 
+from typing import Any
 import pytest
 from pydantic import ValidationError
 
@@ -18,7 +19,7 @@ from panoseti_grpc.daq_control.config import (
 
 
 class TestStartDaqModel:
-    def test_valid(self, tmp_path):
+    def test_valid(self, tmp_path: Any) -> None:
         m = StartDaqModel(
             data_dir=str(tmp_path),
             daq_ip_addr="192.168.1.1",
@@ -32,7 +33,7 @@ class TestStartDaqModel:
         assert m.obs == "test-obs"
         assert m.module_id == [0, 128, 255]
 
-    def test_model_validator_creates_directories(self, tmp_path):
+    def test_model_validator_creates_directories(self, tmp_path: Any) -> None:
         """model_validator should mkdir data_dir/run_dir."""
         run_dir = "myrun.pffd"
         StartDaqModel(
@@ -47,7 +48,7 @@ class TestStartDaqModel:
         )
         assert (tmp_path / run_dir).is_dir()
 
-    def test_invalid_ip(self, tmp_path):
+    def test_invalid_ip(self, tmp_path: Any) -> None:
         with pytest.raises(ValidationError):
             StartDaqModel(
                 data_dir=str(tmp_path),
@@ -60,7 +61,7 @@ class TestStartDaqModel:
                 module_id=[1],
             )
 
-    def test_bindhost_too_long(self, tmp_path):
+    def test_bindhost_too_long(self, tmp_path: Any) -> None:
         with pytest.raises(ValidationError):
             StartDaqModel(
                 data_dir=str(tmp_path),
@@ -73,7 +74,7 @@ class TestStartDaqModel:
                 module_id=[1],
             )
 
-    def test_bindhost_empty(self, tmp_path):
+    def test_bindhost_empty(self, tmp_path: Any) -> None:
         with pytest.raises(ValidationError):
             StartDaqModel(
                 data_dir=str(tmp_path),
@@ -86,7 +87,7 @@ class TestStartDaqModel:
                 module_id=[1],
             )
 
-    def test_max_file_size_too_small(self, tmp_path):
+    def test_max_file_size_too_small(self, tmp_path: Any) -> None:
         with pytest.raises(ValidationError):
             StartDaqModel(
                 data_dir=str(tmp_path),
@@ -99,7 +100,7 @@ class TestStartDaqModel:
                 module_id=[1],
             )
 
-    def test_max_file_size_too_large(self, tmp_path):
+    def test_max_file_size_too_large(self, tmp_path: Any) -> None:
         with pytest.raises(ValidationError):
             StartDaqModel(
                 data_dir=str(tmp_path),
@@ -112,7 +113,7 @@ class TestStartDaqModel:
                 module_id=[1],
             )
 
-    def test_module_id_overflow(self, tmp_path):
+    def test_module_id_overflow(self, tmp_path: Any) -> None:
         """module_id values must be 0-255 (Uint8)."""
         with pytest.raises(ValidationError):
             StartDaqModel(
@@ -126,7 +127,7 @@ class TestStartDaqModel:
                 module_id=[256],
             )
 
-    def test_module_id_negative(self, tmp_path):
+    def test_module_id_negative(self, tmp_path: Any) -> None:
         with pytest.raises(ValidationError):
             StartDaqModel(
                 data_dir=str(tmp_path),
@@ -139,7 +140,7 @@ class TestStartDaqModel:
                 module_id=[-1],
             )
 
-    def test_obs_too_long(self, tmp_path):
+    def test_obs_too_long(self, tmp_path: Any) -> None:
         with pytest.raises(ValidationError):
             StartDaqModel(
                 data_dir=str(tmp_path),
@@ -159,18 +160,18 @@ class TestStartDaqModel:
 
 
 class TestStopDaqModel:
-    def test_valid(self, tmp_path):
+    def test_valid(self, tmp_path: Any) -> None:
         run_dir = tmp_path / "run.pffd"
         run_dir.mkdir()
         m = StopDaqModel(data_dir=str(tmp_path), run_dir="run.pffd")
         assert m.data_dir == tmp_path
 
-    def test_data_dir_not_exist(self, tmp_path):
+    def test_data_dir_not_exist(self, tmp_path: Any) -> None:
         """DirectoryPath requires the directory to already exist."""
         with pytest.raises(ValidationError):
             StopDaqModel(data_dir=str(tmp_path / "nonexistent"), run_dir="run.pffd")
 
-    def test_run_dir_not_exist(self, tmp_path):
+    def test_run_dir_not_exist(self, tmp_path: Any) -> None:
         """model_validator checks data_dir/run_dir exists."""
         with pytest.raises(ValidationError):
             StopDaqModel(data_dir=str(tmp_path), run_dir="missing.pffd")
@@ -182,7 +183,7 @@ class TestStopDaqModel:
 
 
 class TestStatusDaqModel:
-    def test_valid(self, tmp_path):
+    def test_valid(self, tmp_path: Any) -> None:
         m = StatusDaqModel(
             data_dir=str(tmp_path),
             check_hashpipe_running=True,
@@ -192,7 +193,7 @@ class TestStatusDaqModel:
         assert m.check_hashpipe_running is True
         assert m.check_disk_usage is False
 
-    def test_data_dir_not_exist(self, tmp_path):
+    def test_data_dir_not_exist(self, tmp_path: Any) -> None:
         with pytest.raises(ValidationError):
             StatusDaqModel(
                 data_dir=str(tmp_path / "ghost"),
@@ -201,7 +202,7 @@ class TestStatusDaqModel:
                 check_run_dirs=False,
             )
 
-    def test_all_flags_false(self, tmp_path):
+    def test_all_flags_false(self, tmp_path: Any) -> None:
         m = StatusDaqModel(
             data_dir=str(tmp_path),
             check_hashpipe_running=False,
@@ -217,13 +218,13 @@ class TestStatusDaqModel:
 
 
 class TestCleanupDataModel:
-    def test_valid(self, tmp_path):
+    def test_valid(self, tmp_path: Any) -> None:
         run_dir = tmp_path / "run.pffd"
         run_dir.mkdir()
         m = CleanupDataModel(data_dir=str(tmp_path), run_dir="run.pffd", module_id=[10, 20])
         assert m.module_id == [10, 20]
 
-    def test_data_dir_not_exist(self, tmp_path):
+    def test_data_dir_not_exist(self, tmp_path: Any) -> None:
         with pytest.raises(ValidationError):
             CleanupDataModel(
                 data_dir=str(tmp_path / "ghost"),
@@ -231,7 +232,7 @@ class TestCleanupDataModel:
                 module_id=[1],
             )
 
-    def test_run_dir_not_exist(self, tmp_path):
+    def test_run_dir_not_exist(self, tmp_path: Any) -> None:
         with pytest.raises(ValidationError):
             CleanupDataModel(
                 data_dir=str(tmp_path),
@@ -239,7 +240,7 @@ class TestCleanupDataModel:
                 module_id=[1],
             )
 
-    def test_module_id_overflow(self, tmp_path):
+    def test_module_id_overflow(self, tmp_path: Any) -> None:
         run_dir = tmp_path / "run.pffd"
         run_dir.mkdir()
         with pytest.raises(ValidationError):

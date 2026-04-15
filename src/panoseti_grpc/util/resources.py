@@ -6,10 +6,10 @@ import importlib.resources as _resources
 import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO, cast
 
 
-def load_package_resource(package: str, fname: str | Path, parser: Callable | None = None) -> Any:
+def load_package_resource(package: str, fname: str | Path, parser: Callable[[TextIO], Any] | None = None) -> Any:
     """Load a file bundled inside a Python package and parse it.
 
     Args:
@@ -23,9 +23,10 @@ def load_package_resource(package: str, fname: str | Path, parser: Callable | No
         parser = json.load
     resource_path = _resources.files(package).joinpath(fname)
     with resource_path.open("r") as f:
-        return parser(f)
+        # Cast f as TextIO to ensure it's compatible with the parser type hint
+        return parser(cast(TextIO, f))
 
 
-def load_package_json(package: str, fname: str | Path) -> dict:
+def load_package_json(package: str, fname: str | Path) -> dict[str, Any]:
     """Load a JSON resource file bundled inside *package*."""
-    return load_package_resource(package, fname, parser=json.load)
+    return cast(dict[str, Any], load_package_resource(package, fname, parser=json.load))

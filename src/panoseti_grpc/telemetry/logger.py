@@ -23,13 +23,17 @@ Usage:
     )
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
 import sys
 import threading
+from collections.abc import Callable
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 from rich.logging import RichHandler
@@ -85,7 +89,8 @@ class LoggerConfig(BaseModel):
     grpc: GrpcLogConfig = Field(default_factory=GrpcLogConfig)
 
     @field_validator("level")
-    def normalize_level(cls, v):
+    @classmethod
+    def normalize_level(cls, v: Any) -> int:
         """Allows user to pass 'DEBUG', 'debug', or 10."""
         if isinstance(v, str):
             v = v.upper()
@@ -94,8 +99,8 @@ class LoggerConfig(BaseModel):
             if isinstance(level, int):
                 return level
             # Fallback for edge cases
-            return getattr(logging, v, logging.INFO)
-        return v
+            return int(getattr(logging, v, logging.INFO))
+        return int(v)
 
 
 # --- Singleton Factory ---
@@ -124,7 +129,7 @@ class PanosetiLogFactory:
             return cls._grpc_clients[key]
 
     @classmethod
-    def reset_clients(cls):
+    def reset_clients(cls) -> None:
         """For testing purposes: Clear cached clients."""
         with cls._lock:
             cls._grpc_clients.clear()
@@ -183,8 +188,6 @@ class PanosetiLogFactory:
 
 # --- Public API ---
 
-# --- Public API ---
-
 
 def get_logger(
     service_name: str,
@@ -220,7 +223,7 @@ def get_logger(
 # --- Subprocess Utilities ---
 
 
-async def _stream_reader(stream: asyncio.StreamReader, logger_method):
+async def _stream_reader(stream: asyncio.StreamReader, logger_method: Callable[[str], None]) -> None:
     """Internal utility to bridge a stream to a logger method."""
     while True:
         line = await stream.readline()
@@ -232,7 +235,7 @@ async def _stream_reader(stream: asyncio.StreamReader, logger_method):
             logger_method(message)
 
 
-async def monitor_subprocess(process: asyncio.subprocess.Process, logger: logging.Logger):
+async def monitor_subprocess(process: asyncio.subprocess.Process, logger: logging.Logger) -> None:
     """
     Attaches a logger to a running asyncio subprocess's stdout/stderr.
 

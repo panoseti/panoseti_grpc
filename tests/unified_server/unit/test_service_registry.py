@@ -18,25 +18,25 @@ from panoseti_grpc.server import (
 # ---------------------------------------------------------------------------
 
 
-def test_all_three_services_registered():
+def test_all_three_services_registered() -> None:
     """All three built-in services are registered at module import time."""
     names = set(ServiceRegistry.all().keys())
     assert names == {"telemetry", "daq_data", "daq_control"}
 
 
-def test_init_order_telemetry_first():
+def test_init_order_telemetry_first() -> None:
     """Telemetry must be the first service in INIT_ORDER (live before others log)."""
     assert PanosetiServer.INIT_ORDER[0] == "telemetry"
 
 
-def test_init_order_contains_all_registered_services():
+def test_init_order_contains_all_registered_services() -> None:
     """Every registered service appears in INIT_ORDER."""
     registered = set(ServiceRegistry.all().keys())
     in_order = set(PanosetiServer.INIT_ORDER)
     assert registered == in_order
 
 
-def test_init_order_has_no_duplicates():
+def test_init_order_has_no_duplicates() -> None:
     """INIT_ORDER must not contain duplicate entries."""
     assert len(PanosetiServer.INIT_ORDER) == len(set(PanosetiServer.INIT_ORDER))
 
@@ -46,7 +46,7 @@ def test_init_order_has_no_duplicates():
 # ---------------------------------------------------------------------------
 
 
-def test_registry_get_daq_data():
+def test_registry_get_daq_data() -> None:
     """daq_data descriptor has correct name and config_field."""
     desc = ServiceRegistry.get("daq_data")
     assert desc.name == "daq_data"
@@ -55,7 +55,7 @@ def test_registry_get_daq_data():
     assert callable(desc.add_to_server_fn)
 
 
-def test_registry_get_telemetry():
+def test_registry_get_telemetry() -> None:
     """telemetry descriptor has correct name and config_field."""
     desc = ServiceRegistry.get("telemetry")
     assert desc.name == "telemetry"
@@ -64,32 +64,32 @@ def test_registry_get_telemetry():
     assert callable(desc.add_to_server_fn)
 
 
-def test_registry_get_daq_control():
+def test_registry_get_daq_control() -> None:
     """daq_control descriptor has correct name and config_field."""
     desc = ServiceRegistry.get("daq_control")
     assert desc.name == "daq_control"
     assert desc.config_field == "daq_control"
 
 
-def test_registry_service_names_for_reflection_telemetry():
+def test_registry_service_names_for_reflection_telemetry() -> None:
     """Telemetry reflection names contain the fully-qualified service name."""
     desc = ServiceRegistry.get("telemetry")
     assert any("Telemetry" in n for n in desc.service_names_for_reflection)
 
 
-def test_registry_service_names_for_reflection_daq_data():
+def test_registry_service_names_for_reflection_daq_data() -> None:
     """DaqData reflection names contain the fully-qualified service name."""
     desc = ServiceRegistry.get("daq_data")
     assert any("DaqData" in n for n in desc.service_names_for_reflection)
 
 
-def test_registry_service_names_for_reflection_daq_control():
+def test_registry_service_names_for_reflection_daq_control() -> None:
     """DaqControl reflection names contain the fully-qualified service name."""
     desc = ServiceRegistry.get("daq_control")
     assert any("DaqControl" in n for n in desc.service_names_for_reflection)
 
 
-def test_registry_all_returns_copy():
+def test_registry_all_returns_copy() -> None:
     """ServiceRegistry.all() returns a copy, not the internal dict."""
     d1 = ServiceRegistry.all()
     d2 = ServiceRegistry.all()
@@ -97,7 +97,7 @@ def test_registry_all_returns_copy():
     assert d1 == d2
 
 
-def test_registry_get_unknown_service():
+def test_registry_get_unknown_service() -> None:
     """ServiceRegistry.get() on an unknown name raises KeyError."""
     with pytest.raises(KeyError):
         ServiceRegistry.get("nonexistent_service")
@@ -108,7 +108,7 @@ def test_registry_get_unknown_service():
 # ---------------------------------------------------------------------------
 
 
-def test_registry_register_custom_and_retrieve():
+def test_registry_register_custom_and_retrieve() -> None:
     """A new ServiceDescriptor can be registered and retrieved by name."""
     dummy_descriptor = ServiceDescriptor(
         name="dummy_test_svc",
@@ -127,7 +127,7 @@ def test_registry_register_custom_and_retrieve():
         ServiceRegistry._registry.pop("dummy_test_svc", None)
 
 
-def test_registry_register_overwrites_existing():
+def test_registry_register_overwrites_existing() -> None:
     """Re-registering a name replaces the previous descriptor."""
     original = ServiceRegistry.get("daq_control")
     replacement = ServiceDescriptor(
@@ -150,13 +150,13 @@ def test_registry_register_overwrites_existing():
 # ---------------------------------------------------------------------------
 
 
-def test_service_toggles_all_true_by_default():
+def test_service_toggles_all_true_by_default() -> None:
     """Default ServiceToggles enables all three services."""
     t = ServiceToggles()
     assert t.telemetry and t.daq_data and t.daq_control
 
 
-def test_service_toggles_partial():
+def test_service_toggles_partial() -> None:
     """ServiceToggles can selectively disable services."""
     t = ServiceToggles(telemetry=False, daq_data=True, daq_control=False)
     assert not t.telemetry
@@ -164,7 +164,7 @@ def test_service_toggles_partial():
     assert not t.daq_control
 
 
-def test_service_toggles_all_false():
+def test_service_toggles_all_false() -> None:
     """All-false ServiceToggles is a valid model (server will raise at start time)."""
     t = ServiceToggles(telemetry=False, daq_data=False, daq_control=False)
     assert not t.telemetry
@@ -172,7 +172,7 @@ def test_service_toggles_all_false():
     assert not t.daq_control
 
 
-def test_service_toggles_equality():
+def test_service_toggles_equality() -> None:
     """Two ServiceToggles with identical fields compare as equal."""
     t1 = ServiceToggles(telemetry=True, daq_data=False, daq_control=True)
     t2 = ServiceToggles(telemetry=True, daq_data=False, daq_control=True)

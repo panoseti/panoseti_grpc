@@ -6,13 +6,14 @@ import json
 import os
 import struct
 from decimal import Decimal
+from typing import Any
 
 import numpy as np
 
 
 # returns the string (doesn't parse it)
 #
-def read_json(f):
+def read_json(f: Any) -> str | None:
     c = f.read(1)
     if c == b"":
         return None
@@ -35,7 +36,7 @@ def read_json(f):
 # returns the image as a list of N numbers
 # see https://docs.python.org/3/library/struct.html
 #
-def read_image(f, img_size: int, bytes_per_pixel: int):
+def read_image(f: Any, img_size: int, bytes_per_pixel: int) -> tuple[Any, ...] | None:
     c = f.read(1)
     if c == "":
         return None
@@ -59,12 +60,12 @@ def read_image(f, img_size: int, bytes_per_pixel: int):
         raise Exception("bad image size")
 
 
-def skip_image(f, img_size, bytes_per_pixel):
+def skip_image(f: Any, img_size: Any, bytes_per_pixel: Any) -> None:
     f.seek(img_size * img_size * bytes_per_pixel + 1, os.SEEK_CUR)
 
 
 # write an image; image is a list
-def write_image_1D(f, img, img_size, bytes_per_pixel):
+def write_image_1D(f: Any, img: Any, img_size: Any, bytes_per_pixel: Any) -> None:
     f.write(b"*")
     if img_size == 32:
         if bytes_per_pixel == 1:
@@ -77,7 +78,7 @@ def write_image_1D(f, img, img_size, bytes_per_pixel):
 
 
 # same, image is NxN array
-def write_image_2D(f, img, img_size, bytes_per_pixel):
+def write_image_2D(f: Any, img: Any, img_size: Any, bytes_per_pixel: Any) -> None:
     f.write(b"*")
     if img_size == 32:
         if bytes_per_pixel == 2:
@@ -91,7 +92,7 @@ def write_image_2D(f, img, img_size, bytes_per_pixel):
 # a=b,a=b...a=b.ext
 # into a dictionary of a=>b
 #
-def parse_name(name: str) -> dict[str, str]:
+def parse_name(name: str) -> dict[str, str] | None:
     d = {}
     n = name.rfind(".")
     if n < 0:
@@ -108,38 +109,38 @@ def parse_name(name: str) -> dict[str, str]:
 
 # return the directory name for a run
 #
-def run_dir_name(obs_name, run_type):
+def run_dir_name(obs_name: Any, run_type: Any) -> str:
     dt = datetime.datetime.utcnow()
     dt = dt.replace(microsecond=0)
     dt_str = dt.isoformat()
     return f"obs_{obs_name}.start_{dt_str}Z.runtype_{run_type}.pffd"
 
 
-def is_pff_dir(name):
-    return name.endswith(".pffd")
+def is_pff_dir(name: Any) -> bool:
+    return bool(name.endswith(".pffd"))
 
 
-def is_pff_file(name):
-    return name.endswith(".pff")
+def is_pff_file(name: Any) -> bool:
+    return bool(name.endswith(".pff"))
 
 
-def pff_file_type(name):
+def pff_file_type(name: Any) -> str | None:
     if name == "hk.pff":
         return "hk"
     n = parse_name(name)
-    if "dp" not in n.keys():
+    if n is None or "dp" not in n.keys():
         return None
     return n["dp"]
 
 
 # return time from parsed JSON header
 #
-def pkt_header_time(h):
+def pkt_header_time(h: Any) -> Any:
     return wr_to_unix(h["pkt_tai"], h["pkt_nsec"], h["tv_sec"])
     # return wr_to_unix_decimal(h['pkt_tai'], h['pkt_nsec'], h['tv_sec'])
 
 
-def img_header_time(h):
+def img_header_time(h: Any) -> Any:
     try:
         # this is for img16, img8 and ph1024
         t = pkt_header_time(h["quabo_0"])
@@ -149,14 +150,18 @@ def img_header_time(h):
     return t
 
 
-def img_frame_size(f, bytes_per_image) -> int:
+def img_frame_size(f: Any, bytes_per_image: Any) -> int:
     try:
-        json.loads(read_json(f))
+        json_header = read_json(f)
+        if json_header:
+            json.loads(json_header)
+        else:
+            return -1
     except Exception as e:
         print(f"Exception reading JSON header: {e}")
         return -1
-    header_size = f.tell()
-    frame_size = header_size + bytes_per_image + 1
+    header_size = int(f.tell())
+    frame_size = header_size + int(bytes_per_image) + 1
     return frame_size
 
 
@@ -169,8 +174,11 @@ def img_frame_size(f, bytes_per_image) -> int:
 #   first_t
 #   last_t
 #
-def img_info(f, bytes_per_image):
-    h = json.loads(read_json(f))
+def img_info(f: Any, bytes_per_image: Any) -> list[Any]:
+    json_header = read_json(f)
+    if json_header is None:
+        raise ValueError("Could not read JSON header")
+    h = json.loads(json_header)
     header_size = f.tell()
     frame_size = header_size + bytes_per_image + 1
     file_size = f.seek(0, os.SEEK_END)
@@ -182,22 +190,31 @@ def img_info(f, bytes_per_image):
             raise ValueError("All image frames are zero!")
         print("Detected zero frame")
         f.seek(i * frame_size)
-        h = json.loads(read_json(f))
+        json_header = read_json(f)
+        if json_header is None:
+            raise ValueError(f"Could not read JSON header at frame {i}")
+        h = json.loads(json_header)
         # print(h)
         first_t = img_header_time(h)
         # print(first_t)
         i += 1
     f.seek((nframes - 1) * frame_size, os.SEEK_SET)
-    h = json.loads(read_json(f))
+    json_header = read_json(f)
+    if json_header is None:
+        raise ValueError("Could not read JSON header at last frame")
+    h = json.loads(json_header)
     last_t = img_header_time(h)
     return [frame_size, nframes, first_t, last_t]
 
 
 # return time of given frame
 #
-def img_frame_time(f, frame, frame_size):
+def img_frame_time(f: Any, frame: Any, frame_size: Any) -> Any:
     f.seek(frame * frame_size)
-    s = json.loads(read_json(f))
+    json_header = read_json(f)
+    if json_header is None:
+        return None
+    s = json.loads(json_header)
     return img_header_time(s)
 
 
@@ -208,7 +225,7 @@ def img_frame_time(f, frame, frame_size):
 # The file may be missing frames,
 # so the frame at the expected position may be after t.
 #
-def time_seek(f, frame_time, bytes_per_image, t, verbose=False):
+def time_seek(f: Any, frame_time: Any, bytes_per_image: Any, t: Any, verbose: Any = False) -> None:
     first_t = 0
     nframes = float("inf")
     i = 0
@@ -262,27 +279,26 @@ def time_seek(f, frame_time, bytes_per_image, t, verbose=False):
 # and a Unix time that's within a few ms,
 # return the complete WR time (in Unix time, not TAI)
 #
-def wr_to_unix(pkt_tai, pkt_nsec, tv_sec, ignore_clock_desync=False):
+def wr_to_unix(pkt_tai: Any, pkt_nsec: Any, tv_sec: Any, ignore_clock_desync: Any = False) -> float:
     d = (tv_sec - pkt_tai + 37) % 1024
     if d == 0:
-        return tv_sec + pkt_nsec / 1e9
+        return float(tv_sec + pkt_nsec / 1e9)
     elif d == 1:
-        return tv_sec - 1 + pkt_nsec / 1e9
+        return float(tv_sec - 1 + pkt_nsec / 1e9)
     elif d == 1023:
-        return tv_sec + 1 + pkt_nsec / 1e9
+        return float(tv_sec + 1 + pkt_nsec / 1e9)
     else:
         # The WR and DAQ clocks differ by > 1s => out of sync
         # Return 0 if ignore_clock_desync is False. Otherwise, return an approximation to the time.
         if ignore_clock_desync:
             approx_t = tv_sec + pkt_nsec / 1e9
-            return approx_t
+            return float(approx_t)
         else:
             raise Exception(f"WR and Unix times differ by > 1 sec: pkt_tai {pkt_tai} tv_sec {tv_sec} d {d}")
-        return 0
+        return 0.0
 
 
-def wr_to_unix_decimal(pkt_tai, pkt_nsec, tv_sec):
-    pkt_tai_d = Decimal(str(pkt_tai))
+def wr_to_unix_decimal(pkt_tai: Any, pkt_nsec: Any, tv_sec: Any) -> Decimal | int:
     pkt_nsec_d = Decimal(str(pkt_nsec))
     tv_sec_d = Decimal(str(tv_sec))
     nanosec_factor = Decimal(str(1e9))
@@ -298,8 +314,7 @@ def wr_to_unix_decimal(pkt_tai, pkt_nsec, tv_sec):
         return 0
 
 
-def wr_to_unix_numpy(pkt_tai, pkt_nsec, tv_sec):
-    pkt_tai_n = np.longdouble(pkt_tai)
+def wr_to_unix_numpy(pkt_tai: Any, pkt_nsec: Any, tv_sec: Any) -> Any:
     pkt_nsec_n = np.longdouble(pkt_nsec)
     tv_sec_n = np.longdouble(tv_sec)
     d = (tv_sec - pkt_tai + 37) % 1024

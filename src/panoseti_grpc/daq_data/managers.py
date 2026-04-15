@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 import grpc
 
@@ -18,15 +20,17 @@ from .state import ReaderState
 class HpIoTaskManager:
     """Manages the lifecycle of the HpIoManager background task."""
 
-    def __init__(self, logger: logging.Logger, server_cfg: DaqDataServerConfig, reader_states: list[ReaderState]):
+    def __init__(
+        self, logger: logging.Logger, server_cfg: DaqDataServerConfig, reader_states: list[ReaderState]
+    ) -> None:
         self.logger = logger
         self.server_cfg = server_cfg
         self.reader_states = reader_states
-        self.hp_io_task: asyncio.Task | None = None
+        self.hp_io_task: asyncio.Task[None] | None = None
         self.hp_io_manager: HpIoManager | None = None
         self.hp_io_valid_event = asyncio.Event()
-        self.active_data_products: set = set()
-        self.hp_io_cfg: dict = {}
+        self.active_data_products: set[str] = set()
+        self.hp_io_cfg: dict[str, Any] = {}
         self.stop_event = asyncio.Event()
         self.simulation_manager = SimulationManager(server_cfg, logger)
 
@@ -43,17 +47,17 @@ class HpIoTaskManager:
                 self.logger.warning("hp_io task is alive but not valid")
         return False
 
-    async def start(self, hp_io_cfg: dict) -> bool:
+    async def start(self, hp_io_cfg: dict[str, Any]) -> bool:
         """Creates a new hp_io task. Stops any existing task first."""
         await self.stop()
 
-        is_sim = hp_io_cfg.get("simulate_daq", False)
+        is_sim = bool(hp_io_cfg.get("simulate_daq", False))
         sim_setup_task = None
         if is_sim:
             sim_setup_task = asyncio.create_task(self.simulation_manager.setup_environment())
 
         self.hp_io_cfg = hp_io_cfg
-        active_data_products_queue = asyncio.Queue()
+        active_data_products_queue: asyncio.Queue[set[str]] = asyncio.Queue()
 
         self.hp_io_manager = HpIoManager(
             self.server_cfg,
@@ -87,7 +91,7 @@ class HpIoTaskManager:
             return False
         return self.is_valid(verbose=True)
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stops the hp_io task and any associated simulation task gracefully."""
         await self.simulation_manager.stop_simulation_loop()
 
@@ -115,7 +119,7 @@ class HpIoTaskManager:
 class ClientManager:
     """Manages client connections, state, and access control for server resources."""
 
-    def __init__(self, logger: logging.Logger, server_cfg: DaqDataServerConfig):
+    def __init__(self, logger: logging.Logger, server_cfg: DaqDataServerConfig) -> None:
         self.logger = logger
         self.max_clients = server_cfg.max_concurrent_rpcs
         self._cancel_readers_event = asyncio.Event()
@@ -136,23 +140,25 @@ class ClientManager:
         return self._readers
 
     @property
-    def cancel_readers_event(self):
+    def cancel_readers_event(self) -> asyncio.Event:
         return self._cancel_readers_event
 
     @property
-    def shutdown_event(self):
+    def shutdown_event(self) -> asyncio.Event:
         return self._shutdown_event
 
-    async def cancel_all_readers(self):
+    async def cancel_all_readers(self) -> None:
         """Signals all active reader streams to terminate."""
         self.logger.warning("Cancelling all active and waiting reader RPCs.")
         self._cancel_readers_event.set()
 
-    def signal_shutdown(self):
+    def signal_shutdown(self) -> None:
         self._shutdown_event.set()
 
     @asynccontextmanager
-    async def get_writer_access(self, context, force: bool = False):
+    async def get_writer_access(
+        self, context: grpc.aio.ServicerContext, force: bool = False
+    ) -> AsyncIterator[uuid.UUID]:
         """A context manager to safely acquire exclusive 'writer' access."""
         uid = uuid.uuid4()
         async with self._writer_lock:
@@ -172,7 +178,9 @@ class ClientManager:
                 self.logger.debug(f"Writer ({uid}) released writer lock.")
 
     @asynccontextmanager
-    async def get_reader_access(self, context, hp_io_task_manager: HpIoTaskManager):
+    async def get_reader_access(
+        self, context: grpc.aio.ServicerContext, hp_io_task_manager: HpIoTaskManager
+    ) -> AsyncIterator[ReaderState]:
         """A context manager to safely acquire a 'reader' slot."""
         uid = uuid.uuid4()
 

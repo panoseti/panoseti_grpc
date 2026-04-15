@@ -3,6 +3,7 @@ Tests for UDS error-recovery paths: producer restart, slow-consumer
 backpressure, and DEADLINE_EXCEEDED when the data source goes idle.
 """
 
+from typing import Any
 import asyncio
 import copy
 import os
@@ -23,9 +24,8 @@ pytestmark = pytest.mark.asyncio
 # ---------------------------------------------------------------------------
 
 
-def _make_server_config(
-    server_config_base, socket_dir: Path, module_id: int = 224, max_reader_dequeue_timeouts: int = 3
-):
+def _make_server_config( server_config_base: Any, socket_dir: Path, module_id: int = 224, max_reader_dequeue_timeouts: int = 3
+) -> None:
     cfg = copy.deepcopy(server_config_base)
     cfg["unix_domain_socket"] = f"unix://{socket_dir / 'grpc.sock'}"
     cfg["simulate_daq_cfg"]["simulation_mode"] = "uds"
@@ -43,7 +43,7 @@ def _make_server_config(
     return cfg
 
 
-async def _start_server(cfg: dict) -> tuple[asyncio.Event, asyncio.Task]:
+async def _start_server(cfg:dict[Any]) -> tuple[asyncio.Event, asyncio.Task]:
     shutdown = asyncio.Event()
     task = asyncio.create_task(serve(cfg, shutdown, in_main_thread=False))
     uds_path = Path(cfg["unix_domain_socket"].replace("unix://", ""))

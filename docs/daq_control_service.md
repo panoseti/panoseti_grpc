@@ -95,7 +95,7 @@ Queries the state of this DAQ node. All checks are opt-in via boolean flags.
 |---|---|---|
 | `success` | `bool` | Always `true` if the RPC reaches the server |
 | `hashpipe_running` | `bool` | Whether the tracked Hashpipe PID is alive |
-| `disk_usage` | `map<string, int64>` | Keys: `total_disk_space`, `used_disk_space`, `free_disk_space` (bytes); `-1` when not requested |
+| `disk_usage` | `google.protobuf.Struct` | Keys: `total_disk_space`, `used_disk_space`, `free_disk_space` (bytes); `-1` when not requested |
 | `run_dirs` | `repeated string` | Paths matching `{data_dir}/*.pffd` |
 
 ---

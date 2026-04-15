@@ -1,5 +1,4 @@
 """
-from __future__ import annotations
 Common functions for the DaqData clients and servers
 """
 
@@ -9,7 +8,7 @@ import asyncio
 import decimal
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from google.protobuf.json_format import MessageToDict
@@ -23,65 +22,80 @@ from panoseti_grpc.generated.daq_data_pb2 import PanoImage, StreamImagesResponse
 from panoseti_grpc.panoseti_util import control_utils, pff
 
 # Shared PANOSETI logger (console + rotating file + optional gRPC telemetry)
-from panoseti_grpc.util.resources import load_package_json  # noqa: F401 (re-export)
+from panoseti_grpc.util.resources import load_package_json as _load_package_json
+
+# Explicitly re-export load_package_json to satisfy MyPy and other modules
+load_package_json = _load_package_json
 
 CFG_DIR = Path("daq_data/config")
 
 daq_data_anchor_package = "panoseti_grpc"
 
 
-def _parse_dp_name(filename: str, dp_name_re=re.compile(r"\.dp_([a-zA-Z0-9]+)\.")) -> str:
+def _parse_dp_name(filename: str, dp_name_re: re.Pattern[str] = re.compile(r"\.dp_([a-zA-Z0-9]+)\.")) -> str:
     """Extracts the data product name (e.g., 'img16') from a PFF filename."""
     match = dp_name_re.search(filename)
     if not match:
         raise ValueError(f"Could not parse data product name from filename: {filename}")
-    return match.group(1)
+    return cast(str, match.group(1))
 
 
-def _parse_seqno(filename: str, seqno_re=re.compile(r"\.seqno_(\d+)\.")) -> int:
+def _parse_seqno(filename: str, seqno_re: re.Pattern[str] = re.compile(r"\.seqno_(\d+)\.")) -> int:
     """Extracts the seqno from a PFF filename."""
     match = seqno_re.search(filename)
     seqno = int(match.group(1)) if match else 0
     return seqno
 
 
-def get_dp_name_from_props(pano_type, shape: list, bytes_per_pixel: int) -> str:
+def get_dp_name_from_props(pano_type: int | str, shape: list[int] | tuple[int, ...], bytes_per_pixel: int) -> str:
     """Derives the data product name from PanoImage properties by iterating DataProduct members."""
     from .state import DataProduct
 
     # Normalise pano_type to a PanoImage.Type int value
+    pano_type_int: int
     if isinstance(pano_type, str):
-        pano_type = PanoImage.Type.Value(pano_type)
-    is_ph = pano_type == PanoImage.Type.PULSE_HEIGHT
+        pano_type_int = cast(int, PanoImage.Type.Value(pano_type))
+    else:
+        pano_type_int = pano_type
+
+    is_ph = pano_type_int == PanoImage.Type.PULSE_HEIGHT
     shape_tuple = tuple(shape)
     for dp in DataProduct:
         if dp.image_shape == shape_tuple and dp.bytes_per_pixel == bytes_per_pixel and dp.is_ph == is_ph:
-            return dp.value
+            return str(dp.value)
+    
+    # Use cast to handle the protobuf enum Name method which returns str but MyPy might be picky
+    type_name = PanoImage.Type.Name(cast(Any, pano_type_int))
     raise ValueError(
-        f"Unknown data product for properties: type={PanoImage.Type.Name(pano_type)}, "
+        f"Unknown data product for properties: type={type_name}, "
         f"shape={shape_tuple}, bpp={bytes_per_pixel}"
     )
 
 
-def pkt_to_unix_decimal(tv_sec, tv_usec):
-    tv_sec = decimal.Decimal(str(tv_sec))
-    tv_usec = decimal.Decimal(str(tv_usec))
-    usec_factor = decimal.Decimal(str(1e6))
-    return tv_sec + (tv_usec / usec_factor)
+def pkt_to_unix_decimal(tv_sec: int | str | float, tv_usec: int | str | float) -> decimal.Decimal:
+    """Converts tv_sec and tv_usec to a high-precision Decimal Unix timestamp."""
+    tv_sec_dec = decimal.Decimal(str(tv_sec))
+    tv_usec_dec = decimal.Decimal(str(tv_usec))
+    usec_factor = decimal.Decimal("1e6")
+    return tv_sec_dec + (tv_usec_dec / usec_factor)
 
 
-def parse_pano_timestamps(pano_image: PanoImage, do_wr=False) -> dict[str, Any]:
+def parse_pano_timestamps(pano_image: PanoImage, do_wr: bool = False) -> dict[str, Any]:
     """Parse PanoImage header to get nanosecond-precision timestamps."""
     h = MessageToDict(pano_image.header)
-    td = {}
+    td: dict[str, Any] = {}
     # Add nanosecond-precision Pandas Timestamp from panoseti packet timing
-    if pano_image.shape == [16, 16]:
+    if list(pano_image.shape) == [16, 16]:
         td["wr_unix_timestamp"] = pff.wr_to_unix_decimal(h["pkt_tai"], h["pkt_nsec"], h["tv_sec"])
         td["pkt_unix_timestamp"] = pkt_to_unix_decimal(h["tv_sec"], h["tv_usec"])
-    elif pano_image.shape == [32, 32]:
+    elif list(pano_image.shape) == [32, 32]:
         h_q0 = h["quabo_0"]
         td["wr_unix_timestamp"] = pff.wr_to_unix_decimal(h_q0["pkt_tai"], h_q0["pkt_nsec"], h_q0["tv_sec"])
         td["pkt_unix_timestamp"] = pkt_to_unix_decimal(h_q0["tv_sec"], h_q0["tv_usec"])
+    
+    if "wr_unix_timestamp" not in td or "pkt_unix_timestamp" not in td:
+        return td
+
     if do_wr:
         nanoseconds_since_epoch = int(td["wr_unix_timestamp"] * decimal.Decimal("1e9"))
     else:
@@ -116,25 +130,27 @@ def parse_pano_image(pano_image: daq_data_pb2.PanoImage) -> dict[str, Any]:
 
 def format_stream_images_response(stream_images_response: StreamImagesResponse) -> str:
     parsed_pano_image = parse_pano_image(stream_images_response.pano_image)
-    parsed_pano_image["module_id"]
+    # module_id = parsed_pano_image["module_id"]
     pano_type = parsed_pano_image["type"]
-    parsed_pano_image["header"]
-    parsed_pano_image["image_array"]
+    # header = parsed_pano_image["header"]
+    # image_array = parsed_pano_image["image_array"]
     frame_number = parsed_pano_image["frame_number"]
     file = parsed_pano_image["file"]
     name = stream_images_response.name
     server_timestamp = stream_images_response.timestamp.ToDatetime().isoformat()
-    return f"{name=} {server_timestamp=} {file} (f#{frame_number}) {pano_type=} "
+    return f"name={name!r} server_timestamp={server_timestamp!r} {file} (f#{frame_number}) pano_type={pano_type!r} "
 
 
-def is_daq_active_sync(simulate_daq, sim_cfg=None):
+def is_daq_active_sync(simulate_daq: bool, sim_cfg: dict[str, Any] | None = None) -> bool:
     """Returns True iff the data stream from hashpipe or simulated hashpipe is active."""
     if simulate_daq:
         return True  # UDS simulation is always considered active
-    return control_utils.is_hashpipe_running()
+    return bool(control_utils.is_hashpipe_running())
 
 
-async def is_daq_active(simulate_daq, sim_cfg=None, retries=1, delay: float = 0.5):
+async def is_daq_active(
+    simulate_daq: bool, sim_cfg: dict[str, Any] | None = None, retries: int = 1, delay: float = 0.5
+) -> bool:
     """Returns True iff the data stream from hashpipe or simulated hashpipe is active."""
     for _i in range(retries):
         if is_daq_active_sync(simulate_daq, sim_cfg):

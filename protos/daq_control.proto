@@ -9,7 +9,7 @@ service DaqControl {
     /* stop daq: stop hashpipe on daq nodes */
     rpc StopDaq (StopDaqRequest) returns (StopDaqResponse) {}
     /* status daq: get status data from daq nodes */
-    rpc StatusDaq (StatusDaqRequest) returns (StatusDaqResponse) {}
+    rpc StatusDaq (DaqStatusRequest) returns (DaqStatusResponse) {}
     /* CleanupData: Clean up data for the specific run */
     rpc CleanupData (CleanupDataRequest) returns (CleanupDataResponse) {}
 }
@@ -46,14 +46,14 @@ message StopDaqResponse {
 }
 
 /* status daq request and response */
-message StatusDaqRequest {
+message DaqStatusRequest {
     string  data_dir = 1;
     bool    check_hashpipe_running = 2;
     bool    check_disk_usage = 3;
     bool    check_run_dirs = 4;
 }
 
-message StatusDaqResponse {
+message DaqStatusResponse {
     bool    success = 1;
     /* response to check_hashpipe_running */
     bool    hashpipe_running = 2;

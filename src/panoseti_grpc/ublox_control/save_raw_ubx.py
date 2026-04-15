@@ -4,6 +4,7 @@ import copy
 import json
 import logging
 import signal
+from typing import Any
 
 import grpc
 from google.protobuf.json_format import ParseDict
@@ -23,7 +24,7 @@ async def run():
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
 
-    def _signal_handler(*_):
+    def _signal_handler(*_: Any) -> None:
         logger.info("Shutdown signal received.")
         if not stop_event.is_set():
             stop_event.set()

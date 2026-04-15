@@ -165,7 +165,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         all_ok = False
 
     if args.json:
-        # Machine-readable output: list of {service, ok, detail} dicts
+        # Machine-readable output:list[Any] of {service, ok, detail} dicts
         rows = []
         for row in table.rows:
             cells = [c.renderable if hasattr(c, "renderable") else str(c) for c in row]

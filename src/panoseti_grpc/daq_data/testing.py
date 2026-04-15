@@ -3,14 +3,18 @@ Test cases and test utilities for the gRPC DaqData service.
 
 Each function must have type Callable[..., Tuple[bool, str]] as the example below:
 
-    def is_even(n: int) -> Tuple[bool, str]:
+    def is_even(n: int)-> Tuple[bool, str]:
         if n % 2 == 0:
             return True, f"{n} is even"
         else:
             return False, f"{n} is odd"
 """
 
+from __future__ import annotations
+
+import asyncio
 import datetime
+import logging
 import os
 from collections.abc import Callable
 from typing import Any
@@ -22,9 +26,8 @@ from rich import print
 
 
 def run_all_tests(
-    test_fn_list: list[Callable[[Any], tuple[bool, str]]],
-    args_list: list[list[Any]],
-) -> tuple[bool, list[Any]]:
+    test_fn_list: list[Callable[..., tuple[bool, str]]], args_list: list[list[Any]]
+) -> tuple[bool, list[dict[str, Any]]]:
     """
     Runs each test function in [test_functions].
     To ensure correct behavior new test functions have type Callable[..., Tuple[bool, str]] to ensure correct behavior.
@@ -32,24 +35,26 @@ def run_all_tests(
     """
     assert len(test_fn_list) == len(args_list), "test_fn_list must have the same length as args_list"
 
-    def get_test_name(test_fn) -> str:
+    def get_test_name(test_fn: Callable[..., Any]) -> str:
         return f"{test_fn.__module__}.{test_fn.__name__}"
 
     all_pass = True
-    test_results = []
+    test_results: list[dict[str, Any]] = []
     for test_fn, args in zip(test_fn_list, args_list, strict=False):
         test_result, message = test_fn(*args)
         if not test_result:
-            all_pass &= False
-        test_result = {"name": get_test_name(test_fn), "result": test_result, "message": message}
-        test_results.append(test_result)
+            all_pass = False
+        result_dict = {"name": get_test_name(test_fn), "result": test_result, "message": message}
+        test_results.append(result_dict)
     return all_pass, test_results
 
 
 """ Test cases """
 
 
-def test_redis_connection(host, port=6379, socket_timeout=1, logger=None) -> tuple[bool, str]:
+def test_redis_connection(
+    host: str, port: int = 6379, socket_timeout: float = 1.0, logger: logging.Logger | None = None
+) -> tuple[bool, str]:
     """
     Test Redis connection with specified connection parameters.
         1. Connect to Redis.
@@ -69,7 +74,6 @@ def test_redis_connection(host, port=6379, socket_timeout=1, logger=None) -> tup
                 logger.error(f"Cannot connect to {host}:{port}")
             return False, f"Cannot connect to {host}:{port}"
 
-        datetime.datetime.now().isoformat()
         # Create a redis pipeline to efficiently send key updates.
         pipe = r.pipeline()
 
@@ -83,7 +87,7 @@ def test_redis_connection(host, port=6379, socket_timeout=1, logger=None) -> tup
         results = pipe.execute(raise_on_error=False)
 
         # Check if each operation succeeded
-        success = []
+        success: list[str] = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 success.append("0")
@@ -95,7 +99,7 @@ def test_redis_connection(host, port=6379, socket_timeout=1, logger=None) -> tup
                 success.append("1")
         # print(f'[{timestamp}]: success = [{" ".join(success)}]')
         if logger:
-            if all(success):
+            if all(s == "1" for s in success):
                 logger.debug(f"success = [{' '.join(success)}]")
 
     except Exception as e:
@@ -127,7 +131,7 @@ def is_hashpipe_running() -> tuple[bool, str]:
     return True, "hashpipe is running"
 
 
-def is_os_posix():
+def is_os_posix() -> tuple[bool, str]:
     """Verify the server is running in a POSIX environment."""
     if os.name == "posix":
         return True, "detected a POSIX-compliant system"
@@ -135,7 +139,7 @@ def is_os_posix():
         return False, f"{os.name} is not supported yet"
 
 
-def check_hashpipe_io_dataflow(read_queue) -> tuple[bool, str]:
+def check_hashpipe_io_dataflow(read_queue: asyncio.Queue[Any]) -> tuple[bool, str]:
     """TODO:"""
 
     return True, ""

@@ -5,14 +5,14 @@ from panoseti_grpc.telemetry.config import LogSchema, LogSeverity
 
 
 class TestSchemaGuards:
-    def test_valid_log_packet(self):
+    def test_valid_log_packet(self) -> None:
         """Happy path should pass."""
         log = LogSchema(
             host="node-01", service_name="capture_service", severity=LogSeverity.INFO, payload_json='{"status": "ok"}'
         )
         assert log.host == "node-01"
 
-    def test_hostname_validation(self):
+    def test_hostname_validation(self) -> None:
         """
         Hostnames with spaces or special chars should fail.
         This protects Loki from high-cardinality/invalid labels.
@@ -26,7 +26,7 @@ class TestSchemaGuards:
         with pytest.raises(ValidationError):
             LogSchema(host="node-01; DROP TABLE", service_name="svc", payload_json="{}")
 
-    def test_payload_size_limit(self):
+    def test_payload_size_limit(self) -> None:
         """
         Ensure we don't accidentally accept 100MB logs which would choke Redis/Loki.
         """
@@ -37,7 +37,7 @@ class TestSchemaGuards:
             LogSchema(host="node-01", service_name="svc", payload_json=massive_payload)
         assert "max_length" in str(exc.value) or "at most" in str(exc.value)
 
-    def test_service_name_length(self):
+    def test_service_name_length(self) -> None:
         """Service name should be reasonable."""
         with pytest.raises(ValidationError):
             LogSchema(
@@ -46,7 +46,7 @@ class TestSchemaGuards:
                 payload_json="{}",
             )
 
-    def test_empty_payload(self):
+    def test_empty_payload(self) -> None:
         """Empty payload is useless and shouldn't be stored."""
         with pytest.raises(ValidationError):
             LogSchema(host="node-01", service_name="svc", payload_json="")

@@ -1,3 +1,4 @@
+from typing import Any
 import asyncio
 import sys
 import time
@@ -8,7 +9,7 @@ import pytest
 from panoseti_grpc.telemetry.logger import PanosetiLogFactory, _stream_reader, get_logger, monitor_subprocess
 
 
-def test_grpc_logger_metadata_capture():
+def test_grpc_logger_metadata_capture() -> None:
     """
     Verify that function name and line number are captured and sent to gRPC.
     """
@@ -30,7 +31,7 @@ def test_grpc_logger_metadata_capture():
     logger = get_logger("GrpcTest", log_dir=None, grpc_enabled=True, console=False)
 
     # 5. Trigger a log entry inside a function to test metadata capture
-    def inner_function():
+    def inner_function() -> None:
         logger.error("Error inside inner")
 
     inner_function()
@@ -42,7 +43,7 @@ def test_grpc_logger_metadata_capture():
     assert mock_client.send_log_future.called, "Mock client was not called. Did the logger use a real client?"
 
 
-def test_factory_singleton_behavior():
+def test_factory_singleton_behavior() -> None:
     """Verify we don't create multiple gRPC clients."""
 
     # 1. Reset the singleton cache so we start fresh
@@ -63,7 +64,7 @@ def test_factory_singleton_behavior():
 
 
 # --- OPTIONAL: Sanity check for file logger (Existing test preserved) ---
-def test_file_logger_creation_and_writing(tmp_path):
+def test_file_logger_creation_and_writing( tmp_path: Any) -> None:
     """Verify logger creates file and writes to it."""
     log_dir = tmp_path / "logs"
     service_name = "FileTest"
@@ -82,7 +83,7 @@ def test_file_logger_creation_and_writing(tmp_path):
     assert expected_file.exists(), f"Log file missing: {list(log_dir.iterdir())}"
 
 
-def test_console_logger_output(capsys):
+def test_console_logger_output( capsys: Any) -> None:
     """Verify logger writes to stdout."""
     logger = get_logger("ConsoleTest", log_dir=None, grpc_enabled=False, console=True)
 
@@ -136,7 +137,7 @@ async def test_stream_reader_invalid_utf8():
 
     logged_messages = []
 
-    def mock_logger_method(msg):
+    def mock_logger_method( msg: Any) -> None:
         logged_messages.append(msg)
 
     await _stream_reader(mock_stream, mock_logger_method)
@@ -164,7 +165,7 @@ async def test_stream_reader_skips_whitespace_lines():
 
     logged_messages = []
 
-    def mock_logger_method(msg):
+    def mock_logger_method( msg: Any) -> None:
         logged_messages.append(msg)
 
     await _stream_reader(mock_stream, mock_logger_method)

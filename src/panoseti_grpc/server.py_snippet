@@ -1,0 +1,103 @@
+    telemetry: TelemetryServerConfig = Field(default_factory=lambda: TelemetryServerConfig())
+    daq_data: DaqDataServerConfig = Field(default_factory=lambda: DaqDataServerConfig())
+    daq_control: DaqControlServerConfig = Field(default_factory=lambda: DaqControlServerConfig())
+
+    model_config = {"extra": "ignore"}
+
+    @classmethod
+    def _parse_toml_dict(cls, raw: dict[str, Any]) -> PanosetiServerConfig:
+        """Validate a raw TOML dict.
+
+        The TOML uses a ``[server]`` section for server-level settings and
+        separate top-level sections for each service (``[daq_data]`` etc.).
+        This method merges the ``[server]`` sub-dict into the top level so
+        Pydantic can find ``port``, ``services``, etc. directly.
+        """
+        server_section = raw.pop("server", {})
+        merged = {**server_section, **raw}
+        return cls.model_validate(merged)
+
+    @classmethod
+    def from_toml(cls, path: str | Path) -> PanosetiServerConfig:
+        """Load and validate from a TOML file."""
+        with open(path, "rb") as f:
+            raw = tomllib.load(f)
+        return cls._parse_toml_dict(raw)
+
+    @classmethod
+    def load_default(cls) -> PanosetiServerConfig:
+        """Load the bundled default ``server.toml`` from the package."""
+        resource_path = _importlib_resources.files("panoseti_grpc.config").joinpath("server.toml")
+        with resource_path.open("rb") as f:
+            raw = tomllib.load(f)
+        return cls._parse_toml_dict(raw)
+
+    @classmethod
+    def load_profile(cls, profile: str) -> PanosetiServerConfig:
+        """Load a named bundled deployment profile.
+
+        Valid profiles: ``"default"``, ``"daq_node"``, ``"headnode"``.
+        """
+        filenames = {
+            "default": "server.toml",
+            "daq_node": "server_daq_node.toml",
+            "headnode": "server_headnode.toml",
+        }
+        if profile not in filenames:
+            raise ValueError(f"Unknown profile '{profile}'. Valid: {list(filenames)}")
+        resource_path = _importlib_resources.files("panoseti_grpc.config").joinpath(filenames[profile])
+        with resource_path.open("rb") as f:
+            raw = tomllib.load(f)
+        return cls._parse_toml_dict(raw)
+
+
+# ---------------------------------------------------------------------------
+# Servicer factories
+# ---------------------------------------------------------------------------
+
+
+async def _make_telemetry_servicer(
+    cfg: TelemetryServerConfig,
+    shutdown_event: asyncio.Event,
+) -> tuple[Any, list]:
+    """Connect to Redis and create a TelemetryServicer."""
+    import redis.asyncio as redis_asyncio
+
+    from panoseti_grpc.telemetry.resources import get_config_path
+    from panoseti_grpc.telemetry.server import TelemetryServicer
+
+    # Resolve config path: explicit cfg override → env var → package default
+    if cfg.telemetry_config_path:
+        p = Path(cfg.telemetry_config_path)
+        config_path = p if p.exists() else get_config_path()
+    else:
+        config_path = get_config_path()
+
+    # Connect to Redis with retries (mirrors telemetry/server.py logic)
+    r = None
+    max_retries = 10
+    for attempt in range(max_retries):
+        try:
+            _logger.info(
+                f"Connecting to Redis at {cfg.redis_host}:{cfg.redis_port} (attempt {attempt + 1}/{max_retries})..."
+            )
+            r = redis_asyncio.Redis(
+                host=cfg.redis_host,
+                port=cfg.redis_port,
+                db=cfg.redis_db,
+                decode_responses=True,
+            )
+            await r.ping()
+            _logger.info("Redis connection established.")
+            break
+        except redis_asyncio.ConnectionError as e:
+            _logger.warning(f"Redis connection failed: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2)
+            else:
+                raise RuntimeError(
+                    f"Could not connect to Redis at {cfg.redis_host}:{cfg.redis_port} after {max_retries} attempts."
+                ) from e
+
+    servicer = TelemetryServicer(config_path, r)
+    return servicer, []

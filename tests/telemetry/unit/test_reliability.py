@@ -1,3 +1,4 @@
+from typing import Any
 import logging
 import time
 from unittest.mock import MagicMock
@@ -11,7 +12,7 @@ from panoseti_grpc.telemetry.client import AsyncGrpcHandler
 # 1. Custom Fixture that bypasses helper functions to GUARANTEE correct wiring
 # -----------------------------------------------------------------------------
 @pytest.fixture
-def crash_proof_logger():
+def crash_proof_logger() -> None:
     """
     Creates a logger manually wired to a MagicMock client.
     This avoids any risk of make_grpc_logger overwriting our mock.
@@ -42,17 +43,17 @@ def crash_proof_logger():
 # -----------------------------------------------------------------------------
 
 
-def test_handler_survives_unserializable_object(crash_proof_logger):
+def test_handler_survives_unserializable_object( crash_proof_logger: Any) -> None:
     """
     Scenario: User logs an object that crashes json.dumps().
     """
     logger, _ = crash_proof_logger
 
     class UnserializableObj:
-        def __str__(self):
+        def __str__(self) -> None:
             return "I am problematic"
 
-        def __repr__(self):
+        def __repr__(self) -> None:
             return "I am problematic"
 
         # Removing to_json/dict to force serialization issues if not handled strings
@@ -68,7 +69,7 @@ def test_handler_survives_unserializable_object(crash_proof_logger):
     # Passed if we didn't crash
 
 
-def test_handler_survives_schema_violation(crash_proof_logger):
+def test_handler_survives_schema_violation( crash_proof_logger: Any) -> None:
     """
     Scenario: The worker thread tries to send data, but the gRPC client raises an error.
     Expectation: The worker thread should stay alive.
@@ -95,7 +96,7 @@ def test_handler_survives_schema_violation(crash_proof_logger):
     )
 
 
-def test_handler_survives_queue_overflow(crash_proof_logger):
+def test_handler_survives_queue_overflow( crash_proof_logger: Any) -> None:
     """
     Scenario: Logging faster than the network can handle.
     Expectation: Drop logs, don't crash.

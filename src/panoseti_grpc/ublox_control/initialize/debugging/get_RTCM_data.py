@@ -2,11 +2,12 @@ import queue
 import time
 from threading import Event, Thread
 from time import sleep
+from typing import Any
 
 import pygnssutils as pygnss
 
 
-def getQueueData(stop_event, data):
+def getQueueData(stop_event: Any, data: Any) -> None:
     while not stop_event.is_set():
         if not (data.empty()):
             raw, parsed = data.get()

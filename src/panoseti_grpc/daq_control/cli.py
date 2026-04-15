@@ -2,6 +2,7 @@
 import argparse
 import json
 import logging
+from typing import Any
 
 from rich.console import Console
 from rich.logging import RichHandler
@@ -13,26 +14,31 @@ console = Console()
 logger = logging.getLogger("daqcontrol.cli")
 
 
-def setup_logging(level_name):
+def setup_logging(level_name: Any) -> None:
     level = getattr(logging, level_name.upper())
     logging.basicConfig(
         level=level, format="%(message)s", datefmt="[%X]", handlers=[RichHandler(console=console, rich_tracebacks=True)]
     )
 
 
-def load_config(configfn):
+def load_config(configfn: Any) -> dict[str, Any]:
     with open(configfn) as f:
-        return json.load(f)
+        config: dict[str, Any] = json.load(f)
+        return config
 
 
-def human(n):
+def human(n: Any) -> str:
+    if n is None or n == -1:
+        return "N/A"
+    n_float = float(n)
     for unit in ["B", "KB", "MB", "GB", "TB"]:
-        if n < 1024:
-            return f"{n:.2f} {unit}"
-        n /= 1024
+        if n_float < 1024:
+            return f"{n_float:.2f} {unit}"
+        n_float /= 1024
+    return f"{n_float:.2f} PB"
 
 
-def run_client(args):
+def run_client(args: Any) -> None:
     client = DaqControlClient(args.host, args.port)
     console.print(f"[bold green]Connected to Daq Control Server at {args.host}:{args.port}[/]")
     p = load_config(args.config)
@@ -67,8 +73,8 @@ def run_client(args):
                     console.print(f"[bold yellow]   - {r}[/]")
     elif args.op == "cleanupdata":
         logger.debug("Clean up data dirs...")
-        success = client.CleanupData(p["cleanupdata"])
-        if success:
+        cleanup_resp = client.CleanupData(p["cleanupdata"])
+        if cleanup_resp.get("success", False):
             console.print("[bold bright_blue]Clean up data dirs successfully.[/]")
             datadir = p["cleanupdata"]["data_dir"]
             rundir = p["cleanupdata"]["run_dir"]
@@ -80,7 +86,7 @@ def run_client(args):
             logger.debug("Clean up data dirs successfully.")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="PANOSETI Daq Control CLI")
     parser.add_argument("--host", default="localhost", help="gRPC Server Host")
     parser.add_argument("--port", type=int, default=50051, help="gRPC Server Port")

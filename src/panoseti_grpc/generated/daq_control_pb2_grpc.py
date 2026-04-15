@@ -46,8 +46,8 @@ class DaqControlStub(object):
                 _registered_method=True)
         self.StatusDaq = channel.unary_unary(
                 '/panoseti.daq_control.DaqControl/StatusDaq',
-                request_serializer=daq__control__pb2.StatusDaqRequest.SerializeToString,
-                response_deserializer=daq__control__pb2.StatusDaqResponse.FromString,
+                request_serializer=daq__control__pb2.DaqStatusRequest.SerializeToString,
+                response_deserializer=daq__control__pb2.DaqStatusResponse.FromString,
                 _registered_method=True)
         self.CleanupData = channel.unary_unary(
                 '/panoseti.daq_control.DaqControl/CleanupData',
@@ -102,8 +102,8 @@ def add_DaqControlServicer_to_server(servicer, server):
             ),
             'StatusDaq': grpc.unary_unary_rpc_method_handler(
                     servicer.StatusDaq,
-                    request_deserializer=daq__control__pb2.StatusDaqRequest.FromString,
-                    response_serializer=daq__control__pb2.StatusDaqResponse.SerializeToString,
+                    request_deserializer=daq__control__pb2.DaqStatusRequest.FromString,
+                    response_serializer=daq__control__pb2.DaqStatusResponse.SerializeToString,
             ),
             'CleanupData': grpc.unary_unary_rpc_method_handler(
                     servicer.CleanupData,
@@ -190,8 +190,8 @@ class DaqControl(object):
             request,
             target,
             '/panoseti.daq_control.DaqControl/StatusDaq',
-            daq__control__pb2.StatusDaqRequest.SerializeToString,
-            daq__control__pb2.StatusDaqResponse.FromString,
+            daq__control__pb2.DaqStatusRequest.SerializeToString,
+            daq__control__pb2.DaqStatusResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -34,6 +34,7 @@ from queue import Queue
 from sys import argv
 from threading import Event, Thread
 from time import sleep
+from typing import Any
 
 from pygnssutils.gnssntripclient import NTRIP2, RTCM, GNSSNTRIPClient
 from pyubx2 import POLL, UBX_PAYLOADS_POLL, UBX_PROTOCOL, UBXMessage, UBXReader
@@ -52,7 +53,7 @@ def get_vacc_mm_from_navpvt(pkt: bytes) -> int:
     return int.from_bytes(payload[44:48], "little", signed=False)
 
 
-def io_data(ubr: UBXReader, readqueue: Queue, sendqueue: Queue, stop: Event, ser):
+def io_data(ubr: UBXReader, readqueue: Queue[Any], sendqueue: Queue[Any], stop: Event, ser: Any) -> None:
     """
     THREADED
     Read and parse inbound UBX data and place
@@ -145,7 +146,7 @@ def io_data(ubr: UBXReader, readqueue: Queue, sendqueue: Queue, stop: Event, ser
     """
     bytes_written = {"n": 0}
     orig_write = ser.write
-    def counting_write(b):
+    def counting_write( b: Any) -> None:
         n = orig_write(b)
         bytes_written["n"] += n
         return n
@@ -207,7 +208,7 @@ def io_data(ubr: UBXReader, readqueue: Queue, sendqueue: Queue, stop: Event, ser
             # continue
 
 
-def process_data(queue: Queue, stop: Event):
+def process_data(queue: Queue[Any], stop: Event) -> None:
     """
     THREADED
     Get UBX data from queue and display.
@@ -220,7 +221,7 @@ def process_data(queue: Queue, stop: Event):
             queue.task_done()
 
 
-def main(**kwargs):
+def main(**kwargs: Any) -> None:
     """
     Main routine.
     """

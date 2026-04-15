@@ -3,10 +3,11 @@ Tests that Redis TTL (time-to-live) is applied correctly for experimental,
 production, and unknown (sandboxed) device types.
 """
 
+from typing import Any
 from tests.telemetry.conftest import poll_redis_key
 
 
-def test_experimental_key_has_positive_ttl(grpc_client, redis_client):
+def test_experimental_key_has_positive_ttl( grpc_client: Any, redis_client: Any) -> None:
     """
     After log_flexible for a DEV_ device, the Redis key must have TTL > 0,
     meaning it will expire automatically.
@@ -21,7 +22,7 @@ def test_experimental_key_has_positive_ttl(grpc_client, redis_client):
     assert ttl <= 3600, f"TTL {ttl} exceeds configured 3600 s cap"
 
 
-def test_production_key_has_no_ttl(grpc_client, redis_client):
+def test_production_key_has_no_ttl( grpc_client: Any, redis_client: Any) -> None:
     """
     After log_strict for a production device, the Redis key must have TTL == -1
     (no expiry) — production telemetry is retained permanently.
@@ -44,7 +45,7 @@ def test_production_key_has_no_ttl(grpc_client, redis_client):
     assert ttl == -1, f"Production key {key!r} must have TTL == -1 (persists forever), got {ttl}"
 
 
-def test_sandbox_key_has_positive_ttl(grpc_client, redis_client):
+def test_sandbox_key_has_positive_ttl( grpc_client: Any, redis_client: Any) -> None:
     """
     An unknown device_type routes to the SANDBOX namespace and must
     have a positive TTL (it should not pollute Redis indefinitely).

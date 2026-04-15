@@ -8,7 +8,7 @@ from panoseti_grpc.telemetry.client import AsyncGrpcHandler, TelemetryClient
 
 
 class TestAsyncHandler:
-    def test_non_blocking_behavior(self):
+    def test_non_blocking_behavior(self) -> None:
         """
         Ensures the handler drops logs instead of blocking when queue is full.
         """
@@ -46,7 +46,7 @@ class TestAsyncHandler:
         # Clean up
         handler._stop_event.set()
 
-    def test_worker_payload_construction(self):
+    def test_worker_payload_construction(self) -> None:
         """
         Verifies the worker thread correctly constructs the gRPC call.
         """

@@ -18,6 +18,11 @@ Each service operates independently. Click the links below for detailed API docu
 
 ---
 
+## 📜 Changelog
+Keep track of the latest changes, modernization efforts, and breaking changes in our [**Changelog**](./docs/CHANGELOG.md).
+
+---
+
 ## 📦 Installation (Client Mode)
 
 If you only need to write scripts to control the observatory or analyze data, install the package from PyPI:

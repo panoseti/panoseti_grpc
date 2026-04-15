@@ -8,6 +8,7 @@ import signal
 import socket
 import subprocess
 import time
+from typing import Any
 
 import psutil
 
@@ -65,7 +66,7 @@ redis_daemons = ["capture_gps.py", "capture_hk.py", "capture_wr.py", "storeInflu
 # -------------- TIME ---------------
 
 
-def now_str():
+def now_str() -> str:
     t = int(time.time())
     dt = datetime.datetime.fromtimestamp(t)
     return dt.isoformat()
@@ -81,7 +82,7 @@ default_hk_dest = "192.168.1.100"
 
 # create logger
 #
-def create_logger(logfile, tag, mode="w"):
+def create_logger(logfile: Any, tag: Any, mode: Any = "w") -> None:
     logger = logging.getLogger(tag)
     logger.setLevel(logging.DEBUG)
     handler = logging.FileHandler(logfile, mode=mode)
@@ -92,7 +93,7 @@ def create_logger(logfile, tag, mode="w"):
     logger.addHandler(handler)
 
 
-def local_ip():
+def local_ip() -> list[str]:
     ips = []
     # psutil.net_if_addrs() works similarly to netifaces but is built-in to psutil
     for _interface_name, snics in psutil.net_if_addrs().items():
@@ -108,7 +109,7 @@ def local_ip():
     return ips
 
 
-def ip_addr_str_to_bytes(ip_addr_str):
+def ip_addr_str_to_bytes(ip_addr_str: Any) -> bytearray:
     pieces = ip_addr_str.strip().split(".")
     if len(pieces) != 4:
         raise Exception(f"bad IP addr {ip_addr_str}")
@@ -123,7 +124,7 @@ def ip_addr_str_to_bytes(ip_addr_str):
 
 # return true if can ping IP addr
 #
-def ping(ip_addr, cmd_port):
+def ping(ip_addr: Any, cmd_port: Any) -> bool:
     logging.getLogger("PANOSETI.Config.util.ping")
     # return not os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
     # TODO: implement the qping cmd in the firmware
@@ -133,10 +134,10 @@ def ping(ip_addr, cmd_port):
         return True
     else:
         quabo = quabo_driver.QUABO(ip_addr, cmd_port)
-        return quabo.data_packet_destination("192.168.1.1")
+        return bool(quabo.data_packet_destination("192.168.1.1"))
 
 
-def mac_addr_str(bytes):
+def mac_addr_str(bytes: Any) -> str:
     s = [""] * 6
     for i in range(6):
         s[i] = hex(bytes[i])[2:]
@@ -146,7 +147,7 @@ def mac_addr_str(bytes):
 # -------------- BINARY DATA ---------------
 
 
-def print_binary(data):
+def print_binary(data: Any) -> None:
     n = len(data)
     print(f"got {n} bytes")
     for i in range(n):
@@ -158,18 +159,18 @@ def print_binary(data):
 
 # get the UID of quabo i in a given module
 #
-def quabo_uid(module, quabo_uids, i):
+def quabo_uid(module: Any, quabo_uids: Any, i: Any) -> str:
     for dome in quabo_uids["domes"]:
         for m in dome["modules"]:
             if m["ip_addr"] == module["ip_addr"]:
                 q = m["quabos"][i]
-                return q["uid"]
+                return str(q["uid"])
     raise Exception(f"no module {module['ip_addr']} found; run get_uids.py")
 
 
 # see if quabo is alive by seeing if we got its UID
 #
-def is_quabo_alive(module, quabo_uids, i):
+def is_quabo_alive(module: Any, quabo_uids: Any, i: Any) -> bool:
     return quabo_uid(module, quabo_uids, i) != ""
 
 
@@ -177,15 +178,15 @@ def is_quabo_alive(module, quabo_uids, i):
 # can be specified as either string or array of 4 strings
 #
 """
-def is_quabo_old_version(module, i):
+def is_quabo_old_version( module: Any, i: Any)-> None:
     v = module['quabo_version']
-    if isinstance(v, list):
+    if isinstance(v,list[Any]):
         v = v[i]
     return v == 'qfp'
 """
 
 
-def is_quabo_old_version(module, i, quabo_uids, quabo_info):
+def is_quabo_old_version(module: Any, i: Any, quabo_uids: Any, quabo_info: Any) -> bool | None:
     domes = quabo_uids["domes"]
     for dome in domes:
         modules = dome["modules"]
@@ -196,14 +197,14 @@ def is_quabo_old_version(module, i, quabo_uids, quabo_info):
         v = quabo_info[uid]["board_version"]
     except Exception:
         print(f"uid: {uid} can't be found in quabo_info.json")
-        return
-    return v == "qfp"
+        return None
+    return bool(v == "qfp")
 
 
 # -------------- RECORDING ---------------
 
 
-def start_daemon(prog):
+def start_daemon(prog: Any) -> None:
     if is_script_running(prog):
         print(f"{prog} is already running")
         return
@@ -224,12 +225,12 @@ def start_daemon(prog):
 
 # start daemons that write HK/GPS/WR data to Redis
 #
-def start_redis_daemons():
+def start_redis_daemons() -> None:
     for daemon in redis_daemons:
         start_daemon(daemon)
 
 
-def stop_redis_daemons():
+def stop_redis_daemons() -> None:
     for d in redis_daemons:
         prog = f"./{d}"
         for p in psutil.process_iter():
@@ -239,7 +240,7 @@ def stop_redis_daemons():
                 print(f"stopped {d}")
 
 
-def show_redis_daemons():
+def show_redis_daemons() -> None:
     for daemon in redis_daemons:
         if is_script_running(daemon):
             print(f"{daemon} is running")
@@ -247,14 +248,14 @@ def show_redis_daemons():
             print(f"{daemon} is not running")
 
 
-def are_redis_daemons_running():
+def are_redis_daemons_running() -> bool:
     for daemon in redis_daemons:
         if not is_script_running(daemon):
             return False
     return True
 
 
-def start_hk_recorder(daq_config, run_name):
+def start_hk_recorder(daq_config: Any, run_name: Any) -> None:
     path = f"{daq_config['head_node_data_dir']}/{run_name}/{hk_file_name}"
     try:
         subprocess.Popen([hk_recorder_name, path])
@@ -264,7 +265,7 @@ def start_hk_recorder(daq_config, run_name):
 
 
 # Start high-voltage updater daemon
-def start_hv_updater():
+def start_hv_updater() -> None:
     if is_hv_updater_running():
         print("hv_updater.py is already running")
         return
@@ -276,7 +277,7 @@ def start_hv_updater():
 
 
 # Start module temperature monitor daemon.
-def start_module_temp_monitor():
+def start_module_temp_monitor() -> None:
     if is_module_temp_monitor_running():
         print("module_temp_monitor.py is already running")
         return
@@ -288,7 +289,7 @@ def start_module_temp_monitor():
 
 
 # write run name to a file, and symlink 'run' to the run dir
-def write_run_name(daq_config, run_name):
+def write_run_name(daq_config: Any, run_name: Any) -> None:
     with open(run_name_file, "w") as f:
         f.write(run_name)
     if os.path.lexists(run_symlink):
@@ -299,21 +300,21 @@ def write_run_name(daq_config, run_name):
     os.system(f"cp {run_name_file} skymap_info_dir")
 
 
-def read_run_name():
+def read_run_name() -> str | None:
     if not os.path.exists(run_name_file):
         return None
     with open(run_name_file) as f:
         return f.read()
 
 
-def remove_run_name():
+def remove_run_name() -> None:
     if os.path.exists(run_name_file):
         os.unlink(run_name_file)
 
 
 # if hashpipe is running, send it a SIGINT and wait for it to exit
 #
-def stop_hashpipe(pid):
+def stop_hashpipe(pid: Any) -> bool:
     for p in psutil.process_iter():
         if p.pid == pid and p.name() == hashpipe_name:
             os.kill(pid, signal.SIGINT)
@@ -326,7 +327,7 @@ def stop_hashpipe(pid):
     return False
 
 
-def is_script_running(script):
+def is_script_running(script: Any) -> bool:
     s = f"./{script}"
     for p in psutil.process_iter():
         if s in p.cmdline():
@@ -334,47 +335,47 @@ def is_script_running(script):
     return False
 
 
-def is_hashpipe_running():
+def is_hashpipe_running() -> bool:
     for p in psutil.process_iter():
         if p.name() == hashpipe_name:
             return True
     return False
 
 
-def is_hk_recorder_running():
+def is_hk_recorder_running() -> bool:
     for p in psutil.process_iter():
         if hk_recorder_name in p.cmdline():
             return True
     return False
 
 
-def is_hv_updater_running():
+def is_hv_updater_running() -> bool:
     return is_script_running(hv_updater_name[2:])
 
 
-def is_module_temp_monitor_running():
-    return is_script_running(hv_updater_name[2:])
+def is_module_temp_monitor_running() -> bool:
+    return is_script_running(module_temp_monitor_name[2:])
 
 
-def kill_hashpipe():
+def kill_hashpipe() -> None:
     for p in psutil.process_iter():
         if p.name() == hashpipe_name:
             os.kill(p.pid, signal.SIGKILL)
 
 
-def kill_hk_recorder():
+def kill_hk_recorder() -> None:
     for p in psutil.process_iter():
         if hk_recorder_name in p.cmdline():
             os.kill(p.pid, signal.SIGKILL)
 
 
-def kill_hv_updater():
+def kill_hv_updater() -> None:
     for p in psutil.process_iter():
         if hv_updater_name in p.cmdline():
             os.kill(p.pid, signal.SIGKILL)
 
 
-def kill_module_temp_monitor():
+def kill_module_temp_monitor() -> None:
     for p in psutil.process_iter():
         if module_temp_monitor_name in p.cmdline():
             os.kill(p.pid, signal.SIGKILL)
@@ -382,7 +383,7 @@ def kill_module_temp_monitor():
 
 # write a message to per-run log file, and to stdout
 #
-def write_log(msg):
+def write_log(msg: Any) -> None:
     now = datetime.datetime.now().strftime("%B %d, %Y, %I:%M%p")
     print(f"{__main__.__file__}: {now}: {msg}")
     try:
@@ -393,20 +394,20 @@ def write_log(msg):
         f = open("log.txt", "a")
 
 
-def disk_usage(dir):
+def disk_usage(dir: Any) -> int:
     x = 0
     for f in os.listdir(dir):
         x += os.path.getsize(f"{dir}/{f}")
     return x
 
 
-def free_space(path):
+def free_space(path: Any) -> int:
     total, used, free = shutil.disk_usage(os.path.realpath(path))
     return free
 
 
 # estimate bytes per second per module for a given data config
-def daq_bytes_per_sec_per_module(data_config):
+def daq_bytes_per_sec_per_module(data_config: Any) -> float:
     img_json_header_size = 600
     ph_json_header_size = 150
     x = 0
@@ -429,7 +430,7 @@ def daq_bytes_per_sec_per_module(data_config):
     return x
 
 
-def get_daq_node_status(node):
+def get_daq_node_status(node: Any) -> Any:
     # TODO: add port forwarding code here
     x = subprocess.run(
         [
@@ -439,7 +440,7 @@ def get_daq_node_status(node):
         ],
         stdout=subprocess.PIPE,
     )
-    if x == "":
+    if x.returncode != 0:
         raise Exception("can't talk to DAQ node")
     y = x.stdout.decode()
     return json.loads(y)
@@ -448,7 +449,7 @@ def get_daq_node_status(node):
 # -------------- functions only for DAQ nodes ---------------
 
 
-def daq_get_run_name():
+def daq_get_run_name() -> str | None:
     if os.path.exists(daq_run_name_filename):
         with open(daq_run_name_filename) as f:
             return f.read().strip()
@@ -458,18 +459,18 @@ def daq_get_run_name():
 # -------------- WR and GPS---------------
 
 
-def get_wr_ip_addr(obs_config):
+def get_wr_ip_addr(obs_config: Any) -> str:
     if "wr_ip_addr" in obs_config.keys():
-        return obs_config["wr_ip_addr"]
+        return str(obs_config["wr_ip_addr"])
     else:
         return "192.168.1.254"
 
 
 # get GPS receiver port (path of the tty)
 #
-def get_gps_port(obs_config):
+def get_gps_port(obs_config: Any) -> str:
     if "gps_port" in obs_config.keys():
-        return obs_config["gps_port"]
+        return str(obs_config["gps_port"])
     else:
         return "/dev/ttyUSB0"
 
@@ -481,8 +482,8 @@ DEFAULT_CMD_PORT = 60000
 DEFAULT_REBOOT_PORT = 69
 
 
-def get_quabo_ip_port(ip_addr, i, network_config):
-    ip_ports = {}
+def get_quabo_ip_port(ip_addr: Any, i: Any, network_config: Any) -> dict[str, Any]:
+    ip_ports: dict[str, Any] = {}
     x = ip_addr.split(".")
     x[3] = str(int(x[3]) + i)
     quabo_ip = ".".join(x)
@@ -504,7 +505,7 @@ def get_quabo_ip_port(ip_addr, i, network_config):
 
 
 # attach port forwarding info to daq config based on network_config
-def attach_daq_config(daq_config, network_config):
+def attach_daq_config(daq_config: Any, network_config: Any) -> None:
     for i in range(len(daq_config["daq_nodes"])):
         daq = daq_config["daq_nodes"][i]
         for pdaq in network_config["daq_nodes"]:

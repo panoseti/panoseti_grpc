@@ -16,7 +16,7 @@ sys.path.append("/app/")
 from panoseti_util import control_utils as util
 
 
-def main():
+def main() -> None:
     try:
         f = open(util.daq_hashpipe_pid_filename)
     except Exception:

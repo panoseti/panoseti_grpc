@@ -44,7 +44,7 @@ class UdsAcquisitionConfig(BaseModel):
 
 
 class AcquisitionMethodsConfig(BaseModel):
-    uds: UdsAcquisitionConfig = Field(default_factory=UdsAcquisitionConfig)
+    uds: UdsAcquisitionConfig = Field(default_factory=lambda: UdsAcquisitionConfig(read_timeout=60.0))
 
 
 class SimSourceDataConfig(BaseModel):
@@ -54,6 +54,7 @@ class SimSourceDataConfig(BaseModel):
 
 
 class UdsSimStrategyConfig(BaseModel):
+    sim_module_ids: list[int]
     data_products: list[str] = ["ph256", "img16"]
     frame_limit: int = Field(-1, description="Max frames to send; -1 means unlimited")
 
@@ -83,7 +84,7 @@ class DaqDataServerConfig(BaseModel):
     shutdown_grace_period: float = Field(5.0, ge=0)
     hp_io_stop_timeout: float = Field(5.0, gt=0)
     valid_data_products: list[str] = ["img8", "img16", "ph256", "ph1024"]
-    acquisition_methods: AcquisitionMethodsConfig = Field(default_factory=AcquisitionMethodsConfig)
+    acquisition_methods: AcquisitionMethodsConfig = Field(default_factory=lambda: AcquisitionMethodsConfig())
     simulate_daq_cfg: SimulateDaqConfig | None = None
     # Logging — passed to get_logger()
     log_dir: str | None = None

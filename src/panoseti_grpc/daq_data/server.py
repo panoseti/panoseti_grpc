@@ -7,6 +7,8 @@ Requires following to function correctly:
     2. A connection to a panoseti module (for real data streaming).
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
@@ -15,6 +17,7 @@ import signal
 import time
 import urllib.parse
 from collections.abc import AsyncIterator
+from typing import Any
 
 # gRPC imports
 import grpc
@@ -24,7 +27,11 @@ from grpc_reflection.v1alpha import reflection
 
 # Protoc-generated imports
 from panoseti_grpc.generated import daq_data_pb2, daq_data_pb2_grpc
-from panoseti_grpc.generated.daq_data_pb2 import InitHpIoResponse, PanoImage, StreamImagesResponse
+from panoseti_grpc.generated.daq_data_pb2 import (
+    InitHpIoResponse,
+    PanoImage,
+    StreamImagesResponse,
+)
 
 # Package imports
 from panoseti_grpc.telemetry.logger import get_logger
@@ -39,7 +46,7 @@ from .testing import is_os_posix
 class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
     """Provides implementations for DaqData RPCs by orchestrating manager classes."""
 
-    def __init__(self, server_cfg: DaqDataServerConfig, logging_level=logging.DEBUG):
+    def __init__(self, server_cfg: DaqDataServerConfig, logging_level: int = logging.DEBUG) -> None:
         self.logger = get_logger(
             "daq_data.server",
             level=logging_level,
@@ -52,7 +59,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self.client_manager = ClientManager(self.logger, server_cfg)
         self.task_manager = HpIoTaskManager(self.logger, server_cfg, self.client_manager.reader_states)
 
-    async def start_initial_task(self):
+    async def start_initial_task(self) -> None:
         """Starts the initial hp_io task if configured to do so."""
         if self.server_cfg.init_from_default:
             self.logger.info("Creating initial hp_io task from default config.")
@@ -63,7 +70,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             except Exception as e:
                 self.logger.error(f"Failed to start initial hp_io task: {e}", exc_info=True)
 
-    async def shutdown(self):
+    async def shutdown(self) -> None:
         """Gracefully shuts down the server by delegating to the managers."""
         self.logger.info("Shutdown initiated. Stopping all tasks.")
         self.client_manager.signal_shutdown()
@@ -71,7 +78,9 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         await self.task_manager.stop()
         self.logger.info("All server tasks and managers stopped.")
 
-    async def StreamImages(self, request, context) -> AsyncIterator[StreamImagesResponse]:
+    async def StreamImages(
+        self, request: daq_data_pb2.StreamImagesRequest, context: grpc.aio.ServicerContext
+    ) -> AsyncIterator[StreamImagesResponse]:
         """Forward PanoImages to the client. [reader]"""
         peer = urllib.parse.unquote(context.peer())
         self.logger.info(f"New StreamImages rpc from '{peer}': {MessageToDict(request, True, True)}")
@@ -87,7 +96,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 {
                     "stream_movie_data": request.stream_movie_data,
                     "stream_pulse_height_data": request.stream_pulse_height_data,
-                    "module_ids": list(request.module_ids),
+                    "module_ids": list[int](request.module_ids),
                     "update_interval_seconds": max(request.update_interval_seconds, hp_io_update_interval_seconds),
                 }
             )
@@ -100,15 +109,20 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             last_data_t = time.monotonic()
 
             # Main streaming loop
-            while not (
-                context.cancelled() or reader_state.cancel_reader_event.is_set() or reader_state.shutdown_event.is_set()
-            ):
+            while not context.cancelled():
+                cre = reader_state.cancel_reader_event
+                if cre and cre.is_set():
+                    break
+                se = reader_state.shutdown_event
+                if se and se.is_set():
+                    break
+                
                 try:
                     now = time.monotonic()
-                    interval = reader_state.config["update_interval_seconds"]
+                    interval = float(reader_state.config["update_interval_seconds"])
 
                     # Check if it's time to send an update to this client
-                    fresh_images = []
+                    fresh_images: list[PanoImage] = []
                     delta_t = now - reader_state.last_update_t
                     if delta_t >= interval:
                         fresh_images = self._get_fresh_images_for_client(reader_state)
@@ -140,11 +154,13 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
             self.logger.info(f"Stream ended for ({reader_state.uid}) from '{peer}'.")
             if not context.cancelled():
-                if reader_state.shutdown_event.is_set():
+                se = reader_state.shutdown_event
+                if se and se.is_set():
                     await context.abort(
                         grpc.StatusCode.CANCELLED, f"server shutdown_event set for ({reader_state.uid}) from '{peer}'."
                     )
-                elif reader_state.cancel_reader_event.is_set():
+                cre = reader_state.cancel_reader_event
+                if cre and cre.is_set():
                     await context.abort(
                         grpc.StatusCode.CANCELLED,
                         f"cancel_reader_event set for ({reader_state.uid}) from '{peer}'."
@@ -167,18 +183,20 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             if data is None:
                 continue
             if rs.config["stream_movie_data"]:
-                cached_movie: CachedPanoImage = data.get("movie")
+                cached_movie: CachedPanoImage | None = data.get("movie")
                 if cached_movie and cached_movie.frame_id > rs.last_sent_movie_id:
                     images.append(cached_movie.pano_image)
                     rs.last_sent_movie_id = cached_movie.frame_id
             if rs.config["stream_pulse_height_data"]:
-                cached_ph: CachedPanoImage = data.get("ph")
+                cached_ph: CachedPanoImage | None = data.get("ph")
                 if cached_ph and cached_ph.frame_id > rs.last_sent_ph_id:
                     images.append(cached_ph.pano_image)
                     rs.last_sent_ph_id = cached_ph.frame_id
         return images
 
-    async def InitHpIo(self, request, context) -> InitHpIoResponse:
+    async def InitHpIo(
+        self, request: daq_data_pb2.InitHpIoRequest, context: grpc.aio.ServicerContext
+    ) -> InitHpIoResponse:
         """Initialize or re-initialize the hp_io task. [writer]"""
         peer = urllib.parse.unquote(context.peer())
         self.logger.info(f"New InitHpIo rpc from {peer}: {MessageToDict(request, True, True)}")
@@ -199,12 +217,14 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             last_valid_config = self.task_manager.hp_io_cfg.copy()
 
             # Filter hp_io_fields from the request
-            # hp_io_cfg = MessageToDict(request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)
+            # hp_io_cfg = MessageToDict(
+            #     request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True
+            # )
             hp_io_cfg = {
                 "data_dir": request.data_dir,
                 "simulate_daq": request.simulate_daq,
                 "update_interval_seconds": request.update_interval_seconds,
-                "module_ids": list(request.module_ids),
+                "module_ids": list[int](request.module_ids),
             }
             self.logger.debug(f"Received hp_io configuration: {hp_io_cfg}")
 
@@ -223,22 +243,34 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
             return InitHpIoResponse(success=success)
 
-    async def Ping(self, request, context):
+    async def Ping(self, request: Empty, context: grpc.aio.ServicerContext) -> Empty:
         """Returns Empty to verify client-server connection."""
         self.logger.info(f"Ping rpc from '{urllib.parse.unquote(context.peer())}'")
         return Empty()
 
+    async def UploadImages(
+        self, request_iterator: AsyncIterator[daq_data_pb2.UploadImageRequest], context: grpc.aio.ServicerContext
+    ) -> Empty:
+        """Placeholder for UploadImages RPC (Not yet implemented)."""
+        await context.abort(grpc.StatusCode.UNIMPLEMENTED, "UploadImages is not yet implemented.")
+        return Empty()
 
-async def serve(server_cfg, shutdown_event=None, in_main_thread: bool = True):
+
+async def serve(
+    server_cfg: DaqDataServerConfig | dict[str, Any],
+    shutdown_event: asyncio.Event | None = None,
+    in_main_thread: bool = True,
+) -> None:
     """Create and run the gRPC server."""
     logger = logging.getLogger("daq_data.server")
     if isinstance(server_cfg, dict):
         server_cfg = DaqDataServerConfig.model_validate(server_cfg)
 
     # Define a signal handler to set the shutdown event
-    def _signal_handler(*_):
+    def _signal_handler(*_: Any) -> None:
         logger.info("Shutdown signal received, initiating graceful shutdown.")
-        shutdown_event.set()
+        if shutdown_event:
+            shutdown_event.set()
 
     # Attach signal handlers only if running in the main thread
     if in_main_thread:
@@ -293,7 +325,7 @@ async def serve(server_cfg, shutdown_event=None, in_main_thread: bool = True):
     logger.info("Server shut down gracefully.")
 
 
-def main():
+def main() -> None:
     """Console script entry point (``panoseti-daq-data``)."""
     try:
         raw_cfg = load_package_json(daq_data_anchor_package, CFG_DIR / "daq_data_server_config.json")

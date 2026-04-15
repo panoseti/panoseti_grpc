@@ -48,19 +48,19 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
 
     F9T_MODEL_PREFIX = "ZED-F9T"
 
-    def __init__(self, server_cfg: dict[str, Any], logger: logging.Logger):
+    def __init__(self, server_cfg: dict[str, Any], logger: logging.Logger) -> None:
         self.server_cfg = server_cfg
         self.logger = logger
         self._f9t_cfg: dict[str, Any] = {}
         self._serial: Serial | None = None
-        self._io_task: asyncio.Task | None = None
+        self._io_task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
         self._packet_cache: dict[str, UBXMessage] = {}
         self._cache_lock = asyncio.Lock()
-        self._client_queues: list[asyncio.Queue] = []
+        self._client_queues: list[asyncio.Queue[UBXMessage]] = []
         self._main_loop: asyncio.AbstractEventLoop | None = None
 
-    async def _open_serial(self, device: str, baud: int, context, timeout=0.5):
+    async def _open_serial(self, device: str, baud: int, context: grpc.ServicerContext, timeout: float = 0.5) -> bool:
         """Opens the serial port."""
         try:
             if not device:
@@ -84,13 +84,15 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             self.logger.error(f"Failed to open serial port {device}: {e}")
             return False
 
-    async def _close_serial(self):
+    async def _close_serial(self) -> None:
         """Closes the serial port."""
         if self._serial and self._serial.is_open:
             self._serial.close()
             self.logger.info("Closed serial port.")
 
-    async def InitF9t(self, request, context):
+    async def InitF9t(
+        self, request: ublox_control_pb2.InitF9tRequest, context: grpc.ServicerContext
+    ) -> ublox_control_pb2.InitF9tResponse:
         """
         Handles InitF9t by configuring the F9T device. Replicates the logic
         from conf_gnss.py's main function for robust configuration and verification.
@@ -116,15 +118,15 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
 
         # Validate the provided F9T device file
         device = client_f9t_cfg.get("device")
-        if not await self._open_serial(device, client_f9t_cfg.get("baud", 115200), context):
-            device_abs_path = os.path.abspath(device)
+        if device is None or not await self._open_serial(device, client_f9t_cfg.get("baud", 115200), context):
+            device_abs_path = os.path.abspath(device) if device else "N/A"
             await context.abort(grpc.StatusCode.UNAVAILABLE, f"Could not connect to device {device_abs_path}.")
 
         try:
             # 0. Detect model
             model = await asyncio.to_thread(detect_model, self._serial)
             self.logger.info(f"Detected model: {model}")
-            if not model.startswith(self.F9T_MODEL_PREFIX):
+            if model is None or not model.startswith(self.F9T_MODEL_PREFIX):
                 await self._close_serial()
                 await context.abort(
                     grpc.StatusCode.INVALID_ARGUMENT,
@@ -152,15 +154,16 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                 self.logger.info("ZED-F9T detected with position settings. Applying TMODE configuration.")
                 tmode_pairs = build_tmode_fixed_from_json(position_settings, position_settings.get("acc_m", 0.05))
                 tmode_items = _to_cfg_items([{"key": k, "value": v} for k, v in tmode_pairs])
-                cfg_items.extend(tmode_items)
-                self.logger.debug(f"Added {len(tmode_items)} TMODE configuration items.")
+                if tmode_items:
+                    cfg_items.extend(tmode_items)
+                    self.logger.debug(f"Added {len(tmode_items)} TMODE configuration items.")
 
             # 4. Prepare and send configuration
             layers = client_f9t_cfg.get("apply_to_layers", ["RAM"])
             layers_mask = _layers_mask(layers)
             self.logger.info(f"Sending {len(cfg_items)} configuration items to device.")
             acks = await asyncio.to_thread(send_cfg_valset_grouped, self._serial, cfg_items, layers_mask, verbose=True)
-            if not all(acks):
+            if acks is None or not all(acks):
                 raise RuntimeError("One or more configuration messages were NAKed.")
             self.logger.info("Configuration sent and acknowledged.")
 
@@ -175,7 +178,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             for item in cfg_items:
                 kid = item["id"]
                 want = item["value"]
-                got = reported_cfg.get(kid)
+                got = reported_cfg.get(kid) if reported_cfg else None
                 if got != want:
                     dtype = DTYPE_BY_ID.get(kid)
                     failure_detail = (
@@ -209,7 +212,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             await self._close_serial()
             await context.abort(grpc.StatusCode.INTERNAL, f"Initialization failed: {e}")
 
-    def _reader_loop_sync(self):
+    def _reader_loop_sync(self) -> None:
         """The synchronous part of the reader loop that runs in a separate thread."""
         if not self._main_loop:
             self.logger.error("Reader loop cannot start: main event loop is not available.")
@@ -234,11 +237,11 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                     break
         self.logger.info("Reader loop stopped.")
 
-    async def _reader_loop(self):
+    async def _reader_loop(self) -> None:
         """Asynchronous wrapper for the reader loop."""
         await asyncio.to_thread(self._reader_loop_sync)
 
-    async def _distribute_packet(self, parsed: UBXMessage):
+    async def _distribute_packet(self, parsed: UBXMessage) -> None:
         """Caches and distributes a parsed packet."""
         async with self._cache_lock:
             self.logger.debug(f"Caching packet: {parsed.identity}")
@@ -249,7 +252,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                 except asyncio.QueueFull:
                     self.logger.warning("Client queue full; dropping packet.")
 
-    async def CaptureUblox(self, request, context):
+    async def CaptureUblox(self, request: ublox_control_pb2.CaptureUbloxRequest, context: grpc.ServicerContext) -> Any:
         """
         Handles CaptureUblox by streaming data to a client.
         1. Broadcasts the current cache state for packets matching client's regex patterns.
@@ -264,13 +267,15 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
 
         patterns = [re.compile(p) for p in request.patterns] if request.patterns else [re.compile(".*")]
 
-        q = asyncio.Queue(maxsize=self.server_cfg.get("max_read_queue_size", 200))
+        q: asyncio.Queue[UBXMessage] = asyncio.Queue(maxsize=self.server_cfg.get("max_read_queue_size", 200))
         self._client_queues.append(q)
         self.logger.info(f"Client from {peer} subscribed. Total clients: {len(self._client_queues)}")
 
         try:
 
-            def _create_capture_ublox_response(_packet_name, _parsed_data):
+            def _create_capture_ublox_response(
+                _packet_name: str, _parsed_data: UBXMessage
+            ) -> ublox_control_pb2.CaptureUbloxResponse:
                 # unpack parsed UBXMessage class into a dictionary, then serialize
                 parsed_data_dict = ubx_to_dict(_parsed_data)
                 parsed_data_struct = Struct()
@@ -313,10 +318,10 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                 self._client_queues.remove(q)
             self.logger.info(f"Client from {peer} unsubscribed. Total clients: {len(self._client_queues)}")
 
-    def is_running(self):
-        return self._io_task and not self._io_task.done()
+    def is_running(self) -> bool:
+        return bool(self._io_task and not self._io_task.done())
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Gracefully shuts down the servicer's background tasks."""
         self.logger.info("Initiating graceful shutdown.")
 
@@ -337,7 +342,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             await self._close_serial()
 
 
-async def serve(_stop_event=None, in_main_thread=True):
+async def serve(_stop_event: asyncio.Event | None = None, in_main_thread: bool = True) -> None:
     """Initializes and starts the async gRPC server."""
     logger = make_rich_logger(__name__, level=logging.DEBUG)
     try:
@@ -368,13 +373,14 @@ async def serve(_stop_event=None, in_main_thread=True):
     # Set up signal handling for graceful shutdown
     loop = asyncio.get_running_loop()
 
-    def _signal_handler(*_):
+    def _signal_handler(*_: Any) -> None:
         logger.info("Shutdown signal received.")
         if not _stop_event.is_set():
             loop.create_task(shutdown())
 
-    async def shutdown():
-        _stop_event.set()
+    async def shutdown() -> None:
+        if _stop_event:
+            _stop_event.set()
         await servicer.stop()
         await server.stop(grace=server_config.get("shutdown_grace_period", 1.0))
         logger.info("Server shut down gracefully.")

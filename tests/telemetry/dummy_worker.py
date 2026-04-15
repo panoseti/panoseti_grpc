@@ -9,7 +9,7 @@ import redis
 from panoseti_grpc.telemetry.logger import get_logger
 
 
-def run_worker():
+def run_worker() -> None:
     my_host = socket.gethostname()
     redis_host = os.getenv("REDIS_HOST", "redis")
     redis_db = int(os.getenv("REDIS_DB", 1))

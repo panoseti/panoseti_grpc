@@ -5,6 +5,7 @@
 import json
 import os
 import sys
+from typing import Any
 
 obs_config_filename = "obs_config.json"
 daq_config_filename = "daq_config.json"
@@ -33,7 +34,7 @@ config_file_names = [
 
 # compute a 'module ID', given its base quabo IP addr: bits 2..9 of IP addr
 #
-def ip_addr_to_module_id(ip_addr_str):
+def ip_addr_to_module_id(ip_addr_str: str) -> int:
     pieces = ip_addr_str.split(".")
     n = int(pieces[3]) + 256 * int(pieces[2])
     return (n >> 2) & 255
@@ -41,13 +42,13 @@ def ip_addr_to_module_id(ip_addr_str):
 
 # given module base IP address, return IP addr of quabo i
 #
-def quabo_ip_addr(base, i):
+def quabo_ip_addr(base: str, i: int) -> str:
     x = base.split(".")
     x[3] = str(int(x[3]) + i)
     return ".".join(x)
 
 
-def get_boardloc(module_ip_addr, quabo_index):
+def get_boardloc(module_ip_addr: str, quabo_index: int) -> int:
     """Given a module ip address and a quabo index, returns the BOARDLOC of
     the corresponding quabo."""
     pieces = module_ip_addr.split(".")
@@ -58,7 +59,7 @@ def get_boardloc(module_ip_addr, quabo_index):
 # assign sequential numbers to domes,
 # and IDs to modules
 #
-def assign_numbers(c):
+def assign_numbers(c: Any) -> None:
     ndome = 0
     for dome in c["domes"]:
         dome["num"] = ndome
@@ -70,7 +71,7 @@ def assign_numbers(c):
 # input: a string of the form "0-2, 5-6"
 # output: a list of integers, e.g. 0,1,2,5,6
 #
-def string_to_list(s):
+def string_to_list(s: str) -> list[int]:
     out = []
     parts = s.split(",")
     for part in parts:
@@ -88,21 +89,21 @@ def string_to_list(s):
 # in DAQ node objects, expand module range strings
 # to list of module numbers
 #
-def expand_ranges(daq_config):
+def expand_ranges(daq_config: Any) -> None:
     for node in daq_config["daq_nodes"]:
         node["module_ids"] = string_to_list(node["module_ids"])
 
 
 # given a module ID, find the DAQ node that's handling it
 #
-def module_id_to_daq_node(daq_config, module_id):
+def module_id_to_daq_node(daq_config: Any, module_id: int) -> Any:
     for node in daq_config["daq_nodes"]:
         if module_id in node["module_ids"]:
             return node
     raise Exception(f"no DAQ node is handling module {module_id}")
 
 
-def check_config_file(name, dir="."):
+def check_config_file(name: str, dir: str = ".") -> None:
     if not os.path.exists(f"{dir}/{name}"):
         print(f"The config file '{name}' doesn't exist.")
         print(f"Create a symbolic link from {name} to a specific config file, e.g.:")
@@ -111,7 +112,7 @@ def check_config_file(name, dir="."):
         sys.exit()
 
 
-def get_obs_config(dir="."):
+def get_obs_config(dir: str = ".") -> Any:
     check_config_file(obs_config_filename, dir)
     with open(f"{dir}/{obs_config_filename}") as f:
         s = f.read()
@@ -120,7 +121,7 @@ def get_obs_config(dir="."):
     return c
 
 
-def get_daq_config():
+def get_daq_config() -> Any:
     check_config_file(daq_config_filename)
     with open(daq_config_filename) as f:
         s = f.read()
@@ -129,7 +130,7 @@ def get_daq_config():
     return c
 
 
-def get_data_config(dir="."):
+def get_data_config(dir: str = ".") -> Any:
     path = f"{dir}/{data_config_filename}"
     check_config_file(data_config_filename, dir)
     with open(path) as f:
@@ -146,7 +147,7 @@ def get_data_config(dir="."):
     return conf
 
 
-def get_network_config(dir="."):
+def get_network_config(dir: str = ".") -> Any:
     path = f"{dir}/{network_config_filename}"
     # as the network config file is not designed to the users,
     # we check it manually, instead of using check_config_file.
@@ -161,7 +162,7 @@ def get_network_config(dir="."):
     return conf
 
 
-def get_quabo_uids():
+def get_quabo_uids() -> Any:
     if not os.path.exists(quabo_uids_filename):
         print(f"{quabo_uids_filename} is missing.  Run get_uids.py")
         sys.exit()
@@ -174,7 +175,7 @@ def get_quabo_uids():
 
 # get detector info as an array indexed by serialno
 #
-def get_detector_info():
+def get_detector_info() -> dict[str, float]:
     check_config_file(detector_info_filename)
     with open(detector_info_filename) as f:
         s = f.read()
@@ -193,7 +194,7 @@ def get_detector_info():
 
 # get quabo info as an array indexed by uid
 #
-def get_quabo_info():
+def get_quabo_info() -> dict[str, Any]:
     check_config_file(quabo_info_filename)
     with open(quabo_info_filename) as f:
         s = f.read()
@@ -204,7 +205,7 @@ def get_quabo_info():
     return d
 
 
-def get_quabo_ph_baselines():
+def get_quabo_ph_baselines() -> Any:
     check_config_file(quabo_ph_baseline_filename)
     with open(quabo_ph_baseline_filename) as f:
         s = f.read()
@@ -214,7 +215,7 @@ def get_quabo_ph_baselines():
 
 # get quabo calibration info
 #
-def get_quabo_calib(serialno, detovervol, mode):
+def get_quabo_calib(serialno: Any, detovervol: Any, mode: Any) -> Any:
     # print('reading calib file %s'%serialno)
     path = quabo_calib_filename % (detovervol, mode, serialno)
     with open(path) as f:
@@ -224,7 +225,7 @@ def get_quabo_calib(serialno, detovervol, mode):
 
 # return list of modules from obs_config
 #
-def get_modules(c):
+def get_modules(c: Any) -> list[Any]:
     modules = []
     for dome in c["domes"]:
         for module in dome["modules"]:
@@ -239,7 +240,7 @@ def get_modules(c):
 # - in the quabo_uids data structure, in each module object,
 #   add a link "daq_node" to the DAQ node that's handling it.
 #
-def associate(daq_config, quabo_uids):
+def associate(daq_config: Any, quabo_uids: Any) -> None:
     for node in daq_config["daq_nodes"]:
         node["modules"] = []
     for dome in quabo_uids["domes"]:
@@ -251,7 +252,7 @@ def associate(daq_config, quabo_uids):
 
 # show which module is going to which data recorder
 #
-def show_daq_assignments(quabo_uids):
+def show_daq_assignments(quabo_uids: Any) -> None:
     for dome in quabo_uids["domes"]:
         for module in dome["modules"]:
             ip_addr = module["ip_addr"]

@@ -35,7 +35,7 @@ default_f9t_cfg_file = "f9t_config.json5"
 f9t_cfg_path = CFG_DIR / default_f9t_cfg_file
 
 
-def load_package_json(package, fname):
+def load_package_json(package: Any, fname: Any) -> None:
     """Define the resource path relative to the package root
     Args:
         - package: refers to a path in the package (e.g., 'package.daq_data.config' )
@@ -61,7 +61,7 @@ except FileNotFoundError:
     sys.exit(1)
 
 
-def make_rich_logger(name: str, level=logging.INFO) -> logging.Logger:
+def make_rich_logger(name: str, level: Any = logging.INFO) -> logging.Logger:
     """
     Sets up a logger with a RichHandler for console output and a FileHandler
     for writing logs to a file. Also silences noisy third-party loggers.
@@ -118,7 +118,7 @@ def make_rich_logger(name: str, level=logging.INFO) -> logging.Logger:
 """ Redis utility functions """
 
 
-def get_f9t_redis_key(chip_name, chip_uid, prot_msg):
+def get_f9t_redis_key(chip_name: Any, chip_uid: Any, prot_msg: Any) -> str:
     """
     Returns the hashset key for the given prot_msg and chip
     @param chip_uid: the unique chip ID returned by the `UBX-SEC-UNIQID` message. Must be a 10-digit hex integer.
@@ -169,7 +169,7 @@ def get_f9t_redis_key(chip_name, chip_uid, prot_msg):
 #
 
 
-def test_redis_connection(host, port=6379, socket_timeout=1, logger=None) -> tuple[bool, str]:
+def test_redis_connection(host: Any, port: Any = 6379, socket_timeout: Any = 1, logger: Any = None) -> tuple[bool, str]:
     """
     Test Redis connection with specified connection parameters.
         1. Connect to Redis.
@@ -270,7 +270,7 @@ def test_redis_connection(host, port=6379, socket_timeout=1, logger=None) -> tup
 #             #     break
 
 
-def poll_f9t_config(device, cfg=default_f9t_cfg):
+def poll_f9t_config(device: Any, cfg: Any = default_f9t_cfg) -> None:
     """
     Poll the current configuration settings for each cfg_key specified in the cfg dict.
     On startup, should be 0 by default.
@@ -289,7 +289,7 @@ def poll_f9t_config(device, cfg=default_f9t_cfg):
             print("\t", parsed_data)
 
 
-def set_f9t_config(device, cfg=default_f9t_cfg):
+def set_f9t_config(device: Any, cfg: Any = default_f9t_cfg) -> None:
     """Tell chip to start sending metadata packets for each cfg_key"""
     layer = SET_LAYER_RAM
     transaction = TXN_NONE
@@ -335,7 +335,7 @@ def ubx_to_dict(msg: UBXMessage) -> dict[str, Any]:
             except UnicodeDecodeError:
                 d[attr] = value.hex()
         # Ensure other values are JSON-serializable
-        elif isinstance(value, (int, float, str, bool, list, dict, type(None))):
+        elif isinstance(value, (int, float, str, bool, list[Any], dict[Any], type(None))):
             d[attr] = value
         # Skip other types that can't be easily serialized
 

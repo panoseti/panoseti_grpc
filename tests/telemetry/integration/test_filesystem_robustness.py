@@ -1,3 +1,4 @@
+from typing import Any
 import logging
 import time
 
@@ -10,7 +11,7 @@ from panoseti_grpc.telemetry.logger import get_logger
 from .test_logging_scenarios import wait_for_service_log
 
 
-def test_filesystem_writing(tmp_path):
+def test_filesystem_writing( tmp_path: Any) -> None:
     """
     FIXED: Now searches for the filename using .lower() to handle
     auto-lowercasing behavior of the logger factory.
@@ -41,7 +42,7 @@ def test_filesystem_writing(tmp_path):
     assert "FS_TEST_MESSAGE" in content
 
 
-def test_filesystem_rotation(tmp_path):
+def test_filesystem_rotation( tmp_path: Any) -> None:
     """
     FIXED: Uses .lower() for glob matching.
     """
@@ -68,7 +69,7 @@ def test_filesystem_rotation(tmp_path):
 
 
 # --- NEW TEST 1: Log Level Filtering (Local) ---
-def test_log_level_filtering(tmp_path):
+def test_log_level_filtering( tmp_path: Any) -> None:
     """
     Verifies that low-priority logs (DEBUG) are suppressed when
     the logger is set to a higher level (INFO).
@@ -95,7 +96,7 @@ def test_log_level_filtering(tmp_path):
 
 
 # --- NEW TEST 2: Dual Destination (Local + Distributed) ---
-def test_dual_destination_logging(tmp_path, redis_client, grpc_client):
+def test_dual_destination_logging( tmp_path: Any, redis_client: Any, grpc_client: Any) -> None:
     """
     Verifies that a single logger instance correctly dispatches data
     to BOTH the local filesystem AND the remote Redis server.
@@ -130,7 +131,7 @@ def test_dual_destination_logging(tmp_path, redis_client, grpc_client):
 # --- ROBUSTNESS TESTS ---
 
 
-def test_grpc_server_down_resilience(grpc_client):
+def test_grpc_server_down_resilience( grpc_client: Any) -> None:
     """
     CRITICAL: If the Telemetry Server is offline, the client app MUST NOT crash.
     It should just drop logs or queue them (up to limit).
@@ -149,7 +150,7 @@ def test_grpc_server_down_resilience(grpc_client):
         pytest.fail(f"Logger raised exception when server was down: {e}")
 
 
-def test_queue_overflow_protection(grpc_client):
+def test_queue_overflow_protection( grpc_client: Any) -> None:
     """
     If the worker is stuck (or server down) and queue fills up,
     the handler should drop logs rather than blocking the main thread.
