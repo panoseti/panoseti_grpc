@@ -14,7 +14,6 @@
 #   daq-control-test         pytest tests/daq_control/{integration,unit}
 #   telemetry-runner         pytest tests/telemetry  (used by docker-compose)
 #   telemetry-client         dummy_worker.py  (used by docker-compose for workers)
-#   ublox-test               pytest tests/ublox_control
 #   unified-server-test      pytest tests/unified_server  (requires Redis sidecar)
 #
 # CI scripts in scripts/run-ci-tests/ build and run these stages directly.
@@ -213,18 +212,6 @@ FROM base AS telemetry-client
 COPY tests/telemetry/dummy_worker.py ./dummy_worker.py
 
 CMD ["python", "dummy_worker.py"]
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Stage: ublox-test
-# Test runner for the ublox_control service.
-# ═══════════════════════════════════════════════════════════════════════════
-FROM base AS ublox-test
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
-CMD ["python", "-m", "pytest", "-v", "tests/ublox_control"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════

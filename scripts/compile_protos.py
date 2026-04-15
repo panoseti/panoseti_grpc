@@ -16,7 +16,7 @@ print(f"{ROOT_DIR=}, {PROTOS_DIR=}, {OUT_DIR=}")
 # sys.exit()
 
 
-def compile_protos():
+def compile_protos() -> None:
     if not os.path.exists(OUT_DIR):
         os.makedirs(OUT_DIR)
         # Create __init__.py so Python treats it as a package
@@ -44,7 +44,7 @@ def compile_protos():
     fix_relative_imports()
 
 
-def fix_relative_imports():
+def fix_relative_imports() -> None:
     """
     Patches generated _pb2.py and .pyi files to use relative imports.
     Changes 'import daq_data_pb2' -> 'from . import daq_data_pb2'
