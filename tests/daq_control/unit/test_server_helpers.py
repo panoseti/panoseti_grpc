@@ -2,26 +2,29 @@
 Unit tests for DaqControlServicer private helper methods and module-level async utilities.
 Patches psutil.process_iter and get_logger so __init__ has no side effects.
 """
-import asyncio
-import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock
 
-from panoseti_grpc.daq_control.server import DaqControlServicer, _read_stream, _monitor_hashpipe
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from panoseti_grpc.daq_control.server import DaqControlServicer, _monitor_hashpipe, _read_stream
 
 
 @pytest.fixture
 def servicer():
     """Return a DaqControlServicer whose __init__ finds no hashpipe processes
     and does not attempt file/gRPC logging."""
-    with patch("panoseti_grpc.daq_control.server.psutil.process_iter", return_value=[]), \
-         patch("panoseti_grpc.daq_control.server.get_logger", return_value=MagicMock()):
+    with (
+        patch("panoseti_grpc.daq_control.server.psutil.process_iter", return_value=[]),
+        patch("panoseti_grpc.daq_control.server.get_logger", return_value=MagicMock()),
+    ):
         return DaqControlServicer()
 
 
 # ---------------------------------------------------------------------------
 # _check_disk_usage
 # ---------------------------------------------------------------------------
+
 
 class TestCheckDiskUsage:
     def test_returns_expected_keys(self, servicer, tmp_path):
@@ -43,6 +46,7 @@ class TestCheckDiskUsage:
 # ---------------------------------------------------------------------------
 # _check_run_dirs
 # ---------------------------------------------------------------------------
+
 
 class TestCheckRunDirs:
     def test_no_pffd_dirs(self, servicer, tmp_path):
@@ -79,6 +83,7 @@ class TestCheckRunDirs:
 # _cleanup_dir
 # ---------------------------------------------------------------------------
 
+
 class TestCleanupDir:
     def test_removes_existing_directory(self, servicer, tmp_path):
         target = tmp_path / "rundir"
@@ -105,6 +110,7 @@ class TestCleanupDir:
 # _create_module_config
 # ---------------------------------------------------------------------------
 
+
 class TestCreateModuleConfig:
     def test_creates_file(self, servicer, tmp_path):
         servicer._create_module_config(str(tmp_path), [10, 20, 30])
@@ -129,6 +135,7 @@ class TestCreateModuleConfig:
 # _setup_data_directories
 # ---------------------------------------------------------------------------
 
+
 class TestSetupDataDirectories:
     def test_creates_run_config_dir(self, servicer, tmp_path):
         servicer._setup_data_directories(str(tmp_path), "run.pffd", [10])
@@ -149,6 +156,7 @@ class TestSetupDataDirectories:
 # ---------------------------------------------------------------------------
 # _read_stream
 # ---------------------------------------------------------------------------
+
 
 class TestReadStream:
     @pytest.mark.asyncio
@@ -188,6 +196,7 @@ class TestReadStream:
 # ---------------------------------------------------------------------------
 # _monitor_hashpipe
 # ---------------------------------------------------------------------------
+
 
 class TestMonitorHashpipe:
     @pytest.mark.asyncio

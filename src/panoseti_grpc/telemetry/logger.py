@@ -22,26 +22,27 @@ Usage:
         grpc_enabled=True
     )
 """
+
+import asyncio
+import logging
 import os
 import sys
-import logging
-import asyncio
-from pathlib import Path
-from typing import Optional, Union, Dict, Tuple
-from logging.handlers import RotatingFileHandler
 import threading
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
 from rich.logging import RichHandler
 
 # Import your existing client components
-from panoseti_grpc.telemetry.client import TelemetryClient, AsyncGrpcHandler
-
+from panoseti_grpc.telemetry.client import AsyncGrpcHandler, TelemetryClient
 
 # --- Configuration Models ---
 
+
 class GrpcLogConfig(BaseModel):
     """Configuration for remote gRPC logging."""
+
     enabled: bool = True
     host: str = Field(default_factory=lambda: os.getenv("HEADNODE_IP", "localhost"))
     port: int = Field(default_factory=lambda: int(os.getenv("HEADNODE_GRPC_PORT", 50051)))
@@ -50,6 +51,7 @@ class GrpcLogConfig(BaseModel):
 
 class FileLogConfig(BaseModel):
     """Configuration for local filesystem logging."""
+
     enabled: bool = True
     directory: Path = Path("/var/log/panoseti")
     max_bytes: int = 10 * 1024 * 1024  # 10 MB
@@ -67,6 +69,7 @@ class FileLogConfig(BaseModel):
             test_file.unlink()
         except (PermissionError, OSError) as e:
             import tempfile
+
             fallback = Path(tempfile.gettempdir()) / "panoseti_logs"
             fallback.mkdir(parents=True, exist_ok=True)
             print(f"⚠️ Log directory '{v}' is not writable ({e}). Falling back to '{fallback}'", file=sys.stderr)
@@ -76,12 +79,12 @@ class FileLogConfig(BaseModel):
 
 class LoggerConfig(BaseModel):
     service_name: str
-    level: Union[int, str] = logging.INFO
+    level: int | str = logging.INFO
     console: bool = True
     file: FileLogConfig = Field(default_factory=lambda: FileLogConfig(enabled=False))
     grpc: GrpcLogConfig = Field(default_factory=GrpcLogConfig)
 
-    @field_validator('level')
+    @field_validator("level")
     def normalize_level(cls, v):
         """Allows user to pass 'DEBUG', 'debug', or 10."""
         if isinstance(v, str):
@@ -97,13 +100,14 @@ class LoggerConfig(BaseModel):
 
 # --- Singleton Factory ---
 
+
 class PanosetiLogFactory:
     """
     Factory for creating loggers with SHARED gRPC resources.
     """
 
     # Singleton Registry: Maps (host, port) -> TelemetryClient
-    _grpc_clients: Dict[Tuple[str, int], TelemetryClient] = {}
+    _grpc_clients: dict[tuple[str, int], TelemetryClient] = {}
     _lock: threading.Lock = threading.Lock()
 
     @classmethod
@@ -146,15 +150,13 @@ class PanosetiLogFactory:
             cfg.file.directory.mkdir(parents=True, exist_ok=True)
             log_path = cfg.file.directory / f"{cfg.service_name}.log"
 
-            if not any(isinstance(h, RotatingFileHandler) and h.baseFilename == str(log_path.resolve()) for h in
-                       logger.handlers):
-                fh = RotatingFileHandler(
-                    log_path,
-                    maxBytes=cfg.file.max_bytes,
-                    backupCount=cfg.file.backup_count
-                )
+            if not any(
+                isinstance(h, RotatingFileHandler) and h.baseFilename == str(log_path.resolve())
+                for h in logger.handlers
+            ):
+                fh = RotatingFileHandler(log_path, maxBytes=cfg.file.max_bytes, backupCount=cfg.file.backup_count)
                 fh.setLevel(cfg.level)
-                fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+                fh.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
                 logger.addHandler(fh)
 
         # 3. gRPC (SHARED RESOURCE)
@@ -173,7 +175,7 @@ class PanosetiLogFactory:
                     logger.addHandler(grpc_handler)
                 except Exception as e:
                     if cfg.grpc.fail_fast:
-                        raise ConnectionError(f"Failed to init Telemetry: {e}")
+                        raise ConnectionError(f"Failed to init Telemetry: {e}") from e
                     sys.stderr.write(f"Warning: Telemetry unavailable: {e}\n")
 
         return logger
@@ -183,13 +185,14 @@ class PanosetiLogFactory:
 
 # --- Public API ---
 
+
 def get_logger(
-        service_name: str,
-        level: Union[int, str] = logging.INFO,
-        console: bool = True,
-        log_dir: Optional[str] = None,
-        grpc_enabled: bool = True,
-        reset: bool = True
+    service_name: str,
+    level: int | str = logging.INFO,
+    console: bool = True,
+    log_dir: str | None = None,
+    grpc_enabled: bool = True,
+    reset: bool = True,
 ) -> logging.Logger:
     """
     Get or create a configured logger.
@@ -209,18 +212,13 @@ def get_logger(
 
     grpc_config = GrpcLogConfig(enabled=grpc_enabled)
 
-    config = LoggerConfig(
-        service_name=service_name,
-        level=level,
-        console=console,
-        file=file_config,
-        grpc=grpc_config
-    )
+    config = LoggerConfig(service_name=service_name, level=level, console=console, file=file_config, grpc=grpc_config)
 
     return PanosetiLogFactory.configure_logger(config, reset_handlers=reset)
 
 
 # --- Subprocess Utilities ---
+
 
 async def _stream_reader(stream: asyncio.StreamReader, logger_method):
     """Internal utility to bridge a stream to a logger method."""
@@ -229,7 +227,7 @@ async def _stream_reader(stream: asyncio.StreamReader, logger_method):
         if not line:
             break
         # Replace errors to prevent crashes on binary garbage output
-        message = line.decode('utf-8', errors='replace').strip()
+        message = line.decode("utf-8", errors="replace").strip()
         if message:
             logger_method(message)
 
@@ -246,7 +244,4 @@ async def monitor_subprocess(process: asyncio.subprocess.Process, logger: loggin
         logger.warning("Subprocess created without piped streams (stdout/stderr). Cannot capture logs.")
         return
 
-    await asyncio.gather(
-        _stream_reader(process.stdout, logger.info),
-        _stream_reader(process.stderr, logger.error)
-    )
+    await asyncio.gather(_stream_reader(process.stdout, logger.info), _stream_reader(process.stderr, logger.error))

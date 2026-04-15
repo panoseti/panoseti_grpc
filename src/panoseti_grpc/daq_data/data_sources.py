@@ -2,16 +2,18 @@
 Defines data source classes for the HpIoManager.
 Only the Unix Domain Socket (UDS) data source is supported.
 """
+
 from __future__ import annotations
+
 import abc
 import asyncio
 import logging
 import os
+import socket
 import stat
+import struct
 from io import BytesIO
 from json import loads
-import socket
-import struct
 
 from google.protobuf.json_format import ParseDict
 from google.protobuf.struct_pb2 import Struct
@@ -19,11 +21,12 @@ from google.protobuf.struct_pb2 import Struct
 from panoseti_grpc.generated.daq_data_pb2 import PanoImage
 from panoseti_grpc.panoseti_util import pff
 
-from .state import get_dp_config, DataProductState
+from .state import DataProductState, get_dp_config
 
 
 class BaseDataSource(abc.ABC):
     """Abstract base class for a data acquisition source."""
+
     def __init__(self, config: dict, logger: logging.Logger, data_queue: asyncio.Queue, stop_event: asyncio.Event):
         self.config = config
         self.logger = logger
@@ -43,20 +46,21 @@ class UdsDataSource(BaseDataSource):
     Wire format per frame (written atomically by Hashpipe via writev):
         [2 bytes: big-endian module_id] [JSON header] \\n\\n* [binary image bytes]
     """
+
     SOCKET_BUFFER_SIZE = 2048 * 100
 
     def __init__(self, config: dict, logger: logging.Logger, data_queue: asyncio.Queue, stop_event: asyncio.Event):
         super().__init__(config, logger, data_queue, stop_event)
-        self.dp_name = self.config['dp_name']
+        self.dp_name = self.config["dp_name"]
 
-        socket_path_template = self.config.get('socket_path_template')
+        socket_path_template = self.config.get("socket_path_template")
         if not socket_path_template:
             raise ValueError("UdsDataSource requires a 'socket_path_template'")
 
         self.socket_path = socket_path_template.format(dp_name=self.dp_name)
         self.dp_config: DataProductState = get_dp_config([self.dp_name])[self.dp_name]
         self.server: asyncio.AbstractServer | None = None
-        self.read_timeout = config.get('read_timeout', 60.0)
+        self.read_timeout = config.get("read_timeout", 60.0)
         self.client_handler_tasks: set[asyncio.Task] = set()
 
     async def _client_connection_wrapper(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -66,7 +70,7 @@ class UdsDataSource(BaseDataSource):
 
         def on_task_done(t):
             self.client_handler_tasks.discard(t)
-            client_info = writer.get_extra_info('peername')
+            client_info = writer.get_extra_info("peername")
             self.logger.info(f"Client handler task for {client_info} on {self.socket_path} has finished.")
 
         task.add_done_callback(on_task_done)
@@ -83,9 +87,7 @@ class UdsDataSource(BaseDataSource):
                     self.logger.warning(f"Removing stale socket file: {self.socket_path}")
                     os.unlink(self.socket_path)
                 else:
-                    self.logger.error(
-                        f"A non-socket file exists at {self.socket_path}. Manual intervention required."
-                    )
+                    self.logger.error(f"A non-socket file exists at {self.socket_path}. Manual intervention required.")
                     return
         except OSError as e:
             self.logger.error(f"Error removing stale socket file {self.socket_path}: {e}. Cannot start.")
@@ -100,7 +102,7 @@ class UdsDataSource(BaseDataSource):
             self.logger.info(f"Set UDS receive buffer to {self.SOCKET_BUFFER_SIZE} for {self.socket_path}")
 
             # SO_LINGER(1,0): force RST on close so Hashpipe detects the disconnect immediately.
-            linger_struct = struct.pack('ii', 1, 0)
+            linger_struct = struct.pack("ii", 1, 0)
             server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, linger_struct)
 
             server_sock.bind(self.socket_path)
@@ -125,7 +127,8 @@ class UdsDataSource(BaseDataSource):
 
             if self.client_handler_tasks:
                 self.logger.warning(
-                    f"Cancelling {len(self.client_handler_tasks)} outstanding client handler tasks for {self.socket_path}."
+                    f"Cancelling {len(self.client_handler_tasks)} outstanding client "
+                    f"handler tasks for {self.socket_path}."
                 )
                 tasks_to_cancel = list(self.client_handler_tasks)
                 for task in tasks_to_cancel:
@@ -155,13 +158,14 @@ class UdsDataSource(BaseDataSource):
 
         Batches all three reads inside a single wait_for to reduce Task creation overhead.
         """
+
         async def _reads():
             nonlocal header_size
             module_id_bytes = await reader.readexactly(2)
-            module_id = int.from_bytes(module_id_bytes, 'big')
+            module_id = int.from_bytes(module_id_bytes, "big")
 
             if header_size is None:
-                header_with_sep = await reader.readuntil(b'\n\n')
+                header_with_sep = await reader.readuntil(b"\n\n")
                 header_size = len(header_with_sep)
                 self.logger.info(f"Discovered header size of {header_size} bytes for {self.socket_path}")
             else:
@@ -175,7 +179,7 @@ class UdsDataSource(BaseDataSource):
 
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         """Handles a Hashpipe client connection, parsing [module_id][PFF frame] messages."""
-        client_info = writer.get_extra_info('peername')
+        client_info = writer.get_extra_info("peername")
         self.logger.info(f"New client connection on {self.socket_path} from {client_info}")
         frame_count = 0
         header_size: int | None = None  # Discovered from first frame; fixed thereafter
@@ -204,7 +208,7 @@ class UdsDataSource(BaseDataSource):
                 await self.data_queue.put(pano_image)
                 frame_count += 1
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Hashpipe closes its connection after 15 s of idle (UDS_CONNECTION_TIMEOUT_US).
             # This is expected during observation gaps; log and exit so the server re-accepts.
             self.logger.info(

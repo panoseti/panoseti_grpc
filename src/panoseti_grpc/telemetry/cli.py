@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 import argparse
-import time
-import random
-import numpy as np
-import math
 import logging
+import math
+import random
+import time
+
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
 from rich.logging import RichHandler
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
 from rich.table import Table
 
 from panoseti_grpc.telemetry.client import TelemetryClient
@@ -21,10 +21,7 @@ logger = logging.getLogger("telemetry.cli")
 def setup_logging(level_name):
     level = getattr(logging, level_name.upper())
     logging.basicConfig(
-        level=level,
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=[RichHandler(console=console, rich_tracebacks=True)]
+        level=level, format="%(message)s", datefmt="[%X]", handlers=[RichHandler(console=console, rich_tracebacks=True)]
     )
 
 
@@ -65,7 +62,7 @@ def generate_payload(payload_type, iteration):
             "iteration": iteration,
             "value": sine,  # Graph this!
             "message": "MSG_OK",
-            "active": True
+            "active": True,
         }
 
     elif payload_type == "gnss":
@@ -77,8 +74,8 @@ def generate_payload(payload_type, iteration):
                 "lat": 37.338 + (0.001 * sine / 100),
                 "lon": -121.88 + (0.001 * square / 100),
                 "fix_mode": "3D",
-                "extra_data": {"hdop": 1.0 + (saw / 100)}
-            }
+                "extra_data": {"hdop": 1.0 + (saw / 100)},
+            },
         }
 
     elif payload_type == "dew":
@@ -87,8 +84,8 @@ def generate_payload(payload_type, iteration):
             "device_id": device_id_prod,
             "data": {
                 "temp_c": 20 + (sine / 10),  # 20C +/- 4C
-                "humidity": 50 + (square / 4)  # 50% or 75%
-            }
+                "humidity": 50 + (square / 4),  # 50% or 75%
+            },
         }
 
     # --- EXPERIMENTAL TYPES (Flexible) ---
@@ -101,8 +98,8 @@ def generate_payload(payload_type, iteration):
             "data": {
                 "cpu_load": saw,  # 0-100 Ramp
                 "fan_rpm": 2000 + (sine * 20),  # Varying RPM
-                "status": "nominal"
-            }
+                "status": "nominal",
+            },
         }
 
     return None, {}
@@ -140,7 +137,6 @@ def generate_logs(logger_instance, count, delay):
 
     console.print(f"[bold green]Starting Log Simulation ({count} events)...[/]")
 
-
     for i in range(count):
         # Pick a random component and severity
         comp = random.choice(components)
@@ -168,7 +164,7 @@ def generate_logs(logger_instance, count, delay):
             try:
                 # Raise a fake exception to generate a real stack trace
                 if random.random() > 0.999:
-                    x = 1 / 0
+                    pass
                 else:
                     raise SimulatedException(f"Hardware timeout on {comp}")
             except Exception:
@@ -187,8 +183,8 @@ def run_sender(args):
     console.print(f"[bold green]Connected to Telemetry Server at {args.host}:{args.port}[/]")
 
     types_to_send = []
-    if args.type == 'mixed':
-        types_to_send = ['test', 'gnss', 'dew', 'flex']
+    if args.type == "mixed":
+        types_to_send = ["test", "gnss", "dew", "flex"]
     else:
         types_to_send = [args.type]
 
@@ -196,20 +192,19 @@ def run_sender(args):
     success_count = 0
     fail_count = 0
     total_latency_ms = 0
-    min_latency = float('inf')
+    min_latency = float("inf")
     max_latency = 0
 
     try:
         with Progress(
-                SpinnerColumn(),
-                TextColumn("[bold blue]{task.description}"),
-                BarColumn(),
-                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                TimeRemainingColumn(),
-                TextColumn("[dim cyan]({task.fields[latency]} ms/req)"),
-                console=console
+            SpinnerColumn(),
+            TextColumn("[bold blue]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeRemainingColumn(),
+            TextColumn("[dim cyan]({task.fields[latency]} ms/req)"),
+            console=console,
         ) as progress:
-
             task = progress.add_task(f"Sending {args.count} messages...", total=args.count, latency="0.0")
 
             for i in range(args.count):
@@ -247,7 +242,7 @@ def run_sender(args):
                     task,
                     advance=1,
                     description=f"{status_symbol} Sending [bold cyan]{current_type}[/]",
-                    latency=f"{latency_ms:.1f}"
+                    latency=f"{latency_ms:.1f}",
                 )
 
                 if args.delay > 0:
@@ -286,15 +281,19 @@ def main():
     parser = argparse.ArgumentParser(description="PANOSETI Telemetry CLI Data Generator")
     parser.add_argument("--host", default="localhost", help="gRPC Server Host")
     parser.add_argument("--port", type=int, default=50051, help="gRPC Server Port")
-    parser.add_argument("--type", choices=['test', 'gnss', 'dew', 'flex', 'mixed', 'log'],
-                        default='mixed', help="Type of payload to send.")
+    parser.add_argument(
+        "--type",
+        choices=["test", "gnss", "dew", "flex", "mixed", "log"],
+        default="mixed",
+        help="Type of payload to send.",
+    )
     parser.add_argument("--count", type=int, default=1000, help="Number of messages to send")
     parser.add_argument("--delay", type=float, default=0.5, help="Delay between messages (seconds)")
     parser.add_argument("--log-level", default="debug", choices=["debug", "info", "warning", "error"])
 
     args = parser.parse_args()
 
-    if args.type == 'log':
+    if args.type == "log":
         # Create a specific logger hooked to gRPC
         # We assume the CLI is running on a 'client' machine talking to 'host'
         level = getattr(logging, args.log_level.upper())

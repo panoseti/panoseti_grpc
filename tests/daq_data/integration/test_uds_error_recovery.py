@@ -2,6 +2,7 @@
 Tests for UDS error-recovery paths: producer restart, slow-consumer
 backpressure, and DEADLINE_EXCEEDED when the data source goes idle.
 """
+
 import asyncio
 import copy
 import os
@@ -21,8 +22,10 @@ pytestmark = pytest.mark.asyncio
 # Helpers (mirrors test_uds_socket_lifecycle.py helpers)
 # ---------------------------------------------------------------------------
 
-def _make_server_config(server_config_base, socket_dir: Path, module_id: int = 224,
-                        max_reader_dequeue_timeouts: int = 3):
+
+def _make_server_config(
+    server_config_base, socket_dir: Path, module_id: int = 224, max_reader_dequeue_timeouts: int = 3
+):
     cfg = copy.deepcopy(server_config_base)
     cfg["unix_domain_socket"] = f"unix://{socket_dir / 'grpc.sock'}"
     cfg["simulate_daq_cfg"]["simulation_mode"] = "uds"
@@ -58,7 +61,7 @@ async def _stop_server(shutdown: asyncio.Event, task: asyncio.Task, uds_path: Pa
     shutdown.set()
     try:
         await asyncio.wait_for(task, timeout=5.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
     if uds_path.exists():
@@ -71,6 +74,7 @@ async def _stop_server(shutdown: asyncio.Event, task: asyncio.Task, uds_path: Pa
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 async def test_server_recovers_after_uds_producer_restart(server_config_base):
     """
@@ -92,8 +96,7 @@ async def test_server_recovers_after_uds_producer_restart(server_config_base):
                 # Initial session
                 assert await client.init_sim(hosts=None) is True
                 stream = await client.stream_images(
-                    hosts=None, stream_movie_data=True, stream_pulse_height_data=True,
-                    update_interval_seconds=0.05
+                    hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.05
                 )
                 received_before = 0
                 for _ in range(4):
@@ -107,8 +110,7 @@ async def test_server_recovers_after_uds_producer_restart(server_config_base):
 
                 # Open a fresh stream — must work without reconnecting the channel
                 stream2 = await client.stream_images(
-                    hosts=None, stream_movie_data=True, stream_pulse_height_data=True,
-                    update_interval_seconds=0.05
+                    hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.05
                 )
                 received_after = 0
                 for _ in range(4):
@@ -139,8 +141,10 @@ async def test_slow_consumer_backpressure(server_config_base):
             async with AioDaqDataClient(daq_config, network_config=None) as client:
                 assert await client.init_sim(hosts=None) is True
                 stream = await client.stream_images(
-                    hosts=None, stream_movie_data=True, stream_pulse_height_data=True,
-                    update_interval_seconds=2.0  # very slow consumer
+                    hosts=None,
+                    stream_movie_data=True,
+                    stream_pulse_height_data=True,
+                    update_interval_seconds=2.0,  # very slow consumer
                 )
 
                 # Allow a couple of slow frames; server must stay alive
@@ -181,6 +185,7 @@ async def test_stream_deadline_exceeded_on_idle_source(server_config_base):
                 # Use simulate_daq=True but point to a data dir that has no pff files
                 # so the cache remains empty — equivalent to "idle source"
                 import uuid as _uuid
+
                 empty_dir = socket_dir / f"empty_{_uuid.uuid4().hex}"
                 empty_dir.mkdir()
 
@@ -192,8 +197,7 @@ async def test_stream_deadline_exceeded_on_idle_source(server_config_base):
                 # We at least verify the stream terminates cleanly (either with data or timeout).
                 try:
                     stream = await client.stream_images(
-                        hosts=None, stream_movie_data=True, stream_pulse_height_data=True,
-                        update_interval_seconds=0.2
+                        hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.2
                     )
                     # Receive at least one frame or observe a clean termination
                     count = 0
@@ -202,7 +206,7 @@ async def test_stream_deadline_exceeded_on_idle_source(server_config_base):
                             img = await asyncio.wait_for(stream.__anext__(), timeout=3.0)
                             if img is not None:
                                 count += 1
-                        except (StopAsyncIteration, asyncio.TimeoutError):
+                        except (TimeoutError, StopAsyncIteration):
                             break
                         except grpc.aio.AioRpcError as e:
                             if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:

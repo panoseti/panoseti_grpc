@@ -1,9 +1,11 @@
-import pytest
-import time
 import json
 import logging
+import time
 from unittest.mock import MagicMock
-from panoseti_grpc.telemetry.client import TelemetryClient, AsyncGrpcHandler
+
+import pytest
+
+from panoseti_grpc.telemetry.client import AsyncGrpcHandler, TelemetryClient
 from panoseti_grpc.telemetry.logger import get_logger
 
 LOG_KEY = "logs:ingress"
@@ -86,8 +88,7 @@ def test_handler_survives_queue_overflow():
     # 3. Create dummy records
     # Note: We must populate process/threadName because client.py now expects them
     record = logging.LogRecord(
-        name="test", level=logging.INFO, pathname=__file__, lineno=10,
-        msg="Spam", args=(), exc_info=None
+        name="test", level=logging.INFO, pathname=__file__, lineno=10, msg="Spam", args=(), exc_info=None
     )
     record.process = 1234
     record.threadName = "MainThread"
@@ -141,12 +142,12 @@ def test_metadata_context_propagation(redis_client, start_grpc_server):
     payload = data.get("payload_json", "")
 
     # We expect the function name to be present somewhere
-    assert "internal_function" in str(data) or "internal_function" in payload, \
+    assert "internal_function" in str(data) or "internal_function" in payload, (
         f"Function name metadata lost. Data: {data}"
+    )
 
     # We expect the filename to be present
-    assert "test_logging_scenarios.py" in str(data) or "test_logging_scenarios.py" in payload, \
-        "Filename metadata lost."
+    assert "test_logging_scenarios.py" in str(data) or "test_logging_scenarios.py" in payload, "Filename metadata lost."
 
 
 # --- NEW TEST 4: Severity Level Mapping ---
@@ -177,5 +178,4 @@ def test_severity_level_propagation(redis_client, start_grpc_server):
 
     # Accept either Int(4) or String("ERROR")
     valid_severities = [4, "ERROR", "LogSeverity.ERROR"]
-    assert severity in valid_severities, \
-        f"Expected severity ERROR (4), got {severity}"
+    assert severity in valid_severities, f"Expected severity ERROR (4), got {severity}"

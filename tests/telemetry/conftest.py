@@ -1,20 +1,22 @@
+import asyncio
+import multiprocessing
+import os
+import socket
+import time
+import uuid
+
 import pytest
 import redis
-import time
-import os
-import multiprocessing
-import socket
-import asyncio
-import uuid
-from panoseti_grpc.telemetry.client import TelemetryClient
-from panoseti_grpc.telemetry.server import serve
-from panoseti_grpc.telemetry.logger import PanosetiLogFactory
 
+from panoseti_grpc.telemetry.client import TelemetryClient
+from panoseti_grpc.telemetry.logger import PanosetiLogFactory
+from panoseti_grpc.telemetry.server import serve
 
 # ---------------------------------------------------------------------------
 # Shared polling utilities — preferred over hardcoded time.sleep() calls
 # because the RedisBatcher has a variable flush latency.
 # ---------------------------------------------------------------------------
+
 
 def poll_redis_key(redis_client, key, timeout=10.0, interval=0.1) -> bool:
     """Sync poll: return True once the Redis key exists, False on timeout."""
@@ -40,6 +42,7 @@ def poll_redis_field(redis_client, key, field, expected=None, timeout=10.0, inte
         time.sleep(interval)
     return False
 
+
 # Get Hosts from Env
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 SERVER_PORT = 50051
@@ -47,6 +50,7 @@ MAX_GRPC_SERVER_STARTUP_DELAY = 30
 
 # to avoid distributed workers from polluting the test database
 TEST_DB_INDEX = 1
+
 
 @pytest.fixture(autouse=True)
 def reset_log_factory():
@@ -58,6 +62,7 @@ def reset_log_factory():
     PanosetiLogFactory.reset_clients()
     yield
     PanosetiLogFactory.reset_clients()
+
 
 @pytest.fixture(scope="session")
 def redis_connection():
@@ -81,11 +86,13 @@ def redis_client(redis_connection):
     yield redis_connection
     # redis_connection.flushdb()
 
+
 @pytest.fixture(scope="session", autouse=True)
 def clean_redis(redis_connection):
     """Ensure a clean slate for the integration tests."""
     redis_connection.flushdb()
     yield
+
 
 def _run_server_process(redis_host, port):
     # We need to tell the server to use the TEST DB
@@ -99,11 +106,7 @@ def _run_server_process(redis_host, port):
 
 @pytest.fixture(scope="session")
 def start_grpc_server():
-    proc = multiprocessing.Process(
-        target=_run_server_process,
-        args=(REDIS_HOST, SERVER_PORT),
-        daemon=True
-    )
+    proc = multiprocessing.Process(target=_run_server_process, args=(REDIS_HOST, SERVER_PORT), daemon=True)
     proc.start()
 
     # Wait for startup

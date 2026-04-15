@@ -3,14 +3,13 @@ Tests for UDS socket lifecycle: stale-file cleanup, buffer limits,
 abrupt-disconnect recovery, socket permissions, frame-ID monotonicity
 after re-init, and dynamic module discovery.
 """
+
 import asyncio
+import copy
 import os
 import socket
 import stat
-import struct
 import tempfile
-import uuid
-import copy
 from pathlib import Path
 
 import pytest
@@ -24,6 +23,7 @@ pytestmark = pytest.mark.asyncio
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_server_config(server_config_base, socket_dir: Path, module_id: int = 224):
     """Return a config where every path lives under *socket_dir*."""
@@ -61,7 +61,7 @@ async def _stop_server(shutdown: asyncio.Event, task: asyncio.Task, uds_path: Pa
     shutdown.set()
     try:
         await asyncio.wait_for(task, timeout=5.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
     if uds_path.exists():
@@ -74,6 +74,7 @@ async def _stop_server(shutdown: asyncio.Event, task: asyncio.Task, uds_path: Pa
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 async def test_stale_socket_file_cleaned_up_on_server_start(server_config_base):
     """
@@ -167,7 +168,7 @@ async def test_uds_client_abrupt_disconnect_mid_frame(server_config_base):
                         img = await asyncio.wait_for(stream.__anext__(), timeout=5.0)
                         assert img is not None
                         received += 1
-                    except (StopAsyncIteration, asyncio.TimeoutError):
+                    except (TimeoutError, StopAsyncIteration):
                         break
 
                 assert received >= 3, "Server should continue serving after abrupt raw-socket disconnect"
@@ -241,8 +242,6 @@ async def test_module_discovery_from_uds_stream(server_config_base):
                     img = await asyncio.wait_for(stream.__anext__(), timeout=5.0)
                     seen_modules.add(img["module_id"])
 
-                assert sim_module in seen_modules, (
-                    f"Expected module {sim_module} to be discovered; got {seen_modules}"
-                )
+                assert sim_module in seen_modules, f"Expected module {sim_module} to be discovered; got {seen_modules}"
         finally:
             await _stop_server(shutdown, task, grpc_sock_path)

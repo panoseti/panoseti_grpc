@@ -2,11 +2,13 @@
 Common resources for the Telemetry service.
 Handles configuration loading, logging setup, and path management.
 """
+
 import logging
 import os
-from pathlib import Path
-from rich.logging import RichHandler
 from importlib import resources
+from pathlib import Path
+
+from rich.logging import RichHandler
 
 # Define the package anchor for resource loading
 TELEMETRY_ANCHOR_PACKAGE = "panoseti_grpc.telemetry"
@@ -18,10 +20,7 @@ def make_rich_logger(name: str = "telemetry", level: int = logging.INFO) -> logg
     Creates a configured logger using RichHandler for beautiful, structured output.
     """
     logging.basicConfig(
-        level=level,
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=[RichHandler(rich_tracebacks=True, markup=False)]
+        level=level, format="%(message)s", datefmt="[%X]", handlers=[RichHandler(rich_tracebacks=True, markup=False)]
     )
     logger = logging.getLogger(name)
     logger.setLevel(level)
@@ -61,13 +60,12 @@ def get_sw_info():
     try:
         repo = git.Repo(search_parent_directories=True)
         commit = repo.head.commit.hexsha
-        author = repo.head.commit.author.name
         branch = repo.active_branch.name
-        commit_date = repo.head.commit.committed_datetime.strftime("%Y-%m-%d %H:%M:%S")
+        repo.head.commit.committed_datetime.strftime("%Y-%m-%d %H:%M:%S")
         sw_info = {
-            'commit': commit,
-            'branch': branch,
-         }
+            "commit": commit,
+            "branch": branch,
+        }
         return sw_info
     except Exception:
         # Return None or specific error string, handled below

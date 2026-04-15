@@ -31,17 +31,18 @@ To add a new service:
 
 No changes to :class:`PanosetiServer` are required.
 """
+
 from __future__ import annotations
 
 import asyncio
 import importlib.resources as _importlib_resources
 import logging
-import os
 import signal
 import tomllib
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import grpc
 from grpc_reflection.v1alpha import reflection
@@ -50,7 +51,6 @@ from pydantic import BaseModel, Field
 # Per-service config models
 from panoseti_grpc.daq_control.config import DaqControlServerConfig
 from panoseti_grpc.daq_data.config import DaqDataServerConfig
-from panoseti_grpc.telemetry.config import TelemetryServerConfig
 
 # Protobuf-generated descriptors and registration functions
 from panoseti_grpc.generated import (
@@ -61,12 +61,14 @@ from panoseti_grpc.generated import (
     telemetry_pb2,
     telemetry_pb2_grpc,
 )
+from panoseti_grpc.telemetry.config import TelemetryServerConfig
 
 _logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # ServiceDescriptor & ServiceRegistry
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ServiceDescriptor:
@@ -113,8 +115,10 @@ class ServiceRegistry:
 # Pydantic configuration models
 # ---------------------------------------------------------------------------
 
+
 class ServiceToggles(BaseModel):
     """Controls which services are started by the unified server."""
+
     telemetry: bool = True
     daq_data: bool = True
     daq_control: bool = True
@@ -141,7 +145,7 @@ class PanosetiServerConfig(BaseModel):
     model_config = {"extra": "ignore"}
 
     @classmethod
-    def _parse_toml_dict(cls, raw: dict) -> "PanosetiServerConfig":
+    def _parse_toml_dict(cls, raw: dict) -> PanosetiServerConfig:
         """Validate a raw TOML dict.
 
         The TOML uses a ``[server]`` section for server-level settings and
@@ -154,14 +158,14 @@ class PanosetiServerConfig(BaseModel):
         return cls.model_validate(merged)
 
     @classmethod
-    def from_toml(cls, path: str | Path) -> "PanosetiServerConfig":
+    def from_toml(cls, path: str | Path) -> PanosetiServerConfig:
         """Load and validate from a TOML file."""
         with open(path, "rb") as f:
             raw = tomllib.load(f)
         return cls._parse_toml_dict(raw)
 
     @classmethod
-    def load_default(cls) -> "PanosetiServerConfig":
+    def load_default(cls) -> PanosetiServerConfig:
         """Load the bundled default ``server.toml`` from the package."""
         resource_path = _importlib_resources.files("panoseti_grpc.config").joinpath("server.toml")
         with resource_path.open("rb") as f:
@@ -169,7 +173,7 @@ class PanosetiServerConfig(BaseModel):
         return cls._parse_toml_dict(raw)
 
     @classmethod
-    def load_profile(cls, profile: str) -> "PanosetiServerConfig":
+    def load_profile(cls, profile: str) -> PanosetiServerConfig:
         """Load a named bundled deployment profile.
 
         Valid profiles: ``"default"``, ``"daq_node"``, ``"headnode"``.
@@ -191,14 +195,16 @@ class PanosetiServerConfig(BaseModel):
 # Servicer factories
 # ---------------------------------------------------------------------------
 
+
 async def _make_telemetry_servicer(
     cfg: TelemetryServerConfig,
     shutdown_event: asyncio.Event,
 ) -> tuple[Any, list]:
     """Connect to Redis and create a TelemetryServicer."""
     import redis.asyncio as redis_asyncio
-    from panoseti_grpc.telemetry.server import TelemetryServicer
+
     from panoseti_grpc.telemetry.resources import get_config_path
+    from panoseti_grpc.telemetry.server import TelemetryServicer
 
     # Resolve config path: explicit cfg override → env var → package default
     if cfg.telemetry_config_path:
@@ -213,12 +219,13 @@ async def _make_telemetry_servicer(
     for attempt in range(max_retries):
         try:
             _logger.info(
-                f"Connecting to Redis at {cfg.redis_host}:{cfg.redis_port} "
-                f"(attempt {attempt + 1}/{max_retries})..."
+                f"Connecting to Redis at {cfg.redis_host}:{cfg.redis_port} (attempt {attempt + 1}/{max_retries})..."
             )
             r = redis_asyncio.Redis(
-                host=cfg.redis_host, port=cfg.redis_port,
-                db=cfg.redis_db, decode_responses=True,
+                host=cfg.redis_host,
+                port=cfg.redis_port,
+                db=cfg.redis_db,
+                decode_responses=True,
             )
             await r.ping()
             _logger.info("Redis connection established.")
@@ -229,8 +236,7 @@ async def _make_telemetry_servicer(
                 await asyncio.sleep(2)
             else:
                 raise RuntimeError(
-                    f"Could not connect to Redis at {cfg.redis_host}:{cfg.redis_port} "
-                    f"after {max_retries} attempts."
+                    f"Could not connect to Redis at {cfg.redis_host}:{cfg.redis_port} after {max_retries} attempts."
                 ) from e
 
     servicer = TelemetryServicer(config_path, r)
@@ -242,6 +248,7 @@ async def _make_daq_data_servicer(
     shutdown_event: asyncio.Event,
 ) -> tuple[Any, list]:
     from panoseti_grpc.daq_data.server import DaqDataServicer
+
     servicer = DaqDataServicer(cfg)
     # start_initial_task must run after server.start()
     return servicer, [servicer.start_initial_task()]
@@ -252,6 +259,7 @@ async def _make_daq_control_servicer(
     shutdown_event: asyncio.Event,
 ) -> tuple[Any, list]:
     from panoseti_grpc.daq_control.server import DaqControlServicer
+
     level = getattr(logging, cfg.log_level, logging.INFO)
     servicer = DaqControlServicer(level=level)
     return servicer, []
@@ -297,6 +305,7 @@ for _desc in [
 # PanosetiServer
 # ---------------------------------------------------------------------------
 
+
 class PanosetiServer:
     """Unified gRPC server that hosts multiple PANOSETI services on one port.
 
@@ -326,9 +335,7 @@ class PanosetiServer:
             service_cfg = getattr(self.cfg, descriptor.config_field)
 
             _logger.info(f"Initialising service: {name}")
-            servicer, extra_coros = await descriptor.servicer_factory(
-                service_cfg, self._shutdown_event
-            )
+            servicer, extra_coros = await descriptor.servicer_factory(service_cfg, self._shutdown_event)
             descriptor.add_to_server_fn(servicer, self._server)
             self._servicers[name] = servicer
             all_service_names.extend(descriptor.service_names_for_reflection)
@@ -337,15 +344,10 @@ class PanosetiServer:
         if not self._servicers:
             raise RuntimeError("No services are enabled. Check [server.services] in server.toml.")
 
-        reflection.enable_server_reflection(
-            all_service_names + [reflection.SERVICE_NAME], self._server
-        )
+        reflection.enable_server_reflection(all_service_names + [reflection.SERVICE_NAME], self._server)
         self._server.add_insecure_port(f"[::]:{self.cfg.port}")
         await self._server.start()
-        _logger.info(
-            f"PanosetiServer started on port {self.cfg.port} "
-            f"with services: {list(self._servicers)}"
-        )
+        _logger.info(f"PanosetiServer started on port {self.cfg.port} with services: {list(self._servicers)}")
 
         # Post-start tasks (e.g. DaqDataServicer.start_initial_task)
         for coro in post_start_coros:
@@ -368,9 +370,7 @@ class PanosetiServer:
                     _logger.error(f"Error shutting down {name}: {e}", exc_info=True)
 
         if self._server:
-            _logger.info(
-                f"Stopping gRPC server (grace={self.cfg.shutdown_grace_period}s)..."
-            )
+            _logger.info(f"Stopping gRPC server (grace={self.cfg.shutdown_grace_period}s)...")
             await self._server.stop(self.cfg.shutdown_grace_period)
 
         _logger.info("PanosetiServer stopped.")

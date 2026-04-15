@@ -3,22 +3,20 @@ Unit tests for PanosetiServerConfig — TOML loading, profile switching, and Pyd
 
 No running server or external services required.
 """
-import os
-import tomllib
+
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
+from panoseti_grpc.daq_control.config import DaqControlServerConfig
 from panoseti_grpc.server import PanosetiServerConfig, ServiceToggles
 from panoseti_grpc.telemetry.config import TelemetryServerConfig
-from panoseti_grpc.daq_control.config import DaqControlServerConfig
-from panoseti_grpc.daq_data.config import DaqDataServerConfig
-
 
 # ---------------------------------------------------------------------------
 # Bundled profile loading
 # ---------------------------------------------------------------------------
+
 
 def test_load_default_profile():
     """Default profile enables all three services on port 50051."""
@@ -62,6 +60,7 @@ def test_invalid_profile_name():
 # ---------------------------------------------------------------------------
 # from_toml with custom files
 # ---------------------------------------------------------------------------
+
 
 def test_from_toml_minimal(tmp_path: Path):
     """Minimal TOML with [server] section loads with correct port."""
@@ -150,6 +149,7 @@ redis_db   = 3
 # _parse_toml_dict — [server] section merging
 # ---------------------------------------------------------------------------
 
+
 def test_parse_toml_dict_merges_server_section():
     """_parse_toml_dict lifts [server] keys to top level before validation."""
     raw = {
@@ -178,6 +178,7 @@ def test_parse_toml_dict_no_server_key():
 # ---------------------------------------------------------------------------
 # Pydantic field validation
 # ---------------------------------------------------------------------------
+
 
 def test_port_too_low_raises():
     """Port below 1024 must be rejected."""
@@ -227,6 +228,7 @@ def test_daq_control_config_valid_defaults():
 # ---------------------------------------------------------------------------
 # TelemetryServerConfig — env var defaults
 # ---------------------------------------------------------------------------
+
 
 def test_telemetry_redis_host_from_env(monkeypatch):
     """TelemetryServerConfig picks up REDIS_HOST env var for redis_host default."""

@@ -1,9 +1,12 @@
 """Shared package-resource loader for all panoseti_grpc services."""
+
 from __future__ import annotations
+
 import importlib.resources as _resources
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 
 def load_package_resource(package: str, fname: str | Path, parser: Callable | None = None) -> Any:

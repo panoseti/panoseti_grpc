@@ -3,6 +3,7 @@ Unit tests for ServiceRegistry, ServiceDescriptor, and ServiceToggles.
 
 Verifies the extensibility contract of the unified server's service registry.
 """
+
 import pytest
 
 from panoseti_grpc.server import (
@@ -12,10 +13,10 @@ from panoseti_grpc.server import (
     ServiceToggles,
 )
 
-
 # ---------------------------------------------------------------------------
 # Registry contents
 # ---------------------------------------------------------------------------
+
 
 def test_all_three_services_registered():
     """All three built-in services are registered at module import time."""
@@ -43,6 +44,7 @@ def test_init_order_has_no_duplicates():
 # ---------------------------------------------------------------------------
 # ServiceDescriptor fields
 # ---------------------------------------------------------------------------
+
 
 def test_registry_get_daq_data():
     """daq_data descriptor has correct name and config_field."""
@@ -105,6 +107,7 @@ def test_registry_get_unknown_service():
 # Custom registration (extension point)
 # ---------------------------------------------------------------------------
 
+
 def test_registry_register_custom_and_retrieve():
     """A new ServiceDescriptor can be registered and retrieved by name."""
     dummy_descriptor = ServiceDescriptor(
@@ -145,6 +148,7 @@ def test_registry_register_overwrites_existing():
 # ---------------------------------------------------------------------------
 # ServiceToggles
 # ---------------------------------------------------------------------------
+
 
 def test_service_toggles_all_true_by_default():
     """Default ServiceToggles enables all three services."""

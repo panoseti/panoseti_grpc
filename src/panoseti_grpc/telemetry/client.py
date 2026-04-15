@@ -1,18 +1,16 @@
-import sys
-import os
 import json
 import logging
+import os
 import queue
-import threading
 import socket
-import time
-from queue import Queue, Full
-from rich.logging import RichHandler
+import threading
+from queue import Full, Queue
 
 import grpc
-from google.protobuf.timestamp_pb2 import Timestamp
-from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import ParseDict
+from google.protobuf.struct_pb2 import Struct
+from google.protobuf.timestamp_pb2 import Timestamp
+from rich.logging import RichHandler
 
 from panoseti_grpc.generated import telemetry_pb2, telemetry_pb2_grpc
 from panoseti_grpc.telemetry.resources import get_sw_info
@@ -28,12 +26,11 @@ PID = os.getpid()
 _RAW_SW_INFO = get_sw_info()
 # Normalize the data for Protobuf (Strings only, no dicts/Nones)
 if isinstance(_RAW_SW_INFO, dict):
-    CACHED_COMMIT = _RAW_SW_INFO.get('commit', 'unknown')
-    CACHED_BRANCH = _RAW_SW_INFO.get('branch', 'unknown')
+    CACHED_COMMIT = _RAW_SW_INFO.get("commit", "unknown")
+    CACHED_BRANCH = _RAW_SW_INFO.get("branch", "unknown")
 else:
     CACHED_COMMIT = "unknown"
     CACHED_BRANCH = "unknown"
-
 
 
 class TelemetryClient:
@@ -77,8 +74,7 @@ class TelemetryClient:
             ("grpc.keepalive_timeout_ms", 10000),
         ]
 
-
-        self.target = f'{self.host}:{self.grpc_port}'
+        self.target = f"{self.host}:{self.grpc_port}"
         self.channel = grpc.insecure_channel(self.target, options=options)
         self.channel.subscribe(self._on_channel_state_change)
         self.stub = telemetry_pb2_grpc.TelemetryStub(self.channel)
@@ -101,7 +97,7 @@ class TelemetryClient:
             if not resp.success:
                 raise ValueError(f"Server rejected data: {resp.message}")
         except grpc.RpcError as e:
-            raise ConnectionError(f"gRPC failed: {e.details()}")
+            raise ConnectionError(f"gRPC failed: {e.details()}") from e
 
     def log_flexible(self, device_type: str, device_id: str, data: dict):
         """
@@ -115,10 +111,7 @@ class TelemetryClient:
         s.update(data)
 
         req = telemetry_pb2.StatusRequest(
-            device_type=device_type,
-            device_id=device_id,
-            timestamp=self._get_timestamp(),
-            flexible=s
+            device_type=device_type, device_id=device_id, timestamp=self._get_timestamp(), flexible=s
         )
         self._send(req)
 
@@ -127,18 +120,10 @@ class TelemetryClient:
         Strict Mode: Test Payload.
         Used for CI/CD pipeline health checks.
         """
-        payload = telemetry_pb2.TestPayload(
-            iteration=iteration,
-            value=value,
-            message=message,
-            active=active
-        )
+        payload = telemetry_pb2.TestPayload(iteration=iteration, value=value, message=message, active=active)
 
         req = telemetry_pb2.StatusRequest(
-            device_type="test",
-            device_id=device_id,
-            timestamp=self._get_timestamp(),
-            test=payload
+            device_type="test", device_id=device_id, timestamp=self._get_timestamp(), test=payload
         )
         self._send(req)
 
@@ -154,11 +139,7 @@ class TelemetryClient:
             device_id: Unique hardware identifier.
             data: Dictionary matching the schema defined in config.py.
         """
-        req = telemetry_pb2.StatusRequest(
-            device_type=device_type,
-            device_id=device_id,
-            timestamp=self._get_timestamp()
-        )
+        req = telemetry_pb2.StatusRequest(device_type=device_type, device_id=device_id, timestamp=self._get_timestamp())
 
         match device_type:
             case "gnss":
@@ -177,9 +158,18 @@ class TelemetryClient:
 
         self._send(req)
 
-    def send_log_future(self, service, severity, message, timestamp=None,
-                      file_path="", line_number=0, function_name="",
-                      process_id=0, thread_name=""):
+    def send_log_future(
+        self,
+        service,
+        severity,
+        message,
+        timestamp=None,
+        file_path="",
+        line_number=0,
+        function_name="",
+        process_id=0,
+        thread_name="",
+    ):
         ts = Timestamp()
         if timestamp:
             ts.FromSeconds(int(timestamp))
@@ -225,18 +215,20 @@ class AsyncGrpcHandler(logging.Handler):
             # Python's LogRecord already captures these!
 
             severity = int(record.levelno / 10)
-            if severity < 1: severity = 1
-            if severity > 5: severity = 5
+            if severity < 1:
+                severity = 1
+            if severity > 5:
+                severity = 5
 
             payload = {
-                'msg': msg,
-                'level': severity,
-                'timestamp': record.created,
-                'file_path': record.pathname,
-                'line_number': record.lineno,
-                'function_name': record.funcName,
-                'process': record.process,  # PID
-                'thread': record.threadName  # Thread Name
+                "msg": msg,
+                "level": severity,
+                "timestamp": record.created,
+                "file_path": record.pathname,
+                "line_number": record.lineno,
+                "function_name": record.funcName,
+                "process": record.process,  # PID
+                "thread": record.threadName,  # Thread Name
             }
             self.queue.put_nowait(payload)
         except Full:
@@ -253,20 +245,17 @@ class AsyncGrpcHandler(logging.Handler):
                 continue
             try:
                 # Unwrap and Enrich JSON
-                raw_msg = payload['msg']
+                raw_msg = payload["msg"]
                 final_json_str = ""
 
                 # Check if the message is already JSON
                 is_json = False
-                if isinstance(raw_msg, str) and raw_msg.strip().startswith('{'):
+                if isinstance(raw_msg, str) and raw_msg.strip().startswith("{"):
                     try:
                         # Validate it's actually JSON
                         json_obj = json.loads(raw_msg)
                         # Inject Metadata into the JSON payload itself for easier querying in Grafana
-                        json_obj['_meta'] = {
-                            "pid": payload['process'],
-                            "thread": payload['thread']
-                        }
+                        json_obj["_meta"] = {"pid": payload["process"], "thread": payload["thread"]}
                         final_json_str = json.dumps(json_obj)
                         is_json = True
                     except json.JSONDecodeError:
@@ -274,22 +263,18 @@ class AsyncGrpcHandler(logging.Handler):
 
                 if not is_json:
                     # Wrap text and add metadata
-                    final_json_str = json.dumps({
-                        "text": str(raw_msg),
-                        "_meta": {
-                            "pid": payload['process'],
-                            "thread": payload['thread']
-                        }
-                    })
+                    final_json_str = json.dumps(
+                        {"text": str(raw_msg), "_meta": {"pid": payload["process"], "thread": payload["thread"]}}
+                    )
 
                 future = self.grpc_client.send_log_future(
                     service=self.service_name,
-                    severity=payload['level'],
+                    severity=payload["level"],
                     message=final_json_str,
-                    timestamp=payload['timestamp'],
-                    file_path=payload['file_path'],
-                    line_number=payload['line_number'],
-                    function_name=payload['function_name']
+                    timestamp=payload["timestamp"],
+                    file_path=payload["file_path"],
+                    line_number=payload["line_number"],
+                    function_name=payload["function_name"],
                 )
                 # 3. Attach a callback to handle success/failure in the background
                 # This ensures we don't block THIS thread waiting for the result.
@@ -307,7 +292,7 @@ class AsyncGrpcHandler(logging.Handler):
         """
         try:
             future.result()  # Will raise exception if RPC failed
-        except grpc.RpcError as e:
+        except grpc.RpcError:
             # Handle specific errors if needed, or just suppress typical "server down" noise
             # status_code = e.code()
             # if status_code != grpc.StatusCode.CANCELLED:
@@ -325,13 +310,14 @@ class AsyncGrpcHandler(logging.Handler):
             self.worker.join(timeout=1.0)
         super().close()
 
+
 def make_grpc_logger(
-        service_name: str,
-        grpc_client: TelemetryClient = None,
-        queue_size: int = 1000,
-        level: int = logging.INFO,
-        attach_to_root: bool = False,
-        add_console_handler: bool = False,
+    service_name: str,
+    grpc_client: TelemetryClient = None,
+    queue_size: int = 1000,
+    level: int = logging.INFO,
+    attach_to_root: bool = False,
+    add_console_handler: bool = False,
 ) -> logging.Logger:
     """
     Configures the root logger to send data to:
@@ -371,8 +357,9 @@ def make_grpc_logger(
     if grpc_client is None:
         try:
             grpc_client = TelemetryClient()
-            assert(isinstance(grpc_client, TelemetryClient)), \
+            assert isinstance(grpc_client, TelemetryClient), (
                 f"grpc_client='{grpc_client}' is not an instance of TelemetryClient"
+            )
         except Exception as e:
             logging.exception(e)
 

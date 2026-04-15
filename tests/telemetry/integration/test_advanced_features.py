@@ -1,11 +1,14 @@
-import pytest
-import time
 import logging
+import time
+
+import pytest
+
+from panoseti_grpc.telemetry.client import AsyncGrpcHandler, TelemetryClient
 
 # Import helpers
 from panoseti_grpc.telemetry.logger import get_logger
-from panoseti_grpc.telemetry.client import AsyncGrpcHandler, TelemetryClient
-from .test_logging_scenarios import wait_for_service_log, LOG_KEY
+
+from .test_logging_scenarios import LOG_KEY, wait_for_service_log
 
 
 # --- HELPER FOR ROBUST WAITING ---
@@ -17,7 +20,7 @@ def wait_for_worker_logs(redis_client, session_id, min_count=1, timeout=15):
     start = time.time()
     while time.time() - start < timeout:
         logs = redis_client.lrange(LOG_KEY, -200, -1)
-        count = sum(1 for l in logs if session_id in l)
+        count = sum(1 for log in logs if session_id in log)
         if count >= min_count:
             return True
         time.sleep(0.5)
@@ -26,18 +29,13 @@ def wait_for_worker_logs(redis_client, session_id, min_count=1, timeout=15):
 
 # --- A. OMNI-CHANNEL LOGGING TEST ---
 
+
 def test_triple_destination_logging(tmp_path, capsys, redis_client, start_grpc_server):
     service_name = "OMNI_TEST"
     log_dir = tmp_path / "omni_logs"
     log_dir.mkdir()
 
-    logger = get_logger(
-        service_name,
-        log_dir=str(log_dir),
-        console=True,
-        grpc_enabled=True,
-        level=logging.INFO
-    )
+    logger = get_logger(service_name, log_dir=str(log_dir), console=True, grpc_enabled=True, level=logging.INFO)
 
     timestamp = str(time.time())
     unique_msg = f"Triple-Check-{timestamp}"
@@ -45,7 +43,8 @@ def test_triple_destination_logging(tmp_path, capsys, redis_client, start_grpc_s
     logger.info(unique_msg)
 
     time.sleep(0.5)
-    for h in logger.handlers: h.flush()
+    for h in logger.handlers:
+        h.flush()
 
     # 1. Console
     captured = capsys.readouterr()
@@ -66,6 +65,7 @@ def test_triple_destination_logging(tmp_path, capsys, redis_client, start_grpc_s
 
 # --- B. DISTRIBUTED WORKER CONTROL TESTS ---
 
+
 def test_distributed_session_switching(redis_client, start_grpc_server):
     """
     Validates that the worker swarm can dynamically switch sessions.
@@ -75,8 +75,9 @@ def test_distributed_session_switching(redis_client, start_grpc_server):
     print(f"\n🔵 Starting {session_alpha}")
     redis_client.set("DISTRIBUTED_SESSION_ID", session_alpha)
 
-    assert wait_for_worker_logs(redis_client, session_alpha), \
+    assert wait_for_worker_logs(redis_client, session_alpha), (
         f"Workers did not start for {session_alpha} within timeout"
+    )
 
     # Phase 2: The Pause
     print("🔴 Pausing Session")
@@ -91,8 +92,7 @@ def test_distributed_session_switching(redis_client, start_grpc_server):
     redis_client.set("DISTRIBUTED_SESSION_ID", session_beta)
 
     # Wait for resume
-    assert wait_for_worker_logs(redis_client, session_beta), \
-        f"Workers did not resume for {session_beta} within timeout"
+    assert wait_for_worker_logs(redis_client, session_beta), f"Workers did not resume for {session_beta} within timeout"
 
     # Verify Separation
     logs_beta = redis_client.lrange(LOG_KEY, -200, -1)
@@ -104,6 +104,7 @@ def test_distributed_session_switching(redis_client, start_grpc_server):
 
 
 # --- C. ROBUSTNESS TESTS ---
+
 
 def test_queue_overflow_protection(redis_client):
     service_name = "OVERFLOW_TEST"

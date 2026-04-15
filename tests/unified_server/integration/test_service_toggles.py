@@ -5,32 +5,30 @@ Verifies that services enabled by the profile answer RPCs, and that
 services disabled by the profile return gRPC UNIMPLEMENTED — not a
 connection error (the server IS running on that port).
 """
+
 from __future__ import annotations
 
-import grpc
 import json
 
+import grpc
 import pytest
 from google.protobuf.empty_pb2 import Empty
 
 from panoseti_grpc.generated import (
-    daq_data_pb2,
-    daq_data_pb2_grpc,
     daq_control_pb2,
     daq_control_pb2_grpc,
+    daq_data_pb2_grpc,
 )
 from panoseti_grpc.telemetry.client import TelemetryClient
-
 from tests.unified_server.conftest import (
-    HEADNODE_PORT,
     DAQ_NODE_PORT,
-    poll_redis_list_len,
+    HEADNODE_PORT,
 )
-
 
 # ---------------------------------------------------------------------------
 # Headnode profile: telemetry only
 # ---------------------------------------------------------------------------
+
 
 def test_headnode_enables_telemetry(start_headnode_server, redis_client):
     """In the headnode profile, Telemetry Log RPCs succeed."""
@@ -41,7 +39,7 @@ def test_headnode_enables_telemetry(start_headnode_server, redis_client):
         message=json.dumps({"event": "headnode_telemetry_check"}),
     )
     result = future.result(timeout=10.0)
-    assert result.success, f"Telemetry log on headnode server returned success=False"
+    assert result.success, "Telemetry log on headnode server returned success=False"
 
 
 def test_headnode_disables_daq_data(start_headnode_server):
@@ -76,6 +74,7 @@ def test_headnode_disables_daq_control(start_headnode_server, tmp_path):
 # DAQ node profile: daq_data + daq_control, no telemetry
 # ---------------------------------------------------------------------------
 
+
 def test_daq_node_enables_daq_data(start_daq_node_server):
     """In the daq_node profile, DaqData Ping succeeds."""
     with grpc.insecure_channel(f"localhost:{DAQ_NODE_PORT}") as channel:
@@ -108,7 +107,7 @@ def test_daq_node_disables_telemetry(start_daq_node_server):
     )
     # The future can either raise or return a failed result depending on gRPC version
     try:
-        result = future.result(timeout=5.0)
+        future.result(timeout=5.0)
         # If we got here, either it succeeded (unexpected) or the stub returns a status
         # The Log RPC on an UNIMPLEMENTED service should not return success=True
     except grpc.RpcError as e:

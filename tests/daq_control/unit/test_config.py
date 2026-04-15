@@ -1,21 +1,21 @@
 """
 Unit tests for daq_control/config.py Pydantic validation models.
 """
+
 import pytest
-from pathlib import Path
 from pydantic import ValidationError
 
 from panoseti_grpc.daq_control.config import (
-    StartDaqModel,
-    StopDaqModel,
-    StatusDaqModel,
     CleanupDataModel,
+    StartDaqModel,
+    StatusDaqModel,
+    StopDaqModel,
 )
-
 
 # ---------------------------------------------------------------------------
 # StartDaqModel
 # ---------------------------------------------------------------------------
+
 
 class TestStartDaqModel:
     def test_valid(self, tmp_path):
@@ -65,7 +65,7 @@ class TestStartDaqModel:
             StartDaqModel(
                 data_dir=str(tmp_path),
                 daq_ip_addr="127.0.0.1",
-                bindhost="a" * 17,   # max_length=16
+                bindhost="a" * 17,  # max_length=16
                 max_file_size_mb=10,
                 group_ph_frames=False,
                 run_dir="run.pffd",
@@ -92,7 +92,7 @@ class TestStartDaqModel:
                 data_dir=str(tmp_path),
                 daq_ip_addr="127.0.0.1",
                 bindhost="lo",
-                max_file_size_mb=0,   # ge=1
+                max_file_size_mb=0,  # ge=1
                 group_ph_frames=False,
                 run_dir="run.pffd",
                 obs="obs",
@@ -148,7 +148,7 @@ class TestStartDaqModel:
                 max_file_size_mb=10,
                 group_ph_frames=False,
                 run_dir="run.pffd",
-                obs="o" * 17,   # max_length=16
+                obs="o" * 17,  # max_length=16
                 module_id=[1],
             )
 
@@ -156,6 +156,7 @@ class TestStartDaqModel:
 # ---------------------------------------------------------------------------
 # StopDaqModel
 # ---------------------------------------------------------------------------
+
 
 class TestStopDaqModel:
     def test_valid(self, tmp_path):
@@ -178,6 +179,7 @@ class TestStopDaqModel:
 # ---------------------------------------------------------------------------
 # StatusDaqModel
 # ---------------------------------------------------------------------------
+
 
 class TestStatusDaqModel:
     def test_valid(self, tmp_path):
@@ -212,6 +214,7 @@ class TestStatusDaqModel:
 # ---------------------------------------------------------------------------
 # CleanupDataModel
 # ---------------------------------------------------------------------------
+
 
 class TestCleanupDataModel:
     def test_valid(self, tmp_path):

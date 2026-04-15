@@ -1,8 +1,8 @@
 """
 Tests for concurrent and sequential request handling in the DAQ Control service.
 """
+
 import time
-import pytest
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 START_PARAMS = {
@@ -44,6 +44,7 @@ def test_concurrent_start_daq_rejected(grpc_client):
     assert grpc_client.StartDaq(START_PARAMS) is True
 
     try:
+
         def _start(_):
             try:
                 return grpc_client.StartDaq(START_PARAMS)
@@ -57,8 +58,7 @@ def test_concurrent_start_daq_rejected(grpc_client):
         # At most one additional start can succeed; the rest must return False
         successes = [r for r in results if r is True]
         assert len(successes) == 0, (
-            f"Concurrent StartDaq calls should all fail while hashpipe is already running; "
-            f"got {successes} successes"
+            f"Concurrent StartDaq calls should all fail while hashpipe is already running; got {successes} successes"
         )
     finally:
         grpc_client.StopDaq(STOP_PARAMS)
@@ -105,7 +105,7 @@ def test_cleanup_while_start_in_progress_fails(grpc_client):
 
     try:
         # with pytest.raises((ValueError, Exception)):
-        grpc_client.CleanupData(CLEANUP_PARAMS)['success'] is False
+        assert grpc_client.CleanupData(CLEANUP_PARAMS)["success"] is False
     finally:
         grpc_client.StopDaq(STOP_PARAMS)
         time.sleep(0.5)

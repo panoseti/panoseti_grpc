@@ -1,14 +1,12 @@
-import pytest
 import asyncio
 import sys
-from unittest.mock import MagicMock, patch
 import time
-from panoseti_grpc.telemetry.logger import (
-    get_logger,
-    monitor_subprocess,
-    PanosetiLogFactory,
-    _stream_reader
-)
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from panoseti_grpc.telemetry.logger import PanosetiLogFactory, _stream_reader, get_logger, monitor_subprocess
+
 
 def test_grpc_logger_metadata_capture():
     """
@@ -70,12 +68,7 @@ def test_file_logger_creation_and_writing(tmp_path):
     log_dir = tmp_path / "logs"
     service_name = "FileTest"
 
-    logger = get_logger(
-        service_name,
-        log_dir=str(log_dir),
-        grpc_enabled=False,
-        console=False
-    )
+    logger = get_logger(service_name, log_dir=str(log_dir), grpc_enabled=False, console=False)
 
     logger.info("Hello File System")
 
@@ -91,12 +84,7 @@ def test_file_logger_creation_and_writing(tmp_path):
 
 def test_console_logger_output(capsys):
     """Verify logger writes to stdout."""
-    logger = get_logger(
-        "ConsoleTest",
-        log_dir=None,
-        grpc_enabled=False,
-        console=True
-    )
+    logger = get_logger("ConsoleTest", log_dir=None, grpc_enabled=False, console=True)
 
     logger.warning("Watch out!")
 
@@ -119,9 +107,7 @@ async def test_subprocess_stream_capture(capsys):
     script_cmd = "import sys; print('StdOut Msg'); print('StdErr Msg', file=sys.stderr)"
 
     proc = await asyncio.create_subprocess_exec(
-        sys.executable, "-c", script_cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
+        sys.executable, "-c", script_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
 
     await monitor_subprocess(proc, logger)
@@ -198,9 +184,7 @@ async def test_monitor_subprocess_missing_pipes():
     logger_mock = MagicMock()
 
     # Create a process but intentionally FORGET to set stdout/stderr to asyncio.subprocess.PIPE
-    proc = await asyncio.create_subprocess_exec(
-        sys.executable, "-c", "print('hello')"
-    )
+    proc = await asyncio.create_subprocess_exec(sys.executable, "-c", "print('hello')")
 
     # Monitor it
     await monitor_subprocess(proc, logger_mock)
@@ -232,9 +216,7 @@ for i in range(1000):
 """
 
     proc = await asyncio.create_subprocess_exec(
-        sys.executable, "-c", script_cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
+        sys.executable, "-c", script_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
 
     await monitor_subprocess(proc, logger_mock)
@@ -270,7 +252,7 @@ async def test_logger_triple_dispatch(tmp_path, capsys):
         "TripleThreatWorker",
         log_dir=str(tmp_path),  # Temp directory provided by pytest
         grpc_enabled=True,
-        console=True
+        console=True,
     )
 
     # 3. Create a subprocess that emits a specific traceable sequence
@@ -278,9 +260,7 @@ async def test_logger_triple_dispatch(tmp_path, capsys):
     script = f"print('{unique_msg}')"
 
     proc = await asyncio.create_subprocess_exec(
-        sys.executable, "-u", "-c", script,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
+        sys.executable, "-u", "-c", script, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
 
     # 4. Monitor and wait
@@ -309,5 +289,4 @@ async def test_logger_triple_dispatch(tmp_path, capsys):
     # Robustly check ALL arguments (positional and keyword) across ALL recorded calls
     all_calls_str = str(mock_client.send_log_future.mock_calls)
 
-    assert unique_msg in all_calls_str, \
-        f"Message missing from gRPC payload. Recorded calls: {all_calls_str}"
+    assert unique_msg in all_calls_str, f"Message missing from gRPC payload. Recorded calls: {all_calls_str}"

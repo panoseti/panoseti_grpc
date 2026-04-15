@@ -4,6 +4,7 @@ Integration tests: concurrent and interleaved RPCs across all three services.
 Verifies that the unified server handles concurrent load without race
 conditions, dropped requests, or cross-service interference.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -11,26 +12,23 @@ import json
 import threading
 
 import grpc
-import pytest
 from google.protobuf.empty_pb2 import Empty
 
 from panoseti_grpc.generated import (
-    daq_data_pb2,
-    daq_data_pb2_grpc,
     daq_control_pb2,
     daq_control_pb2_grpc,
+    daq_data_pb2_grpc,
 )
 from panoseti_grpc.telemetry.client import TelemetryClient
-
 from tests.unified_server.conftest import (
     GRPC_PORT,
     poll_redis_list_len,
 )
 
-
 # ---------------------------------------------------------------------------
 # Concurrent telemetry logs
 # ---------------------------------------------------------------------------
+
 
 def test_20_concurrent_telemetry_logs(start_unified_server, redis_client):
     """20 concurrent Log RPCs complete without errors and all appear in Redis."""
@@ -47,20 +45,17 @@ def test_20_concurrent_telemetry_logs(start_unified_server, redis_client):
         for i in range(n)
     ]
     results = [f.result(timeout=15.0) for f in futures]
-    assert all(r.success for r in results), (
-        f"Some log futures failed: {[r for r in results if not r.success]}"
-    )
+    assert all(r.success for r in results), f"Some log futures failed: {[r for r in results if not r.success]}"
 
     # Wait for all to land in Redis (RedisBatcher batches up to 100)
     reached = poll_redis_list_len(redis_client, "logs:ingress", before_len + n, timeout=30.0)
-    assert reached, (
-        f"Expected {before_len + n} Redis entries, got {redis_client.llen('logs:ingress')}"
-    )
+    assert reached, f"Expected {before_len + n} Redis entries, got {redis_client.llen('logs:ingress')}"
 
 
 # ---------------------------------------------------------------------------
 # Concurrent cross-service RPCs
 # ---------------------------------------------------------------------------
+
 
 def test_concurrent_pings_and_logs(start_unified_server, redis_client):
     """Concurrent DaqData pings and Telemetry logs complete without blocking each other."""
@@ -108,7 +103,7 @@ def test_concurrent_pings_and_logs(start_unified_server, redis_client):
 def test_concurrent_daq_control_and_telemetry(start_unified_server, redis_client, tmp_path):
     """Concurrent DaqControl and Telemetry RPCs complete independently."""
     client = TelemetryClient(host="localhost", port=GRPC_PORT)
-    before_len = redis_client.llen("logs:ingress")
+    redis_client.llen("logs:ingress")
 
     # Fire telemetry logs
     log_futures = [
@@ -155,6 +150,7 @@ def test_concurrent_daq_control_and_telemetry(start_unified_server, redis_client
 # Repeated pings: connection reuse and stability
 # ---------------------------------------------------------------------------
 
+
 def test_repeated_daq_data_pings_stable(start_unified_server):
     """25 sequential DaqData Pings all succeed — verifies connection stability."""
     with grpc.insecure_channel(f"localhost:{GRPC_PORT}") as channel:
@@ -168,9 +164,10 @@ def test_repeated_daq_data_pings_stable(start_unified_server):
 # Async concurrent RPCs
 # ---------------------------------------------------------------------------
 
+
 async def test_async_concurrent_cross_service_rpcs(start_unified_server, redis_client, tmp_path):
     """asyncio.gather of DaqData Ping + DaqControl Status + Telemetry Log completes."""
-    before_len = redis_client.llen("logs:ingress")
+    redis_client.llen("logs:ingress")
 
     async def ping_daq_data():
         async with grpc.aio.insecure_channel(f"localhost:{GRPC_PORT}") as ch:

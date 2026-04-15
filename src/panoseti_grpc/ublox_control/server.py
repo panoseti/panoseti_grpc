@@ -7,39 +7,38 @@ Requires the following to function correctly:
     2. A valid connection to a ZED-F9T u-blox chip.
     3. All Python packages specified in requirements.txt.
 """
-import os
-import stat
+
 import asyncio
 import logging
-import signal
+import os
 import re
+import signal
+import stat
 import uuid
-import json
-from typing import Dict, Any, Optional
-import copy
-
-from pyubx2 import UBXReader, UBX_PROTOCOL, UBXMessage, SET_LAYER_RAM, TXN_NONE
-from serial import Serial
+from typing import Any
 
 import grpc
-from grpc_reflection.v1alpha import reflection
 from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.timestamp_pb2 import Timestamp
+from grpc_reflection.v1alpha import reflection
+from pyubx2 import UBX_PROTOCOL, UBXMessage, UBXReader
+from serial import Serial
 
 from panoseti_grpc.generated import ublox_control_pb2, ublox_control_pb2_grpc
+
 from .initialize.conf_gnss import (
-    _to_cfg_items,
-    _layers_mask,
-    send_cfg_valset_grouped,
-    detect_model,
-    build_tmode_fixed_from_json,
-    poll_cfg,
-    _fmt_val,
     DTYPE_BY_ID,
-    get_f9t_unique_id
+    _fmt_val,
+    _layers_mask,
+    _to_cfg_items,
+    build_tmode_fixed_from_json,
+    detect_model,
+    get_f9t_unique_id,
+    poll_cfg,
+    send_cfg_valset_grouped,
 )
-from .resources import make_rich_logger, CFG_DIR, ubx_to_dict, load_package_json
+from .resources import CFG_DIR, load_package_json, make_rich_logger, ubx_to_dict
 
 
 class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
@@ -47,19 +46,19 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
     Provides async methods that implement the UbloxControl service.
     """
 
-    F9T_MODEL_PREFIX = 'ZED-F9T'
+    F9T_MODEL_PREFIX = "ZED-F9T"
 
-    def __init__(self, server_cfg: Dict[str, Any], logger: logging.Logger):
+    def __init__(self, server_cfg: dict[str, Any], logger: logging.Logger):
         self.server_cfg = server_cfg
         self.logger = logger
-        self._f9t_cfg: Dict[str, Any] = {}
-        self._serial: Optional[Serial] = None
-        self._io_task: Optional[asyncio.Task] = None
+        self._f9t_cfg: dict[str, Any] = {}
+        self._serial: Serial | None = None
+        self._io_task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
-        self._packet_cache: Dict[str, UBXMessage] = {}
+        self._packet_cache: dict[str, UBXMessage] = {}
         self._cache_lock = asyncio.Lock()
         self._client_queues: list[asyncio.Queue] = []
-        self._main_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._main_loop: asyncio.AbstractEventLoop | None = None
 
     async def _open_serial(self, device: str, baud: int, context, timeout=0.5):
         """Opens the serial port."""
@@ -71,9 +70,11 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             if not os.path.exists(device):
                 await context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"Device path {device} does not exist.")
             if not stat.S_ISCHR(os.stat(device).st_mode):
-                await context.abort(grpc.StatusCode.INVALID_ARGUMENT,
-                                    f"Device path {device} is not a character device as expected for a ZED-F9T device file:"
-                                    f"{os.stat(device).st_mode=}")
+                await context.abort(
+                    grpc.StatusCode.INVALID_ARGUMENT,
+                    f"Device path {device} is not a character device as expected for a ZED-F9T device file:"
+                    f"{os.stat(device).st_mode=}",
+                )
             self._serial = Serial(device, baudrate=baud, timeout=timeout)
             self.logger.info(f"Opened serial port {device} at {baud} baud.")
             self._serial.reset_input_buffer()
@@ -97,8 +98,10 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
         self.logger.info(f"New InitF9t RPC from {context.peer()}")
         num_active_clients = len(self._client_queues)
         if not request.force_init and num_active_clients > 0 and self._io_task and not self._io_task.done():
-            emsg = (f"Cannot initiate F9T while {num_active_clients} clients are connected. "
-                    f"Use force_init=True to force initialization and cancel all active clients.")
+            emsg = (
+                f"Cannot initiate F9T while {num_active_clients} clients are connected. "
+                f"Use force_init=True to force initialization and cancel all active clients."
+            )
             self.logger.warning(emsg)
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
@@ -108,9 +111,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
 
         # Start processing request
         client_f9t_cfg = MessageToDict(
-            request.f9t_config,
-            preserving_proto_field_name=True,
-            always_print_fields_with_no_presence=True
+            request.f9t_config, preserving_proto_field_name=True, always_print_fields_with_no_presence=True
         )
 
         # Validate the provided F9T device file
@@ -125,8 +126,10 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             self.logger.info(f"Detected model: {model}")
             if not model.startswith(self.F9T_MODEL_PREFIX):
                 await self._close_serial()
-                await context.abort(grpc.StatusCode.INVALID_ARGUMENT,
-                                    f"Model {model} does not match expected prefix {self.F9T_MODEL_PREFIX}.")
+                await context.abort(
+                    grpc.StatusCode.INVALID_ARGUMENT,
+                    f"Model {model} does not match expected prefix {self.F9T_MODEL_PREFIX}.",
+                )
             # 1. Detect F9T uid
             uid = await asyncio.to_thread(get_f9t_unique_id, self._serial)
             if not uid:
@@ -147,10 +150,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             position_settings = client_f9t_cfg.get("position")
             if model.startswith(self.F9T_MODEL_PREFIX) and position_settings:
                 self.logger.info("ZED-F9T detected with position settings. Applying TMODE configuration.")
-                tmode_pairs = build_tmode_fixed_from_json(
-                    position_settings,
-                    position_settings.get("acc_m", 0.05)
-                )
+                tmode_pairs = build_tmode_fixed_from_json(position_settings, position_settings.get("acc_m", 0.05))
                 tmode_items = _to_cfg_items([{"key": k, "value": v} for k, v in tmode_pairs])
                 cfg_items.extend(tmode_items)
                 self.logger.debug(f"Added {len(tmode_items)} TMODE configuration items.")
@@ -179,15 +179,14 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                 if got != want:
                     dtype = DTYPE_BY_ID.get(kid)
                     failure_detail = (
-                        f"Key: {item['name']}, "
-                        f"Wanted: {_fmt_val(want, dtype)}, "
-                        f"Got: {_fmt_val(got, dtype)}"
+                        f"Key: {item['name']}, Wanted: {_fmt_val(want, dtype)}, Got: {_fmt_val(got, dtype)}"
                     )
                     failures.append(failure_detail)
 
             if failures:
-                error_message = (f"Configuration verification failed for {len(failures)}"
-                                 f" items on layer {verify_layer}:\n") + "\n".join(failures)
+                error_message = (
+                    f"Configuration verification failed for {len(failures)} items on layer {verify_layer}:\n"
+                ) + "\n".join(failures)
                 self.logger.error(error_message)
                 raise RuntimeError(error_message)
 
@@ -231,7 +230,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                 if self._serial and self._serial.is_open:
                     self.logger.warning(f"Error in reader loop: {e}", exc_info=False)
                 else:  # Stop if serial is closed
-                    self.logger.error(f"Serial port closed, stopping reader loop.")
+                    self.logger.error("Serial port closed, stopping reader loop.")
                     break
         self.logger.info("Reader loop stopped.")
 
@@ -270,6 +269,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
         self.logger.info(f"Client from {peer} subscribed. Total clients: {len(self._client_queues)}")
 
         try:
+
             def _create_capture_ublox_response(_packet_name, _parsed_data):
                 # unpack parsed UBXMessage class into a dictionary, then serialize
                 parsed_data_dict = ubx_to_dict(_parsed_data)
@@ -284,8 +284,9 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                     name=_packet_name,
                     parsed_data=parsed_data_struct,
                     payload=_parsed_data.serialize(),
-                    pkt_unix_timestamp=timestamp
+                    pkt_unix_timestamp=timestamp,
                 )
+
             # Broadcast initial cache state
             async with self._cache_lock:
                 self.logger.info(f"Broadcasting initial cache to {peer} for matching patterns.")
@@ -301,7 +302,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                     if any(p.match(packet_name) for p in patterns):
                         yield _create_capture_ublox_response(packet_name, parsed_data)
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     continue
         except grpc.aio.AioRpcError as e:
             self.logger.info(f"Client stream from {peer} ended: {e.details()}")
@@ -328,7 +329,7 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
             except asyncio.CancelledError:
                 # This is the expected outcome of cancellation
                 self.logger.debug("I/O task successfully cancelled.")
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self.logger.warning("Timeout waiting for I/O task to stop.")
 
         # Close the serial port if it's open

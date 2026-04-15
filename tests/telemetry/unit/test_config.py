@@ -1,6 +1,7 @@
 import pytest
 from pydantic import ValidationError
-from panoseti_grpc.telemetry.config import TelemetryConfig, GnssModel, DewModel, PayloadTestModel, DeviceConfig
+
+from panoseti_grpc.telemetry.config import DeviceConfig, DewModel, GnssModel, PayloadTestModel, TelemetryConfig
 
 
 # 1. Test Key Generation & whitelist logic
@@ -8,7 +9,7 @@ def test_redis_key_formatting():
     # FIX: Use DeviceConfig objects
     devices = {
         "gps": DeviceConfig(mode="production", redis_prefix="UBLOX_ZED-F9T_"),
-        "weather": DeviceConfig(mode="production", redis_prefix="WEATHER_MAST_")
+        "weather": DeviceConfig(mode="production", redis_prefix="WEATHER_MAST_"),
     }
     cfg = TelemetryConfig(devices)
 
@@ -24,9 +25,7 @@ def test_redis_key_formatting():
 def test_payload_flattening():
     # FIX: Must be 'production' mode to trigger the schema validation & extra_data flattening logic
     # Also need to use a type that exists in SCHEMA_MAP (like 'gps' mapping to GnssModel)
-    devices = {
-        "gnss": DeviceConfig(mode="production", redis_prefix="GPS_")
-    }
+    devices = {"gnss": DeviceConfig(mode="production", redis_prefix="GPS_")}
     cfg = TelemetryConfig(devices)
 
     raw_data = {
@@ -34,7 +33,7 @@ def test_payload_flattening():
         "lat": 34.0,
         "lon": -118.0,
         "fix_mode": "3D",
-        "extra_data": {"temp_correction": 0.05, "status": "ok"}
+        "extra_data": {"temp_correction": 0.05, "status": "ok"},
     }
 
     # Validate and Flatten
@@ -58,8 +57,8 @@ def test_dew_model_constraints():
 
     # Verify we get a helpful error message
     errors = excinfo.value.errors()
-    assert errors[0]['loc'] == ('humidity',)
-    assert "less than or equal to 100" in errors[0]['msg']
+    assert errors[0]["loc"] == ("humidity",)
+    assert "less than or equal to 100" in errors[0]["msg"]
 
 
 # 4. Test GNSS Model Validation
@@ -102,8 +101,11 @@ def test_forbid_unknown_fields_in_strict_model():
     # Note: If your Config doesn't set extra='forbid', this test confirms they are ignored/allowed.
 
     data = {
-        "satellites": 5, "lat": 1.0, "lon": 1.0, "fix_mode": "2D",
-        "typo_field": "oops"  # This is NOT in 'extra_data'
+        "satellites": 5,
+        "lat": 1.0,
+        "lon": 1.0,
+        "fix_mode": "2D",
+        "typo_field": "oops",  # This is NOT in 'extra_data'
     }
     model = GnssModel(**data)
     # Check that 'typo_field' is NOT in the dumped model (unless extra='allow')
@@ -112,17 +114,18 @@ def test_forbid_unknown_fields_in_strict_model():
 
 # 8. Test Complex Nested 'extra_data' Flattening
 def test_deep_extra_data_flattening():
-    devices = {
-        "gnss": DeviceConfig(mode="production", redis_prefix="GPS_")
-    }
+    devices = {"gnss": DeviceConfig(mode="production", redis_prefix="GPS_")}
     cfg = TelemetryConfig(devices)
 
     raw_data = {
-        "satellites": 5, "lat": 0, "lon": 0, "fix_mode": "2D",
+        "satellites": 5,
+        "lat": 0,
+        "lon": 0,
+        "fix_mode": "2D",
         "extra_data": {
             "sensor_temp": 45.2,
-            "status_flags": {"error": False, "calibrated": True}  # Nested Dict!
-        }
+            "status_flags": {"error": False, "calibrated": True},  # Nested Dict!
+        },
     }
 
     # Run the flattening logic
@@ -162,17 +165,11 @@ def test_gnss_edge_coordinates():
 # 11. Test Prefix Enforcement
 def test_experimental_prefix_enforcement():
     with pytest.raises(ValidationError) as exc:
-        DeviceConfig(
-            mode="experimental",
-            redis_prefix="WRONG_PREFIX_"
-        )
+        DeviceConfig(mode="experimental", redis_prefix="WRONG_PREFIX_")
     assert "must start with 'DEV_'" in str(exc.value)
 
     # Valid config should pass
-    valid = DeviceConfig(
-        mode="experimental",
-        redis_prefix="DEV_CORRECT_"
-    )
+    valid = DeviceConfig(mode="experimental", redis_prefix="DEV_CORRECT_")
     assert valid.redis_prefix == "DEV_CORRECT_"
 
 
@@ -181,22 +178,21 @@ def test_ttl_retrieval():
     # FIX: Construct with DeviceConfig
     devices = {
         "prod_gps": DeviceConfig(mode="production", redis_prefix="GPS_", ttl_seconds=0),
-        "temp_sensor": DeviceConfig(mode="experimental", redis_prefix="DEV_TEMP_", ttl_seconds=3600)
+        "temp_sensor": DeviceConfig(mode="experimental", redis_prefix="DEV_TEMP_", ttl_seconds=3600),
     }
     cfg = TelemetryConfig(devices)
 
     assert cfg.get_ttl("prod_gps") == 0
     assert cfg.get_ttl("temp_sensor") == 3600
-    assert cfg.get_ttl("unknown_thing") == 3600 # Default fallback
+    assert cfg.get_ttl("unknown_thing") == 3600  # Default fallback
 
 
 # 13. Test Validation Skipping for Experimental
 def test_experimental_skips_validation():
     # Setup config with one experimental type
     from panoseti_grpc.telemetry.config import DeviceConfig
-    devices = {
-        "new_proto": DeviceConfig(mode="experimental", redis_prefix="DEV_PROTO_")
-    }
+
+    devices = {"new_proto": DeviceConfig(mode="experimental", redis_prefix="DEV_PROTO_")}
     cfg = TelemetryConfig(devices)
 
     # Arbitrary data that would fail any strict schema
@@ -211,10 +207,9 @@ def test_experimental_skips_validation():
 
 def test_strict_enforces_schema():
     from panoseti_grpc.telemetry.config import DeviceConfig
+
     # 'gnss' is hardcoded in SCHEMA_MAP in config.py
-    devices = {
-        "gnss": DeviceConfig(mode="production", redis_prefix="GPS_")
-    }
+    devices = {"gnss": DeviceConfig(mode="production", redis_prefix="GPS_")}
     cfg = TelemetryConfig(devices)
 
     # Missing required fields for GNSS

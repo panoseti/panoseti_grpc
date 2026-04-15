@@ -3,12 +3,14 @@ Tests for process-management edge cases in the DAQ Control service:
 crash detection via SIGKILL, stale-PID handling, log-file placement,
 and disk-usage response completeness.
 """
+
 import os
 import signal
 import time
-import psutil
-import pytest
 from pathlib import Path
+
+import psutil
+
 from tests.daq_control.conftest import wait_for_file, wait_for_pid_gone
 
 START_PARAMS = {
@@ -78,9 +80,7 @@ def test_hashpipe_crash_detection(grpc_client):
     wait_for_pid_gone(pid, timeout=5.0)
 
     _, status = grpc_client.StatusDaq({**STATUS_BASE, "check_hashpipe_running": True})
-    assert status["hashpipe_running"] is False, (
-        "StatusDaq should detect that hashpipe was killed"
-    )
+    assert status["hashpipe_running"] is False, "StatusDaq should detect that hashpipe was killed"
 
     # Cleanup: StopDaq on a dead process should be idempotent
     grpc_client.StopDaq(STOP_PARAMS)
@@ -155,6 +155,4 @@ def test_disk_usage_keys_present(grpc_client):
     assert total > 0, "total_disk_space must be positive"
     assert used >= 0, "used_disk_space must be non-negative"
     assert free >= 0, "free_disk_space must be non-negative"
-    assert total >= used + free, (
-        f"total ({total}) must be >= used ({used}) + free ({free})"
-    )
+    assert total >= used + free, f"total ({total}) must be >= used ({used}) + free ({free})"

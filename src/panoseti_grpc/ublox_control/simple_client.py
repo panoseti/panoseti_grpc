@@ -1,15 +1,15 @@
 import asyncio
-import json
+import copy
 import logging
+import signal
 
 import grpc
-import copy
-import signal
-from google.protobuf.json_format import ParseDict, MessageToDict
+from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf.struct_pb2 import Struct
 
 from panoseti_grpc.generated import ublox_control_pb2, ublox_control_pb2_grpc
-from .resources import make_rich_logger, default_f9t_cfg
+
+from .resources import default_f9t_cfg, make_rich_logger
 
 
 async def run():
@@ -25,20 +25,17 @@ async def run():
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, _signal_handler)
 
-    async with grpc.aio.insecure_channel('localhost:50051') as channel:
+    async with grpc.aio.insecure_channel("localhost:50051") as channel:
         stub = ublox_control_pb2_grpc.UbloxControlStub(channel)
 
         # 1. Initialize the F9T
-        for f9t_chip in default_f9t_cfg['f9t_chips']:
+        for f9t_chip in default_f9t_cfg["f9t_chips"]:
             # Remove f9t_chips and update dict with config for just f9t_chip
             f9t_config = copy.deepcopy(default_f9t_cfg)
-            del f9t_config['f9t_chips']
+            del f9t_config["f9t_chips"]
             f9t_config.update(f9t_chip)
 
-            init_request = ublox_control_pb2.InitF9tRequest(
-                f9t_config = ParseDict(f9t_config, Struct()),
-                force_init=True
-            )
+            init_request = ublox_control_pb2.InitF9tRequest(f9t_config=ParseDict(f9t_config, Struct()), force_init=True)
             # logger.info(f"Sending InitF9t request: {init_request}")
             try:
                 init_response = await stub.InitF9t(init_request)
@@ -49,9 +46,7 @@ async def run():
                 return -1
 
         # 2. Capture Ublox data
-        capture_request = ublox_control_pb2.CaptureUbloxRequest(
-            patterns=[".*"]
-        )
+        capture_request = ublox_control_pb2.CaptureUbloxRequest(patterns=[".*"])
         logger.info(f"Sending CaptureUblox request: {capture_request}")
         try:
             async for response in stub.CaptureUblox(capture_request):
@@ -69,6 +64,5 @@ async def run():
             raise e
 
 
-if __name__ == '__main__':
-
+if __name__ == "__main__":
     asyncio.run(run())

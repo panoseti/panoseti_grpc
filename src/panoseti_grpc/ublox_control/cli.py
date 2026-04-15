@@ -7,10 +7,10 @@ These commands expect the following to function correctly:
     2. A network connection to a gRPC UbloxControl server intance.
 
 """
-import asyncio
+
 import argparse
-import json
-from pathlib import Path
+import asyncio
+
 from rich import print
 
 from .client import AioUbloxControlClient
@@ -22,11 +22,11 @@ async def run_init(args):
     f9t_config = default_f9t_cfg.copy()
     # In a real-world scenario, you would load or construct a specific config
     # For this example, we just set the device path from the command line
-    if not args.device.startswith('/dev/'):
+    if not args.device.startswith("/dev/"):
         print("[bold red]Error:[/] The device path must be a valid path (e.g., /dev/ttyACM0)")
         return
 
-    f9t_config['device'] = args.device
+    f9t_config["device"] = args.device
 
     async with AioUbloxControlClient(args.hosts) as client:
         print(f"Attempting to initialize F9T on hosts: {args.hosts}")
@@ -76,4 +76,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

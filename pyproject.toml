@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "panoseti-grpc"
-version = "0.4.4"
+version = "0.4.5"
 description = "gRPC for the PANOSETI project."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -113,10 +113,20 @@ extend-ignore = ["E203", "W503"]
 [tool.ruff]
 line-length = 120
 target-version = "py312"
-exclude = ["src/panoseti_grpc/generated"]
+exclude = [
+    "src/panoseti_grpc/generated",
+    "**/*.ipynb",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+ignore = ["E203"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/migrations/*" = ["E501"]
+"tests/**/*" = ["E501"] # Allow long lines in tests (especially for data strings)
+"src/panoseti_grpc/ublox_control/initialize/**/*" = ["E501"]
+"src/panoseti_grpc/ublox_control/resources.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.14"

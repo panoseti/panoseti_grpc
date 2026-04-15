@@ -2,23 +2,32 @@
 Manages the lifecycle of DAQ simulation tasks for the DaqData server.
 Only the UDS (Unix Domain Socket) simulation mode is supported.
 """
+
 from __future__ import annotations
+
 import abc
 import asyncio
-from importlib import resources
 import logging
+from importlib import resources
 
 from panoseti_grpc.panoseti_util import pff
 
 from .config import DaqDataServerConfig, SimulateDaqConfig, UdsSimStrategyConfig
-from .state import get_dp_config
 from .resources import daq_data_anchor_package
+from .state import get_dp_config
+
 
 class BaseSimulationStrategy(abc.ABC):
     """Abstract base class for a simulation strategy."""
 
-    def __init__(self, common_config: SimulateDaqConfig, strategy_config: UdsSimStrategyConfig,
-                 server_cfg: DaqDataServerConfig, logger: logging.Logger, stop_event: asyncio.Event):
+    def __init__(
+        self,
+        common_config: SimulateDaqConfig,
+        strategy_config: UdsSimStrategyConfig,
+        server_cfg: DaqDataServerConfig,
+        logger: logging.Logger,
+        stop_event: asyncio.Event,
+    ):
         self.logger = logger
         self.stop_event = stop_event
         self.common_config = common_config
@@ -28,7 +37,7 @@ class BaseSimulationStrategy(abc.ABC):
         self.movie_frames: list[bytes] = []
         self.ph_frames: list[bytes] = []
 
-        self.frame_limit = float('inf') if strategy_config.frame_limit < 0 else strategy_config.frame_limit
+        self.frame_limit = float("inf") if strategy_config.frame_limit < 0 else strategy_config.frame_limit
 
     def _load_source_data(self):
         """Loads all PFF frames from source files into memory."""
@@ -96,6 +105,7 @@ class BaseSimulationStrategy(abc.ABC):
         finally:
             self.logger.info(f"Simulation data loop for '{self.__class__.__name__}' finished.")
 
+
 class UdsStrategy(BaseSimulationStrategy):
     """Simulates DAQ by connecting to UDS sockets and sending PFF frames (Client Role)."""
 
@@ -144,7 +154,7 @@ class UdsStrategy(BaseSimulationStrategy):
             return
 
         try:
-            module_id_bytes = module_id.to_bytes(2, 'big')
+            module_id_bytes = module_id.to_bytes(2, "big")
             writer.write(module_id_bytes)
             writer.write(frame_data)
             await writer.drain()
@@ -159,8 +169,10 @@ class UdsStrategy(BaseSimulationStrategy):
                 writer.close()
                 await writer.wait_closed()
 
+
 class SimulationManager:
     """Manages the lifecycle of a DAQ simulation task."""
+
     def __init__(self, server_cfg: DaqDataServerConfig, logger: logging.Logger):
         self.server_cfg = server_cfg
         self.logger = logger
@@ -181,7 +193,7 @@ class SimulationManager:
             return False
 
         self.logger.info("Setting up environment for 'uds' simulation.")
-        strategy_config = sim_cfg.strategies.get('uds', UdsSimStrategyConfig())
+        strategy_config = sim_cfg.strategies.get("uds", UdsSimStrategyConfig())
         self.strategy = UdsStrategy(sim_cfg, strategy_config, self.server_cfg, self.logger, self._sim_stop_event)
 
         self.strategy._load_source_data()
@@ -209,9 +221,7 @@ class SimulationManager:
                 self.sim_task.result()
                 self.logger.info("Simulation task completed its run cleanly.")
             except Exception as e:
-                self.logger.error(
-                    f"Simulation task exited immediately with an error: {e}", exc_info=True
-                )
+                self.logger.error(f"Simulation task exited immediately with an error: {e}", exc_info=True)
                 self.sim_task = None
                 return False
 
@@ -227,7 +237,7 @@ class SimulationManager:
         try:
             await asyncio.wait_for(self.sim_task, timeout=2.0)
             self.logger.info("Simulation loop stopped gracefully.")
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self.logger.warning("Simulation loop did not stop gracefully. Cancelling.")
             self.sim_task.cancel()
         finally:

@@ -19,7 +19,6 @@ Usage:
 
 import argparse
 import asyncio
-import os
 import sys
 import time
 import tomllib
@@ -30,39 +29,52 @@ from typing import Any
 class C:
     """ANSI colour helpers. Each static method wraps a string in the colour escape."""
 
-    _GREEN  = "\033[92m"
-    _RED    = "\033[91m"
+    _GREEN = "\033[92m"
+    _RED = "\033[91m"
     _YELLOW = "\033[93m"
-    _CYAN   = "\033[96m"
-    _BOLD   = "\033[1m"
-    _DIM    = "\033[2m"
-    _RESET  = "\033[0m"
+    _CYAN = "\033[96m"
+    _BOLD = "\033[1m"
+    _DIM = "\033[2m"
+    _RESET = "\033[0m"
 
     @staticmethod
-    def green(s: str)  -> str: return f"{C._GREEN}{s}{C._RESET}"
+    def green(s: str) -> str:
+        return f"{C._GREEN}{s}{C._RESET}"
+
     @staticmethod
-    def red(s: str)    -> str: return f"{C._RED}{s}{C._RESET}"
+    def red(s: str) -> str:
+        return f"{C._RED}{s}{C._RESET}"
+
     @staticmethod
-    def yellow(s: str) -> str: return f"{C._YELLOW}{s}{C._RESET}"
+    def yellow(s: str) -> str:
+        return f"{C._YELLOW}{s}{C._RESET}"
+
     @staticmethod
-    def cyan(s: str)   -> str: return f"{C._CYAN}{s}{C._RESET}"
+    def cyan(s: str) -> str:
+        return f"{C._CYAN}{s}{C._RESET}"
+
     @staticmethod
-    def bold(s: str)   -> str: return f"{C._BOLD}{s}{C._RESET}"
+    def bold(s: str) -> str:
+        return f"{C._BOLD}{s}{C._RESET}"
+
     @staticmethod
-    def dim(s: str)    -> str: return f"{C._DIM}{s}{C._RESET}"
+    def dim(s: str) -> str:
+        return f"{C._DIM}{s}{C._RESET}"
+
     @staticmethod
-    def paint(s: str, code: str) -> str: return f"{code}{s}{C._RESET}"
+    def paint(s: str, code: str) -> str:
+        return f"{code}{s}{C._RESET}"
 
 
 # Colorwheel used to assign a distinct hue to each parallel task.
 # Uses 256-colour escape codes for a wider, more distinguishable palette.
 PALETTE = [
-    "\033[38;5;81m",   # sky blue
+    "\033[38;5;81m",  # sky blue
     "\033[38;5;118m",  # lime green
     "\033[38;5;214m",  # orange
     "\033[38;5;207m",  # pink / magenta
     "\033[38;5;147m",  # soft purple
-    "\033[38;5;43m",   # teal
+    "\033[38;5;43m",  # teal
     "\033[38;5;220m",  # gold
     "\033[38;5;203m",  # coral / salmon
 ]
@@ -74,8 +86,8 @@ class Result:
     __slots__ = ("name", "code", "elapsed")
 
     def __init__(self, name: str, code: int, elapsed: float) -> None:
-        self.name    = name
-        self.code    = code
+        self.name = name
+        self.code = code
         self.elapsed = elapsed
 
     @property
@@ -120,7 +132,7 @@ class QARunner:
 
     def test_description(self, kind: str) -> str:
         test_cfg: dict[str, Any] = self._cfg.get("test", {})
-        entry: dict[str, Any]    = test_cfg.get(kind, {})
+        entry: dict[str, Any] = test_cfg.get(kind, {})
         return str(entry.get("description", ""))
 
     # ── streaming core ────────────────────────────────────────────────────────
@@ -136,7 +148,7 @@ class QARunner:
         Spawn ``cmd``, streaming its stdout+stderr line-by-line.
         """
         start = time.monotonic()
-        proc  = await asyncio.create_subprocess_shell(
+        proc = await asyncio.create_subprocess_shell(
             cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
@@ -175,10 +187,10 @@ class QARunner:
         width = max(len(r.name) for r in results)
         print(f"\n{C.bold('Results')}", flush=True)
         for r in results:
-            icon   = C.green("✓") if r.ok else C.red("✗")
+            icon = C.green("✓") if r.ok else C.red("✗")
             status = C.green("passed") if r.ok else C.red("FAILED")
-            code   = (colors or {}).get(r.name, C._CYAN)
-            name   = C.paint(r.name.ljust(width), code)
+            code = (colors or {}).get(r.name, C._CYAN)
+            name = C.paint(r.name.ljust(width), code)
             print(f"  {icon}  {name}  {status}  {C.dim(f'{r.elapsed:.1f}s')}", flush=True)
 
     # ── public run methods ────────────────────────────────────────────────────
@@ -198,10 +210,7 @@ class QARunner:
             return []
 
         # Assign a unique palette colour to each task, cycling if needed.
-        task_colors = {
-            name: PALETTE[i % len(PALETTE)]
-            for i, name in enumerate(tasks)
-        }
+        task_colors = {name: PALETTE[i % len(PALETTE)] for i, name in enumerate(tasks)}
 
         descs = descriptions or {}
         for name, cmd in tasks.items():
@@ -211,12 +220,11 @@ class QARunner:
         print(flush=True)
 
         lock = asyncio.Lock()
-        results = list(await asyncio.gather(
-            *[
-                self._stream(n, c, lock, tag=C.paint(f"[{n}]", task_colors[n]) + " ")
-                for n, c in tasks.items()
-            ]
-        ))
+        results = list(
+            await asyncio.gather(
+                *[self._stream(n, c, lock, tag=C.paint(f"[{n}]", task_colors[n]) + " ") for n, c in tasks.items()]
+            )
+        )
         self._summary(results, colors=task_colors)
         return results
 
@@ -234,8 +242,8 @@ class QARunner:
             print(C.yellow("  (no tasks configured)"))
             return []
 
-        descs   = descriptions or {}
-        lock    = asyncio.Lock()
+        descs = descriptions or {}
+        lock = asyncio.Lock()
         results: list[Result] = []
 
         for name, cmd in tasks.items():
@@ -251,18 +259,19 @@ class QARunner:
 
 # ── Command handlers ───────────────────────────────────────────────────────────
 
+
 async def cmd_lint(args: argparse.Namespace, runner: QARunner) -> bool:
-    target  = str(getattr(args, "target", "all") or "all")
-    tasks   = runner.lint_tasks(target)
-    descs   = runner.lint_descriptions(target)
+    target = str(getattr(args, "target", "all") or "all")
+    tasks = runner.lint_tasks(target)
+    descs = runner.lint_descriptions(target)
     results = await runner.run_parallel("LINTING", tasks, descs)
     return all(r.ok for r in results)
 
 
 async def cmd_test_suite(args: argparse.Namespace, runner: QARunner) -> bool:
-    kind    = args.command
-    tasks   = runner.test_tasks(kind)
-    descs   = {f"test.{kind}": runner.test_description(kind)}
+    kind = args.command
+    tasks = runner.test_tasks(kind)
+    descs = {f"test.{kind}": runner.test_description(kind)}
     results = await runner.run_sequential(f"{kind.upper()} TESTS", tasks, descs)
     return all(r.ok for r in results)
 
@@ -277,7 +286,9 @@ async def cmd_all(args: argparse.Namespace, runner: QARunner) -> bool:
 
     # 1. Linters (Parallel)
     all_results += await runner.run_parallel(
-        "LINTING", runner.lint_tasks("all"), runner.lint_descriptions("all"),
+        "LINTING",
+        runner.lint_tasks("all"),
+        runner.lint_descriptions("all"),
     )
 
     # 2. Test Suites (Sequential)
@@ -297,14 +308,17 @@ async def cmd_all(args: argparse.Namespace, runner: QARunner) -> bool:
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python tests/qa.py", add_help=True)
-    sub    = parser.add_subparsers(dest="command")
+    sub = parser.add_subparsers(dest="command")
 
     p_lint = sub.add_parser("lint", help="Run linters (Ruff, MyPy)")
     p_lint.add_argument(
-        "target", nargs="?",
-        choices=["ruff", "mypy", "all"], default="all",
+        "target",
+        nargs="?",
+        choices=["ruff", "mypy", "all"],
+        default="all",
         help="Scope to lint (default: all)",
     )
     p_lint.set_defaults(func=cmd_lint)

@@ -1,13 +1,15 @@
 """
 Telemetry Service configuration classes for validation and
 """
+
 import json
+import os
 import time
 import tomllib
 from enum import IntEnum
-from pydantic import BaseModel, Field, field_validator, ValidationError
-from typing import Any, Literal
-import os
+from typing import Any
+
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 
 # --- 1. Pydantic Models (Production Schemas) ---
@@ -55,7 +57,7 @@ class LogSchema(BaseModel):
     # 1MB limit for a single log entry is generous but sane.
     payload_json: str = Field(..., max_length=1_000_000)
 
-    @field_validator('service_name')
+    @field_validator("service_name")
     def prevent_high_cardinality(cls, v):
         """
         Prevent dynamic names like 'process_12345' from becoming labels.
@@ -67,12 +69,12 @@ class LogSchema(BaseModel):
             pass
         return v.lower()
 
-    @field_validator('payload_json')
+    @field_validator("payload_json")
     def validate_json_structure(cls, v):
         try:
             json.loads(v)
         except ValueError:
-            raise ValueError("Payload must be valid JSON")
+            raise ValueError("Payload must be valid JSON") from None
         return v
 
 
@@ -99,10 +101,10 @@ class PayloadTestModel(BaseModel):
     active: bool
     extra_data: dict[str, Any] | None = Field(default_factory=dict)
 
-    @field_validator('message')
+    @field_validator("message")
     def must_be_uppercase(cls, v):
         if not v.isupper():
-            raise ValueError('Message must be uppercase')
+            raise ValueError("Message must be uppercase")
         return v
 
 
@@ -116,21 +118,23 @@ SCHEMA_MAP: dict[str, type[BaseModel]] = {
 
 # --- 2. Registry Configuration ---
 
+
 class DeviceConfig(BaseModel):
     """
     Represents a single device entry in telemetry_config.toml
     """
+
     mode: str = Field(default="production", pattern="^(production|experimental)$")
     redis_prefix: str
     ttl_seconds: int = Field(default=0, ge=0)
     description: str | None = ""
 
-    @field_validator('redis_prefix')
+    @field_validator("redis_prefix")
     def validate_prefix(cls, v, info):
         # We need access to the 'mode' field to validate this rule.
         # Pydantic v2 validation allows access to other fields via 'info' context if needed.
         # For simple robustness, we enforce the "DEV_" rule if mode is experimental.
-        if 'mode' in info.data and info.data['mode'] == 'experimental':
+        if "mode" in info.data and info.data["mode"] == "experimental":
             if not v.startswith("DEV_"):
                 raise ValueError(f"Experimental prefix '{v}' must start with 'DEV_'")
         return v
@@ -147,6 +151,7 @@ class TelemetryConfig:
             # Fallback for installed package resources
             try:
                 from . import resources as r
+
                 path = r.get_config_path()
             except ImportError:
                 pass
@@ -209,14 +214,14 @@ class TelemetryConfig:
             raise ValueError(f"No schema defined for production type '{device_type}'")
 
         # 3. Flatten (Handling nested 'extra_data')
-        if 'extra_data' in clean_data and clean_data['extra_data']:
-            extras = clean_data.pop('extra_data')
+        if "extra_data" in clean_data and clean_data["extra_data"]:
+            extras = clean_data.pop("extra_data")
             for k, v in extras.items():
                 clean_data[f"extra_{k}"] = v
 
         return self._flatten_dict(clean_data)
 
-    def _flatten_dict(self, d: dict, parent_key: str = '', sep: str = '_') -> dict:
+    def _flatten_dict(self, d: dict, parent_key: str = "", sep: str = "_") -> dict:
         items = []
         for k, v in d.items():
             new_key = f"{parent_key}{sep}{k}" if parent_key else k
@@ -229,6 +234,7 @@ class TelemetryConfig:
 
 class TelemetryServerConfig(BaseModel):
     """Server-level configuration for the Telemetry gRPC service."""
+
     grpc_port: int = Field(50051, ge=1024, le=65535)
     redis_host: str = Field(default_factory=lambda: os.getenv("REDIS_HOST", "localhost"))
     redis_port: int = 6379

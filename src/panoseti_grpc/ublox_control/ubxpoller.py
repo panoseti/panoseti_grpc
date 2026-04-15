@@ -34,9 +34,8 @@ from sys import argv
 from threading import Event, Thread
 from time import sleep
 
-from serial import Serial
-
 from pyubx2 import POLL, UBX_PAYLOADS_POLL, UBX_PROTOCOL, UBXMessage, UBXReader
+from serial import Serial
 
 
 def io_data(
@@ -152,5 +151,4 @@ def main(**kwargs):
 
 
 if __name__ == "__main__":
-
     main(**dict(arg.split("=") for arg in argv[1:]))

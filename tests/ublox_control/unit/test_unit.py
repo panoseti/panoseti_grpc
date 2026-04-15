@@ -1,9 +1,10 @@
 # tests/test_unit.py
 
 import pytest
-from panoseti_grpc.ublox_control.resources import get_f9t_redis_key, ubx_to_dict
-from panoseti_grpc.ublox_control.initialize.conf_gnss import _layers_mask, _split_scaled_llh
 from pyubx2 import UBXMessage
+
+from panoseti_grpc.ublox_control.initialize.conf_gnss import _layers_mask, _split_scaled_llh
+from panoseti_grpc.ublox_control.resources import get_f9t_redis_key, ubx_to_dict
 
 
 def test_get_f9t_redis_key_valid():
@@ -44,7 +45,7 @@ def test_split_scaled_llh():
 def test_ubx_to_dict():
     """Tests the conversion of a UBXMessage to a dictionary."""
     # Create a sample UBXMessage (ACK-ACK)
-    msg = UBXMessage('ACK', 'ACK-ACK', 0, clsID=0x05, msgID=0x01)
+    msg = UBXMessage("ACK", "ACK-ACK", 0, clsID=0x05, msgID=0x01)
     msg_dict = ubx_to_dict(msg)
 
     assert "identity" in msg_dict

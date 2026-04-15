@@ -1,14 +1,17 @@
 import asyncio
+import base64
+import copy
 import json
 import logging
-import grpc
-import copy
 import signal
-import base64
-from panoseti_grpc.generated import ublox_control_pb2, ublox_control_pb2_grpc
-from .resources import make_rich_logger, default_f9t_cfg
+
+import grpc
 from google.protobuf.json_format import ParseDict
 from google.protobuf.struct_pb2 import Struct
+
+from panoseti_grpc.generated import ublox_control_pb2, ublox_control_pb2_grpc
+
+from .resources import default_f9t_cfg, make_rich_logger
 
 
 async def run():
@@ -31,26 +34,23 @@ async def run():
     output_file = "ubx_packets.jsonl"
     logger.info(f"Will save raw packet data to {output_file}")
 
-    async with grpc.aio.insecure_channel('localhost:50051') as channel:
+    async with grpc.aio.insecure_channel("localhost:50051") as channel:
         stub = ublox_control_pb2_grpc.UbloxControlStub(channel)
 
         # 1. Find the first available F9T chip config and initialize
         f9t_chip_config = None
-        if default_f9t_cfg.get('f9t_chips'):
-            f9t_chip_config = default_f9t_cfg['f9t_chips'][0]
+        if default_f9t_cfg.get("f9t_chips"):
+            f9t_chip_config = default_f9t_cfg["f9t_chips"][0]
 
         if not f9t_chip_config:
             logger.error("No F9T chip configurations found in f9t_config.json")
             return
 
         f9t_config = copy.deepcopy(default_f9t_cfg)
-        del f9t_config['f9t_chips']
+        del f9t_config["f9t_chips"]
         f9t_config.update(f9t_chip_config)
 
-        init_request = ublox_control_pb2.InitF9tRequest(
-            f9t_config=ParseDict(f9t_config, Struct()),
-            force_init=True
-        )
+        init_request = ublox_control_pb2.InitF9tRequest(f9t_config=ParseDict(f9t_config, Struct()), force_init=True)
 
         try:
             init_response = await stub.InitF9t(init_request)
@@ -73,12 +73,9 @@ async def run():
                         # The server's cache key is the message identity (e.g., "TIM-TP")
                         packet_identity = response.name
                         # The raw bytes are in the payload field. Encode as base64 for JSON.
-                        payload_b64 = base64.b64encode(response.payload).decode('ascii')
+                        payload_b64 = base64.b64encode(response.payload).decode("ascii")
 
-                        record = {
-                            "identity": packet_identity,
-                            "payload_b64": payload_b64
-                        }
+                        record = {"identity": packet_identity, "payload_b64": payload_b64}
                         f.write(json.dumps(record) + "\n")
                         logger.info(f"Saved packet: {packet_identity}")
 
@@ -88,5 +85,5 @@ async def run():
             logger.error(f"An unexpected error occurred: {e}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(run())

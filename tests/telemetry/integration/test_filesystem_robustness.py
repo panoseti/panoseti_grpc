@@ -1,10 +1,10 @@
-import pytest
 import logging
 import time
-import json
-from pathlib import Path
+
+import pytest
+
+from panoseti_grpc.telemetry.client import AsyncGrpcHandler, TelemetryClient
 from panoseti_grpc.telemetry.logger import get_logger
-from panoseti_grpc.telemetry.client import TelemetryClient, AsyncGrpcHandler
 
 # Import helper to check Redis for the dual-destination test
 from .test_logging_scenarios import wait_for_service_log
@@ -20,12 +20,7 @@ def test_filesystem_writing(tmp_path):
     service_name = "FS_TEST"
     unique_name = f"{service_name}_{int(time.time())}"
 
-    logger = get_logger(
-        unique_name,
-        log_dir=str(log_dir),
-        grpc_enabled=False,
-        console=False
-    )
+    logger = get_logger(unique_name, log_dir=str(log_dir), grpc_enabled=False, console=False)
 
     logger.info("FS_TEST_MESSAGE")
 
@@ -38,8 +33,9 @@ def test_filesystem_writing(tmp_path):
     # Match the exact unique name pattern.
     found_files = list(log_dir.glob(f"{unique_name}.log"))
 
-    assert len(
-        found_files) > 0, f"No log file found matching {unique_name.lower()}. Dir content: {list(log_dir.iterdir())}"
+    assert len(found_files) > 0, (
+        f"No log file found matching {unique_name.lower()}. Dir content: {list(log_dir.iterdir())}"
+    )
 
     content = found_files[0].read_text()
     assert "FS_TEST_MESSAGE" in content
@@ -82,17 +78,13 @@ def test_log_level_filtering(tmp_path):
     service_name = "FILTER_TEST"
 
     # Set level to INFO
-    logger = get_logger(
-        service_name,
-        log_dir=str(log_dir),
-        level="info",
-        grpc_enabled=False
-    )
+    logger = get_logger(service_name, log_dir=str(log_dir), level="info", grpc_enabled=False)
 
     logger.debug("THIS_SHOULD_BE_IGNORED")
     logger.info("THIS_SHOULD_BE_SEEN")
 
-    for h in logger.handlers: h.flush()
+    for h in logger.handlers:
+        h.flush()
 
     # Find log file
     log_file = next(log_dir.glob(f"{service_name}.log"))
@@ -117,14 +109,15 @@ def test_dual_destination_logging(tmp_path, redis_client, grpc_client):
         service_name,
         log_dir=str(log_dir),
         grpc_enabled=True,  # Remote
-        console=False
+        console=False,
     )
 
     msg_body = f"Dual-Test-{time.time()}"
     logger.info(msg_body)
 
     # 1. Check Filesystem
-    for h in logger.handlers: h.flush()
+    for h in logger.handlers:
+        h.flush()
     log_file = next(log_dir.glob(f"*{service_name}*.log"))
     assert msg_body in log_file.read_text(), "Message missing from local file"
 
@@ -136,6 +129,7 @@ def test_dual_destination_logging(tmp_path, redis_client, grpc_client):
 
 # --- ROBUSTNESS TESTS ---
 
+
 def test_grpc_server_down_resilience(grpc_client):
     """
     CRITICAL: If the Telemetry Server is offline, the client app MUST NOT crash.
@@ -144,7 +138,7 @@ def test_grpc_server_down_resilience(grpc_client):
     service_name = "SERVER_DOWN_TEST"
 
     # Point to a blackhole port where nothing is listening
-    dead_client = TelemetryClient(host="localhost", port=59999)
+    TelemetryClient(host="localhost", port=59999)
 
     logger = get_logger(service_name, grpc_enabled=True)
 

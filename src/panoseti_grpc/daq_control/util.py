@@ -1,6 +1,7 @@
 import psutil
 
-hashpipe_name = 'hashpipe'
+hashpipe_name = "hashpipe"
+
 
 def is_hashpipe_running(pid):
     # check pid first
@@ -12,6 +13,6 @@ def is_hashpipe_running(pid):
                 return True
             else:
                 return False
-        except:
+        except Exception:
             return False
     return False

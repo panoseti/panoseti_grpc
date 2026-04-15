@@ -1,18 +1,20 @@
-import pytest
-import time
-import os
+import asyncio
 import multiprocessing
 import socket
-import asyncio
+import time
 from pathlib import Path
+
+import pytest
+
 from panoseti_grpc.daq_control.client import DaqControlClient
+
 # Import the serve function
 from panoseti_grpc.daq_control.server import serve
-
 
 # ---------------------------------------------------------------------------
 # Shared polling utilities — preferred over hardcoded time.sleep() waits
 # ---------------------------------------------------------------------------
+
 
 def wait_for_file(path, timeout=10.0, poll=0.1) -> bool:
     """Return True once the file at `path` exists; False on timeout."""
@@ -27,6 +29,7 @@ def wait_for_file(path, timeout=10.0, poll=0.1) -> bool:
 def wait_for_pid_gone(pid, timeout=10.0, poll=0.1) -> bool:
     """Return True once the given PID no longer exists; False on timeout."""
     import psutil
+
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if not psutil.pid_exists(pid):
@@ -34,7 +37,9 @@ def wait_for_pid_gone(pid, timeout=10.0, poll=0.1) -> bool:
         time.sleep(poll)
     return False
 
+
 SERVER_PORT = 50051
+
 
 def _run_server_process(grpc_port):
     """
@@ -50,11 +55,7 @@ def start_grpc_server():
     Starts the gRPC server in a separate multiprocessing.Process.
     """
     # 1. Start Server Process
-    proc = multiprocessing.Process(
-        target=_run_server_process,
-        args=[SERVER_PORT],
-        daemon=True
-    )
+    proc = multiprocessing.Process(target=_run_server_process, args=[SERVER_PORT], daemon=True)
     proc.start()
 
     # 2. Wait for Port to Open (Health Check)

@@ -7,12 +7,12 @@ default_parallel = 4
 # All lint tasks run concurrently. Output lines are prefixed with the task name.
 
 [lint.ruff]
-command     = "docker build --target qa-linter -f Dockerfile.ci -t panoseti-qa-linter . && docker run --rm panoseti-qa-linter python -m ruff check src/ tests/ scripts/"
-description = "Ruff lint (Python)"
+command     = "docker build --target qa-linter -f Dockerfile.ci -t panoseti-qa-linter . && docker run --rm -v $(pwd):/app panoseti-qa-linter python -m ruff check src/ tests/ scripts/ --fix"
+description = "Ruff lint (Python) with autofix"
 
 [lint.ruff_format]
-command     = "docker run --rm panoseti-qa-linter python -m ruff format --check src/ tests/ scripts/"
-description = "Ruff format check"
+command     = "docker run --rm -v $(pwd):/app panoseti-qa-linter python -m ruff format src/ tests/ scripts/"
+description = "Ruff format"
 
 [lint.mypy]
 command     = "docker run --rm panoseti-qa-linter python -m mypy src/ tests/ scripts/"

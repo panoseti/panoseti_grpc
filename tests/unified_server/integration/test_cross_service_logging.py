@@ -7,22 +7,19 @@ suite tests direct Telemetry Log RPCs and verifies the log schema written
 to Redis — covering the plumbing that daq_data/daq_control would use in
 production with grpc_logging=true.
 """
+
 from __future__ import annotations
 
 import json
-import time
 
 import grpc
-import pytest
-
-from panoseti_grpc.telemetry.client import TelemetryClient
-from panoseti_grpc.generated import daq_data_pb2, daq_data_pb2_grpc
 from google.protobuf.empty_pb2 import Empty
 
+from panoseti_grpc.generated import daq_data_pb2_grpc
+from panoseti_grpc.telemetry.client import TelemetryClient
 from tests.unified_server.conftest import (
     GRPC_PORT,
     poll_redis_list_len,
-    poll_redis_key,
 )
 
 # Redis list key used by the TelemetryServicer's RedisBatcher
@@ -35,6 +32,7 @@ REQUIRED_LOG_FIELDS = {"host", "service_name", "timestamp", "severity", "git_com
 # ---------------------------------------------------------------------------
 # Basic log ingestion into Redis
 # ---------------------------------------------------------------------------
+
 
 def test_log_arrives_in_redis(start_unified_server, redis_client):
     """A single Log RPC from TelemetryClient appears in the logs:ingress list."""
@@ -101,6 +99,7 @@ def test_log_entry_preserves_service_name(start_unified_server, redis_client):
 # Multiple concurrent logs
 # ---------------------------------------------------------------------------
 
+
 def test_multiple_logs_all_reach_redis(start_unified_server, redis_client):
     """Five sequential log futures all succeed and appear in Redis."""
     client = TelemetryClient(host="localhost", port=GRPC_PORT)
@@ -117,17 +116,16 @@ def test_multiple_logs_all_reach_redis(start_unified_server, redis_client):
     ]
     for f in futures:
         result = f.result(timeout=10.0)
-        assert result.success, f"Log future returned success=False"
+        assert result.success, "Log future returned success=False"
 
     reached = poll_redis_list_len(redis_client, LOGS_KEY, before_len + n, timeout=20.0)
-    assert reached, (
-        f"Expected {before_len + n} entries in Redis, got {redis_client.llen(LOGS_KEY)}"
-    )
+    assert reached, f"Expected {before_len + n} entries in Redis, got {redis_client.llen(LOGS_KEY)}"
 
 
 # ---------------------------------------------------------------------------
 # DaqData + Telemetry coexistence
 # ---------------------------------------------------------------------------
+
 
 def test_daq_data_ping_does_not_corrupt_telemetry_redis(start_unified_server, redis_client):
     """DaqData Ping RPC does not write to or corrupt the telemetry Redis state."""

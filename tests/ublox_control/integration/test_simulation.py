@@ -1,13 +1,14 @@
 # tests/test_simulation.py
 
-import pytest
-import pytest_asyncio
 import asyncio
-import json
 import base64
+import json
+
+import pytest
 from pyubx2 import UBXReader
-from tests.ublox_control.conftest import TEST_DATA_DIR
+
 from panoseti_grpc.generated import ublox_control_pb2
+
 
 # This assumes you have run save_raw_ubx.py and have ubx_packets.jsonl
 @pytest.fixture(scope="module")
@@ -15,7 +16,7 @@ def raw_ubx_packets(ubx_packets_data_path):
     """Loads the captured raw UBX packet data."""
     packets = []
     try:
-        with open(ubx_packets_data_path, "r") as f:
+        with open(ubx_packets_data_path) as f:
             for line in f:
                 packets.append(json.loads(line))
     except FileNotFoundError:
@@ -36,6 +37,7 @@ async def test_inject_and_capture(sim_servicer, raw_ubx_packets):
             raw_bytes = base64.b64decode(packet_data["payload_b64"])
             # The UBXReader needs a stream-like object
             from io import BytesIO
+
             stream = BytesIO(raw_bytes)
             ubr = UBXReader(stream)
             _, parsed = ubr.read()

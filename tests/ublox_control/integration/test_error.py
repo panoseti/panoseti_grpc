@@ -1,13 +1,14 @@
 # tests/test_integration.py
 
-import pytest
-import pytest_asyncio
-import grpc
 import copy
-from panoseti_grpc.generated import ublox_control_pb2, ublox_control_pb2_grpc
-from panoseti_grpc.ublox_control.resources import default_f9t_cfg
+
+import grpc
+import pytest
 from google.protobuf.json_format import ParseDict
 from google.protobuf.struct_pb2 import Struct
+
+from panoseti_grpc.generated import ublox_control_pb2, ublox_control_pb2_grpc
+from panoseti_grpc.ublox_control.resources import default_f9t_cfg
 
 TIMEOUT = 5.0
 
@@ -22,14 +23,12 @@ async def test_initf9t_error_no_device(live_server):
         stub = ublox_control_pb2_grpc.UbloxControlStub(channel)
 
         bad_config = copy.deepcopy(default_f9t_cfg)
-        chip_config = bad_config['f9t_chips'][0]
-        del chip_config['device']
+        chip_config = bad_config["f9t_chips"][0]
+        del chip_config["device"]
         bad_config.update(chip_config)
-        del bad_config['f9t_chips']
+        del bad_config["f9t_chips"]
 
-        request = ublox_control_pb2.InitF9tRequest(
-            f9t_config=ParseDict(bad_config, Struct())
-        )
+        request = ublox_control_pb2.InitF9tRequest(f9t_config=ParseDict(bad_config, Struct()))
 
         with pytest.raises(grpc.aio.AioRpcError) as e:
             await stub.InitF9t(request, timeout=TIMEOUT)
@@ -48,14 +47,12 @@ async def test_initf9t_error_invalid_device(live_server):
         stub = ublox_control_pb2_grpc.UbloxControlStub(channel)
 
         bad_config = copy.deepcopy(default_f9t_cfg)
-        chip_config = bad_config['f9t_chips'][0]
-        chip_config['device'] = "/dev/nonexistentdevice12345"
+        chip_config = bad_config["f9t_chips"][0]
+        chip_config["device"] = "/dev/nonexistentdevice12345"
         bad_config.update(chip_config)
-        del bad_config['f9t_chips']
+        del bad_config["f9t_chips"]
 
-        request = ublox_control_pb2.InitF9tRequest(
-            f9t_config=ParseDict(bad_config, Struct())
-        )
+        request = ublox_control_pb2.InitF9tRequest(f9t_config=ParseDict(bad_config, Struct()))
 
         with pytest.raises(grpc.aio.AioRpcError) as e:
             await stub.InitF9t(request, timeout=TIMEOUT)

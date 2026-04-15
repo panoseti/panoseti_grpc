@@ -1,10 +1,11 @@
 """
 Tests for concurrent Redis HSET field-merging behavior in the Telemetry service.
 """
-import time
+
 import threading
-import pytest
-from tests.telemetry.conftest import poll_redis_key, poll_redis_field
+import time
+
+from tests.telemetry.conftest import poll_redis_field, poll_redis_key
 
 
 def test_two_threads_different_fields_no_cross_contamination(grpc_client, redis_client):
@@ -21,24 +22,32 @@ def test_two_threads_different_fields_no_cross_contamination(grpc_client, redis_
     def update_lat_lon():
         for i in range(N_UPDATES):
             try:
-                grpc_client.log_strict("gnss", device_id, {
-                    "satellites": 0,          # placeholder
-                    "lat": 33.0 + i * 0.001,
-                    "lon": -116.0 - i * 0.001,
-                    "fix_mode": "3D",
-                })
+                grpc_client.log_strict(
+                    "gnss",
+                    device_id,
+                    {
+                        "satellites": 0,  # placeholder
+                        "lat": 33.0 + i * 0.001,
+                        "lon": -116.0 - i * 0.001,
+                        "fix_mode": "3D",
+                    },
+                )
             except Exception as e:
                 errors.append(e)
 
     def update_satellites():
         for i in range(N_UPDATES):
             try:
-                grpc_client.log_strict("gnss", device_id, {
-                    "satellites": i + 1,
-                    "lat": 33.0,              # placeholder
-                    "lon": -116.0,            # placeholder
-                    "fix_mode": "3D",
-                })
+                grpc_client.log_strict(
+                    "gnss",
+                    device_id,
+                    {
+                        "satellites": i + 1,
+                        "lat": 33.0,  # placeholder
+                        "lon": -116.0,  # placeholder
+                        "fix_mode": "3D",
+                    },
+                )
             except Exception as e:
                 errors.append(e)
 
@@ -74,17 +83,22 @@ def test_rapid_field_overwrite_last_writer_wins(grpc_client, redis_client):
     modes = [f"MODE_{i:02d}" for i in range(UPDATES)]
 
     for mode in modes:
-        grpc_client.log_strict("gnss", device_id, {
-            "satellites": 8,
-            "lat": 33.356,
-            "lon": -116.864,
-            "fix_mode": mode,
-        })
+        grpc_client.log_strict(
+            "gnss",
+            device_id,
+            {
+                "satellites": 8,
+                "lat": 33.356,
+                "lon": -116.864,
+                "fix_mode": mode,
+            },
+        )
         time.sleep(0.02)  # slight pause to keep ordering deterministic
 
     # Wait for last write to land, then check final value
-    assert poll_redis_field(redis_client, key, "fix_mode", expected=modes[-1]), \
+    assert poll_redis_field(redis_client, key, "fix_mode", expected=modes[-1]), (
         f"Last fix_mode {modes[-1]!r} not found in {key!r}"
+    )
 
     stored_mode = redis_client.hget(key, "fix_mode")
     assert stored_mode == modes[-1], (
@@ -103,21 +117,30 @@ def test_independent_devices_do_not_share_fields(grpc_client, redis_client):
     key_a = f"UBLOX_ZED-F9T_{device_a}"
     key_b = f"UBLOX_ZED-F9T_{device_b}"
 
-    grpc_client.log_strict("gnss", device_a, {
-        "satellites": 7,
-        "lat": 10.0,
-        "lon": 20.0,
-        "fix_mode": "3D",
-    })
-    grpc_client.log_strict("gnss", device_b, {
-        "satellites": 12,
-        "lat": 50.0,
-        "lon": 60.0,
-        "fix_mode": "2D",
-    })
+    grpc_client.log_strict(
+        "gnss",
+        device_a,
+        {
+            "satellites": 7,
+            "lat": 10.0,
+            "lon": 20.0,
+            "fix_mode": "3D",
+        },
+    )
+    grpc_client.log_strict(
+        "gnss",
+        device_b,
+        {
+            "satellites": 12,
+            "lat": 50.0,
+            "lon": 60.0,
+            "fix_mode": "2D",
+        },
+    )
 
-    assert poll_redis_key(redis_client, key_a) and poll_redis_key(redis_client, key_b), \
+    assert poll_redis_key(redis_client, key_a) and poll_redis_key(redis_client, key_b), (
         "Both device keys must exist in Redis"
+    )
 
     assert redis_client.hget(key_a, "satellites") == "7"
     assert redis_client.hget(key_b, "satellites") == "12"

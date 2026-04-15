@@ -6,41 +6,45 @@ Requires the following to work:
     1. All Python packages specified in requirements.txt.
 Run this on the headnode to configure the u-blox GNSS receivers in remote domes.
 """
+
 import asyncio
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, Generator
+import json
 import logging
 import os
-import json
+from collections.abc import AsyncIterator, Generator
 from pathlib import Path
+from typing import Any
+
 ## gRPC imports
 import grpc
 
 # gRPC reflection service: allows clients to discover available RPCs
 from google.protobuf.descriptor_pool import DescriptorPool
+
+# Standard gRPC protobuf types
+from google.protobuf.empty_pb2 import Empty
+from google.protobuf.json_format import MessageToDict
 from grpc_reflection.v1alpha.proto_reflection_descriptor_database import (
     ProtoReflectionDescriptorDatabase,
 )
-# Standard gRPC protobuf types
-from google.protobuf.empty_pb2 import Empty
-from google.protobuf.struct_pb2 import Struct
-from google.protobuf.json_format import MessageToDict, ParseDict
-from google.protobuf import timestamp_pb2
 
 # protoc-generated marshalling / demarshalling code
 from panoseti_grpc.generated import (
-    daq_data_pb2,
     daq_data_pb2_grpc,
 )
 from panoseti_grpc.generated.daq_data_pb2 import (
-    PanoImage, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse,
+    InitHpIoRequest,
+    StreamImagesRequest,
 )
 from panoseti_grpc.panoseti_util import control_utils
 
 ## daq_data utils
 from panoseti_grpc.telemetry.logger import get_logger
-from .resources import parse_pano_image, format_stream_images_response, load_package_json
+
+from .resources import format_stream_images_response, load_package_json, parse_pano_image
 
 hp_io_config_simulate = load_package_json("panoseti_grpc.daq_data", "config/hp_io_config_simulate.json")
+
 
 class DaqDataClient:
     """A synchronous gRPC client for the PANOSETI DaqData service.
@@ -56,13 +60,14 @@ class DaqDataClient:
         if client.ping("localhost"):
             client.init_hp_io(...)
     """
+
     GRPC_PORT = 50051
 
     def __init__(
         self,
         daq_config: str | Path | dict[str, Any],
         network_config: str | Path | dict[str, Any] | None,
-        log_level: int =logging.INFO
+        log_level: int = logging.INFO,
     ):
         """Initializes the DaqDataClient with DAQ and network configurations.
 
@@ -85,7 +90,7 @@ class DaqDataClient:
                 emsg = f"daq_config_path={abs_path} does not exist"
                 self.logger.error(emsg)
                 raise FileNotFoundError(emsg)
-            with open(daq_config, 'r') as f:
+            with open(daq_config) as f:
                 daq_config_dict = json.load(f)
         elif isinstance(daq_config, dict):
             daq_config_dict = daq_config
@@ -93,10 +98,14 @@ class DaqDataClient:
             raise ValueError(f"daq_config is not a str, Path, or dict: {daq_config=}")
 
         # validate daq_config
-        if 'daq_nodes' not in daq_config_dict or daq_config_dict['daq_nodes'] is None or len(daq_config_dict['daq_nodes']) == 0:
+        if (
+            "daq_nodes" not in daq_config_dict
+            or daq_config_dict["daq_nodes"] is None
+            or len(daq_config_dict["daq_nodes"]) == 0
+        ):
             raise ValueError(f"daq_nodes is empty: {daq_config_dict=}")
-        for daq_node in daq_config_dict['daq_nodes']:
-            if 'ip_addr' not in daq_node:
+        for daq_node in daq_config_dict["daq_nodes"]:
+            if "ip_addr" not in daq_node:
                 raise ValueError(f"daq_node={daq_node} does not have an 'ip_addr' key")
 
         # Validate network_config
@@ -108,7 +117,7 @@ class DaqDataClient:
                 emsg = f"network_config_path={abs_path} does not exist"
                 self.logger.error(emsg)
                 raise FileNotFoundError(emsg)
-            with open(network_config, 'r') as f:
+            with open(network_config) as f:
                 network_config_dict = json.load(f)
         elif isinstance(network_config, dict):
             network_config_dict = network_config
@@ -117,26 +126,29 @@ class DaqDataClient:
 
         # add port forwarding info to daq_config if network_config is specified
         if network_config_dict is not None:
-            if 'daq_nodes' not in network_config_dict or network_config_dict['daq_nodes'] is None or len(
-                    network_config_dict['daq_nodes']) == 0:
+            if (
+                "daq_nodes" not in network_config_dict
+                or network_config_dict["daq_nodes"] is None
+                or len(network_config_dict["daq_nodes"]) == 0
+            ):
                 raise ValueError(f"daq_nodes is empty: {network_config_dict=}")
             control_utils.attach_daq_config(daq_config_dict, network_config_dict)
 
         # Parse real host ips for each daq node
         self.valid_daq_hosts = set()
         self.daq_nodes = {}
-        for daq_node in daq_config_dict['daq_nodes']:
-            daq_cfg_ip = daq_node['ip_addr']
-            if 'port_forwarding' in daq_node:
-                real_ip = daq_node['port_forwarding']['gw_ip']
+        for daq_node in daq_config_dict["daq_nodes"]:
+            daq_cfg_ip = daq_node["ip_addr"]
+            if "port_forwarding" in daq_node:
+                real_ip = daq_node["port_forwarding"]["gw_ip"]
                 port = self.GRPC_PORT
                 self.logger.info(f'Using port forwarding: "{daq_cfg_ip=}:{port}" --> "{real_ip=}:{port}"')
                 daq_host = real_ip
             else:
                 daq_host = daq_cfg_ip
-            self.daq_nodes[daq_host] = {'config': daq_node}
-            self.daq_nodes[daq_host]['channel']: grpc.Channel = None
-            self.daq_nodes[daq_host]['stub']: daq_data_pb2_grpc.DaqDataStub = None
+            self.daq_nodes[daq_host] = {"config": daq_node}
+            self.daq_nodes[daq_host]["channel"]: grpc.Channel = None
+            self.daq_nodes[daq_host]["stub"]: daq_data_pb2_grpc.DaqDataStub = None
 
     def __enter__(self):
         """
@@ -146,15 +158,15 @@ class DaqDataClient:
             DaqDataClient: The instance of the client.
         """
         for daq_host, daq_node in self.daq_nodes.items():
-            if daq_host.startswith('unix:'):
+            if daq_host.startswith("unix:"):
                 grpc_connection_target = f"{daq_host}"
             else:
                 grpc_connection_target = f"{daq_host}:{self.GRPC_PORT}"
-            daq_node['connection_target'] = grpc_connection_target
+            daq_node["connection_target"] = grpc_connection_target
             try:
                 channel = grpc.insecure_channel(grpc_connection_target)
-                daq_node['channel'] = channel
-                daq_node['stub'] = daq_data_pb2_grpc.DaqDataStub(channel)
+                daq_node["channel"] = channel
+                daq_node["stub"] = daq_data_pb2_grpc.DaqDataStub(channel)
                 if self.ping(daq_host):
                     self.valid_daq_hosts.add(daq_host)
             except grpc.RpcError as rpc_error:
@@ -165,9 +177,9 @@ class DaqDataClient:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Closes all open gRPC channels upon exiting a context block."""
         self.logger.debug("Closing all client gRPC channels.")
-        for daq_host, daq_node in self.daq_nodes.items():
-            if daq_node.get('channel'):
-                daq_node['channel'].close()
+        for _daq_host, daq_node in self.daq_nodes.items():
+            if daq_node.get("channel"):
+                daq_node["channel"].close()
                 self.logger.debug(f"Closed channel to {daq_node['connection_target']}")
 
         self.logger.info("All client channels closed.")
@@ -178,8 +190,8 @@ class DaqDataClient:
             return True  # Don't re-raise the exception
         elif exc_type and exc_type not in [grpc.FutureCancelledError, grpc.RpcError, KeyboardInterrupt, SystemExit]:
             self.logger.error(f"Client exiting due to an unhandled exception: {exc_val}")
-            return False # Re-raise the exception
-        return True # Suppress expected exceptions
+            return False  # Re-raise the exception
+        return True  # Suppress expected exceptions
 
     def get_valid_daq_hosts(self) -> list[str]:
         """
@@ -192,10 +204,10 @@ class DaqDataClient:
             self.is_daq_host_valid(host)
         return list(self.valid_daq_hosts)
 
-    def get_daq_host_status(self) -> Dict[str, bool]:
+    def get_daq_host_status(self) -> dict[str, bool]:
         valid_status = {}
         for host in self.daq_nodes:
-            connection_target = self.daq_nodes[host]['connection_target']
+            connection_target = self.daq_nodes[host]["connection_target"]
             valid_status[connection_target] = self.is_daq_host_valid(host)
         return valid_status
 
@@ -247,7 +259,9 @@ class DaqDataClient:
         for host in host_set:
             if not self.is_daq_host_valid(host):
                 raise ConnectionError(
-                    f"host={repr(host)} does not have a valid gRPC server channel. Valid daq_hosts: {self.valid_daq_hosts}")
+                    f"host={repr(host)} does not have a valid gRPC server channel. "
+                    f"Valid daq_hosts: {self.valid_daq_hosts}"
+                )
         valid_hosts = self.get_valid_daq_hosts()
         if len(valid_hosts) == 0:
             raise ConnectionError("No valid daq hosts found")
@@ -272,7 +286,7 @@ class DaqDataClient:
             name = method.name
             input_type = method.input_type.name
             output_type = method.output_type.name
-            stream_fmt = '[magenta]stream[/magenta] '
+            stream_fmt = "[magenta]stream[/magenta] "
             client_stream = stream_fmt if method.client_streaming else ""
             server_stream = stream_fmt if method.server_streaming else ""
             return f"rpc {name}({client_stream}{input_type}) returns ({server_stream}{output_type})"
@@ -281,7 +295,7 @@ class DaqDataClient:
         valid_hosts = self.validate_daq_hosts(hosts)
         for host in valid_hosts:
             daq_node = self.daq_nodes[host]
-            channel = daq_node['channel']
+            channel = daq_node["channel"]
             reflection_db = ProtoReflectionDescriptorDatabase(channel)
             services = reflection_db.get_services()
             desc_pool = DescriptorPool(reflection_db)
@@ -292,7 +306,7 @@ class DaqDataClient:
             for method in service_desc.methods:
                 msg += f"\n\tfound: {format_rpc_service(method)}"
             ret += msg
-            ret += '\n'
+            ret += "\n"
         return ret
 
     def stream_images(
@@ -301,11 +315,11 @@ class DaqDataClient:
         stream_movie_data: bool,
         stream_pulse_height_data: bool,
         update_interval_seconds: float,
-        module_ids: tuple[int, ...] | tuple[()]=(),
+        module_ids: tuple[int, ...] | tuple[()] = (),
         wait_for_ready=False,
         parse_pano_images=True,
-        timeout=36_000.0
-    ) ->  Generator[dict[str, Any], Any, Any]:
+        timeout=36_000.0,
+    ) -> Generator[dict[str, Any], Any, Any]:
         """Establishes a real-time stream of PANOSETI image data.
 
         This method sends a `StreamImagesRequest` and returns a generator that
@@ -339,14 +353,18 @@ class DaqDataClient:
             module_ids=module_ids,
         )
         self.logger.info(
-            f"stream_images_request={MessageToDict(stream_images_request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)}")
+            f"stream_images_request={MessageToDict(stream_images_request, "
+            f"preserving_proto_field_name=True, always_print_fields_with_no_presence=True)}"
+        )
 
         # Call the RPC
         streams = []
         for host in valid_hosts:
             daq_node = self.daq_nodes[host]
-            stub = daq_node['stub']
-            stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=wait_for_ready, timeout=timeout)
+            stub = daq_node["stub"]
+            stream_images_responses = stub.StreamImages(
+                stream_images_request, wait_for_ready=wait_for_ready, timeout=timeout
+            )
             streams.append(stream_images_responses)
             self.logger.info(f"Created StreamImages RPC to {host=}")
 
@@ -364,6 +382,7 @@ class DaqDataClient:
                         yield parse_pano_image(stream_images_response.pano_image)
                     else:
                         yield stream_images_response
+
         return response_generator()
 
     def init_sim(self, hosts: list[str] | str | None, hp_io_cfg: dict | None = None, timeout=10.0) -> bool:
@@ -384,12 +403,11 @@ class DaqDataClient:
         """
         if hp_io_cfg is None:
             config_to_send = hp_io_config_simulate
-            config_to_send['simulate_daq'] = True
+            config_to_send["simulate_daq"] = True
         else:
             config_to_send = hp_io_cfg
-        assert config_to_send['simulate_daq'] is True, f"{hp_io_cfg} for init_sim must have simulate_daq=True"
+        assert config_to_send["simulate_daq"] is True, f"{hp_io_cfg} for init_sim must have simulate_daq=True"
         return self.init_hp_io(hosts, config_to_send, timeout)
-
 
     def init_hp_io(self, hosts: list[str] | str | None, hp_io_cfg: dict, timeout=10.0) -> bool:
         """Initializes or reconfigures the HpIoManager task on the server.
@@ -412,14 +430,14 @@ class DaqDataClient:
         init_successes = []
         for host in valid_hosts:
             daq_node = self.daq_nodes[host]
-            stub = daq_node['stub']
+            stub = daq_node["stub"]
 
             init_hp_io_request = InitHpIoRequest(
-                data_dir=daq_node['config']['data_dir'],
-                update_interval_seconds=hp_io_cfg['update_interval_seconds'],
-                simulate_daq=hp_io_cfg['simulate_daq'],
-                force=hp_io_cfg['force'],
-                module_ids=hp_io_cfg['module_ids'],
+                data_dir=daq_node["config"]["data_dir"],
+                update_interval_seconds=hp_io_cfg["update_interval_seconds"],
+                simulate_daq=hp_io_cfg["simulate_daq"],
+                force=hp_io_cfg["force"],
+                module_ids=hp_io_cfg["module_ids"],
             )
             self.logger.info(f"Initializing hp_io on '{daq_node['connection_target']}'...")
             try:
@@ -445,14 +463,12 @@ class DaqDataClient:
         if host not in self.daq_nodes:
             self.logger.debug(f"host={host} not found in daq_nodes. Valid hosts: {self.daq_nodes.keys()}")
             return False
-        stub = self.daq_nodes[host]['stub']
+        stub = self.daq_nodes[host]["stub"]
         try:
-            ping_response = stub.Ping(Empty(), timeout=timeout, wait_for_ready=True)
+            stub.Ping(Empty(), timeout=timeout, wait_for_ready=True)
             return True
-        except grpc.RpcError as e:
+        except grpc.RpcError:
             return False
-
-
 
 
 class AioDaqDataClient:
@@ -470,6 +486,7 @@ class AioDaqDataClient:
         if status:
             await client.init_hp_io(...)
     """
+
     GRPC_PORT = 50051
 
     def __init__(
@@ -501,7 +518,7 @@ class AioDaqDataClient:
                 emsg = f"daq_config_path={abs_path} does not exist"
                 self.logger.error(emsg)
                 raise FileNotFoundError(emsg)
-            with open(daq_config, 'r') as f:
+            with open(daq_config) as f:
                 daq_config_dict = json.load(f)
         elif isinstance(daq_config, dict):
             daq_config_dict = daq_config
@@ -509,10 +526,14 @@ class AioDaqDataClient:
             raise ValueError(f"daq_config is not a str, Path, or dict: {daq_config=}")
 
         # validate daq_config
-        if 'daq_nodes' not in daq_config_dict or daq_config_dict['daq_nodes'] is None or len(daq_config_dict['daq_nodes']) == 0:
+        if (
+            "daq_nodes" not in daq_config_dict
+            or daq_config_dict["daq_nodes"] is None
+            or len(daq_config_dict["daq_nodes"]) == 0
+        ):
             raise ValueError(f"daq_nodes is empty: {daq_config_dict=}")
-        for daq_node in daq_config_dict['daq_nodes']:
-            if 'ip_addr' not in daq_node:
+        for daq_node in daq_config_dict["daq_nodes"]:
+            if "ip_addr" not in daq_node:
                 raise ValueError(f"daq_node={daq_node} does not have an 'ip_addr' key")
 
         # Validate network_config
@@ -524,7 +545,7 @@ class AioDaqDataClient:
                 emsg = f"network_config_path={abs_path} does not exist"
                 self.logger.error(emsg)
                 raise FileNotFoundError(emsg)
-            with open(network_config, 'r') as f:
+            with open(network_config) as f:
                 network_config_dict = json.load(f)
         elif isinstance(network_config, dict):
             network_config_dict = network_config
@@ -533,40 +554,43 @@ class AioDaqDataClient:
 
         # add port forwarding info to daq_config if network_config is specified
         if network_config_dict is not None:
-            if 'daq_nodes' not in network_config_dict or network_config_dict['daq_nodes'] is None or len(
-                    network_config_dict['daq_nodes']) == 0:
+            if (
+                "daq_nodes" not in network_config_dict
+                or network_config_dict["daq_nodes"] is None
+                or len(network_config_dict["daq_nodes"]) == 0
+            ):
                 raise ValueError(f"daq_nodes is empty: {network_config_dict=}")
             control_utils.attach_daq_config(daq_config_dict, network_config_dict)
 
         # Parse real host ips for each daq node
         self.valid_daq_hosts = set()
         self.daq_nodes = {}
-        for daq_node in daq_config_dict['daq_nodes']:
-            daq_cfg_ip = daq_node['ip_addr']
-            if 'port_forwarding' in daq_node:
-                real_ip = daq_node['port_forwarding']['gw_ip']
+        for daq_node in daq_config_dict["daq_nodes"]:
+            daq_cfg_ip = daq_node["ip_addr"]
+            if "port_forwarding" in daq_node:
+                real_ip = daq_node["port_forwarding"]["gw_ip"]
                 port = self.GRPC_PORT
                 self.logger.info(f'Using port forwarding: "{daq_cfg_ip=}:{port}" --> "{real_ip=}:{port}"')
                 daq_host = real_ip
             else:
                 daq_host = daq_cfg_ip
-            self.daq_nodes[daq_host] = {'config': daq_node}
-            self.daq_nodes[daq_host]['channel']: grpc.aio.Channel = None
-            self.daq_nodes[daq_host]['stub']: daq_data_pb2_grpc.DaqDataStub = None
+            self.daq_nodes[daq_host] = {"config": daq_node}
+            self.daq_nodes[daq_host]["channel"]: grpc.aio.Channel = None
+            self.daq_nodes[daq_host]["stub"]: daq_data_pb2_grpc.DaqDataStub = None
         self._stop_event = stop_event
 
     async def __aenter__(self):
         """Establishes async gRPC channels to all configured DAQ nodes."""
         for daq_host, daq_node in self.daq_nodes.items():
-            if daq_host.startswith('unix:'):
+            if daq_host.startswith("unix:"):
                 grpc_connection_target = f"{daq_host}"
             else:
                 grpc_connection_target = f"{daq_host}:{self.GRPC_PORT}"
-            daq_node['connection_target'] = grpc_connection_target
+            daq_node["connection_target"] = grpc_connection_target
             try:
-                channel = grpc.aio.insecure_channel(grpc_connection_target) # Use async channel
-                daq_node['channel'] = channel
-                daq_node['stub'] = daq_data_pb2_grpc.DaqDataStub(channel)
+                channel = grpc.aio.insecure_channel(grpc_connection_target)  # Use async channel
+                daq_node["channel"] = channel
+                daq_node["stub"] = daq_data_pb2_grpc.DaqDataStub(channel)
                 if await self.ping(daq_host):
                     self.valid_daq_hosts.add(daq_host)
             except grpc.RpcError as rpc_error:
@@ -578,10 +602,10 @@ class AioDaqDataClient:
         """Closes all open async gRPC channels."""
         self.logger.debug("Closing all async client gRPC channels.")
         tasks = []
-        for daq_host, daq_node in self.daq_nodes.items():
-            if daq_node.get('channel'):
+        for _daq_host, daq_node in self.daq_nodes.items():
+            if daq_node.get("channel"):
                 # Create a task to close each channel
-                task = asyncio.create_task(daq_node['channel'].close())
+                task = asyncio.create_task(daq_node["channel"].close())
                 tasks.append(task)
 
         if tasks:
@@ -595,10 +619,16 @@ class AioDaqDataClient:
         if exc_type and exc_type in [ConnectionError]:
             self.logger.warning(f"Client exiting: {exc_val}")
             return True  # Don't re-raise the exception
-        elif exc_type and exc_type not in [asyncio.CancelledError, grpc.FutureCancelledError, grpc.RpcError, KeyboardInterrupt, SystemExit]:
+        elif exc_type and exc_type not in [
+            asyncio.CancelledError,
+            grpc.FutureCancelledError,
+            grpc.RpcError,
+            KeyboardInterrupt,
+            SystemExit,
+        ]:
             self.logger.error(f"Client exiting due to an unhandled exception: {exc_val}")
-            return False # Re-raise the exception
-        return True # Suppress expected exceptions
+            return False  # Re-raise the exception
+        return True  # Suppress expected exceptions
 
     async def get_valid_daq_hosts(self) -> list[str]:
         """
@@ -611,10 +641,10 @@ class AioDaqDataClient:
             await self.is_daq_host_valid(host)
         return list(self.valid_daq_hosts)
 
-    async def get_daq_host_status(self) -> Dict[str, bool]:
+    async def get_daq_host_status(self) -> dict[str, bool]:
         valid_status = {}
         for host in self.daq_nodes:
-            connection_target = self.daq_nodes[host]['connection_target']
+            connection_target = self.daq_nodes[host]["connection_target"]
             valid_status[connection_target] = await self.is_daq_host_valid(host)
         return valid_status
 
@@ -666,7 +696,9 @@ class AioDaqDataClient:
         for host in host_set:
             if not await self.is_daq_host_valid(host):
                 raise ConnectionError(
-                    f"host={repr(host)} does not have a valid gRPC server channel. Valid daq_hosts: {self.valid_daq_hosts}")
+                    f"host={repr(host)} does not have a valid gRPC server channel. "
+                    f"Valid daq_hosts: {self.valid_daq_hosts}"
+                )
         valid_hosts = await self.get_valid_daq_hosts()
         if len(valid_hosts) == 0:
             raise ConnectionError("No valid daq hosts found")
@@ -691,7 +723,7 @@ class AioDaqDataClient:
             name = method.name
             input_type = method.input_type.name
             output_type = method.output_type.name
-            stream_fmt = '[magenta]stream[/magenta] '
+            stream_fmt = "[magenta]stream[/magenta] "
             client_stream = stream_fmt if method.client_streaming else ""
             server_stream = stream_fmt if method.server_streaming else ""
             return f"rpc {name}({client_stream}{input_type}) returns ({server_stream}{output_type})"
@@ -700,7 +732,7 @@ class AioDaqDataClient:
         valid_hosts = await self.validate_daq_hosts(hosts)
         for host in valid_hosts:
             daq_node = self.daq_nodes[host]
-            channel = daq_node['channel']
+            channel = daq_node["channel"]
             reflection_db = ProtoReflectionDescriptorDatabase(channel)
             services = reflection_db.get_services()
             desc_pool = DescriptorPool(reflection_db)
@@ -711,19 +743,19 @@ class AioDaqDataClient:
             for method in service_desc.methods:
                 msg += f"\n\tfound: {format_rpc_service(method)}"
             ret += msg
-            ret += '\n'
+            ret += "\n"
         return ret
 
     async def stream_images(
-            self,
-            hosts: list[str] | str | None,
-            stream_movie_data: bool,
-            stream_pulse_height_data: bool,
-            update_interval_seconds: float,
-            module_ids: tuple[int, ...] | tuple[()] = (),
-            wait_for_ready=False,
-            parse_pano_images=True,
-            timeout=36_000.0
+        self,
+        hosts: list[str] | str | None,
+        stream_movie_data: bool,
+        stream_pulse_height_data: bool,
+        update_interval_seconds: float,
+        module_ids: tuple[int, ...] | tuple[()] = (),
+        wait_for_ready=False,
+        parse_pano_images=True,
+        timeout=36_000.0,
     ) -> AsyncIterator[dict[str, Any]]:
         """Establishes an asynchronous, real-time stream of PANOSETI image data.
 
@@ -757,8 +789,12 @@ class AioDaqDataClient:
             module_ids=module_ids,
         )
 
-        streams = [self.daq_nodes[host]['stub'].StreamImages(stream_images_request, wait_for_ready=wait_for_ready, timeout=timeout) for
-                   host in valid_hosts]
+        streams = [
+            self.daq_nodes[host]["stub"].StreamImages(
+                stream_images_request, wait_for_ready=wait_for_ready, timeout=timeout
+            )
+            for host in valid_hosts
+        ]
         self.logger.info(f"Created {len(streams)} StreamImages RPCs to hosts: {valid_hosts}")
 
         async def response_generator():
@@ -772,24 +808,25 @@ class AioDaqDataClient:
                     # Swallow expected disconnection errors, but propagate others.
                     if e.code() in (grpc.StatusCode.CANCELLED, grpc.StatusCode.UNAVAILABLE):
                         self.logger.warning(
-                            f"Stream from host '{host_id}' terminated with an expected disconnection: {e.details()}")
+                            f"Stream from host '{host_id}' terminated with an expected disconnection: {e.details()}"
+                        )
                         await queue.put(None)  # Signal clean shutdown of this sub-stream
                     else:
                         self.logger.error(f"Stream from host '{host_id}' failed with a critical error: {e.details()}")
                         await queue.put(e)  # Propagate the critical error
                 finally:
                     # Ensure a sentinel is placed if the stream ends without error.
-                    if 'e' not in locals():
+                    if "e" not in locals():
                         await queue.put(None)
 
-            tasks = [asyncio.create_task(_forward_stream(s, h)) for s, h in zip(streams, valid_hosts)]
+            tasks = [asyncio.create_task(_forward_stream(s, h)) for s, h in zip(streams, valid_hosts, strict=False)]
 
             try:
                 finished_streams = 0
                 while finished_streams < len(streams) and not (self._stop_event and self._stop_event.is_set()):
                     try:
                         item = await asyncio.wait_for(queue.get(), timeout=1.0)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         continue
 
                     if item is None:
@@ -812,8 +849,7 @@ class AioDaqDataClient:
 
         return response_generator()
 
-    async def init_sim(self, hosts: list[str] | str, hp_io_cfg: dict | None=None,
-                       timeout=5.0) -> bool:
+    async def init_sim(self, hosts: list[str] | str, hp_io_cfg: dict | None = None, timeout=5.0) -> bool:
         """
         Asynchronously initializes a simulated run using a JSON config file.
 
@@ -833,12 +869,11 @@ class AioDaqDataClient:
         # on the server, which will then use its own default settings.
         if hp_io_cfg is None:
             config_to_send = hp_io_config_simulate
-            config_to_send['simulate_daq'] = True
+            config_to_send["simulate_daq"] = True
         else:
             config_to_send = hp_io_cfg
-        assert config_to_send['simulate_daq'] is True, f"{hp_io_cfg} for init_sim must have simulate_daq=True"
+        assert config_to_send["simulate_daq"] is True, f"{hp_io_cfg} for init_sim must have simulate_daq=True"
         return await self.init_hp_io(hosts, config_to_send, timeout)
-
 
     async def init_hp_io(self, hosts: list[str] | str | None, hp_io_cfg: dict, timeout=10.0) -> bool:
         """Asynchronously initializes or reconfigures the HpIoManager on the server.
@@ -859,13 +894,13 @@ class AioDaqDataClient:
 
         async def _init_single_host(host):
             daq_node = self.daq_nodes[host]
-            stub = daq_node['stub']
+            stub = daq_node["stub"]
             init_hp_io_request = InitHpIoRequest(
-                data_dir=hp_io_cfg.get('data_dir', ''),
-                update_interval_seconds=hp_io_cfg['update_interval_seconds'],
-                simulate_daq=hp_io_cfg['simulate_daq'],
-                force=hp_io_cfg.get('force', False),
-                module_ids=hp_io_cfg.get('module_ids', []),
+                data_dir=hp_io_cfg.get("data_dir", ""),
+                update_interval_seconds=hp_io_cfg["update_interval_seconds"],
+                simulate_daq=hp_io_cfg["simulate_daq"],
+                force=hp_io_cfg.get("force", False),
+                module_ids=hp_io_cfg.get("module_ids", []),
             )
 
             self.logger.info(f"Initializing hp_io on {host}...")
@@ -886,11 +921,9 @@ class AioDaqDataClient:
         if host not in self.daq_nodes:
             self.logger.debug(f"host={host} not found in daq_nodes. Valid hosts: {self.daq_nodes.keys()}")
             return False
-        stub = self.daq_nodes[host]['stub']
+        stub = self.daq_nodes[host]["stub"]
         try:
             await stub.Ping(Empty(), timeout=timeout, wait_for_ready=True)
             return True
         except grpc.aio.AioRpcError:
             return False
-
-

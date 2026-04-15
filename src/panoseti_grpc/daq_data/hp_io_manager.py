@@ -7,7 +7,9 @@ Incoming frames are assigned monotonically increasing frame IDs and cached
 in a shared dict so that any number of gRPC streaming clients can poll for
 fresh frames at their own rate.
 """
+
 from __future__ import annotations
+
 import asyncio
 import logging
 from collections import defaultdict
@@ -15,17 +17,24 @@ from collections import defaultdict
 from panoseti_grpc.generated.daq_data_pb2 import PanoImage
 
 from .config import DaqDataServerConfig
-from .resources import get_dp_name_from_props
-from .state import ReaderState, DataProductState, CachedPanoImage, ModuleState
 from .data_sources import UdsDataSource
+from .resources import get_dp_name_from_props
+from .state import CachedPanoImage, ModuleState, ReaderState
 
 
 class HpIoManager:
     """Orchestrates data acquisition from UDS sources and broadcasts to clients."""
 
-    def __init__(self, server_cfg: DaqDataServerConfig, hp_io_cfg: dict, reader_states: list[ReaderState],
-                 stop_event: asyncio.Event, valid: asyncio.Event,
-                 active_data_products_queue: asyncio.Queue, logger: logging.Logger):
+    def __init__(
+        self,
+        server_cfg: DaqDataServerConfig,
+        hp_io_cfg: dict,
+        reader_states: list[ReaderState],
+        stop_event: asyncio.Event,
+        valid: asyncio.Event,
+        active_data_products_queue: asyncio.Queue,
+        logger: logging.Logger,
+    ):
         self.server_cfg = server_cfg
         self.hp_io_cfg = hp_io_cfg
         self.reader_states = reader_states
@@ -40,7 +49,7 @@ class HpIoManager:
 
         self.modules: dict[int, ModuleState] = {}
         self.latest_data_cache: dict[int, dict[str, CachedPanoImage | None]] = defaultdict(
-            lambda: {'ph': None, 'movie': None}
+            lambda: {"ph": None, "movie": None}
         )
         self._frame_id_counter = 0
 
@@ -60,9 +69,7 @@ class HpIoManager:
                     "read_timeout": uds_cfg.read_timeout,
                 }
                 self.logger.info(f"Creating UDS server for data product '{dp_name}'")
-                self.data_sources.append(
-                    UdsDataSource(source_cfg, self.logger, self.data_queue, self.stop_event)
-                )
+                self.data_sources.append(UdsDataSource(source_cfg, self.logger, self.data_queue, self.stop_event))
         self.logger.info(f"Configured {len(self.data_sources)} data sources: {self.data_sources}")
 
     async def run(self):
@@ -98,9 +105,8 @@ class HpIoManager:
             except* Exception as eg:
                 for exc in eg.exceptions:
                     self.logger.error(f"HpIoManager task error: {exc}", exc_info=exc)
-        except asyncio.TimeoutError:
-            self.logger.error(
-                "Timeout waiting for all data sources to become ready. HpIoManager will not be valid.")
+        except TimeoutError:
+            self.logger.error("Timeout waiting for all data sources to become ready. HpIoManager will not be valid.")
         finally:
             self.valid.clear()
             self.logger.info("HpIoManager task exited.")
@@ -116,22 +122,19 @@ class HpIoManager:
                 await self._discover_module_from_image(pano_image)
 
                 self._frame_id_counter += 1
-                cached_image = CachedPanoImage(
-                    frame_id=self._frame_id_counter,
-                    pano_image=pano_image
-                )
+                cached_image = CachedPanoImage(frame_id=self._frame_id_counter, pano_image=pano_image)
                 self._cache_pano_image(cached_image)
 
             except asyncio.CancelledError:
                 break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
         self.logger.info("Processing loop finished.")
 
     def _cache_pano_image(self, cached_image: CachedPanoImage):
         """Caches the received CachedPanoImage, overwriting the previous one. Synchronous — no awaits needed."""
         pano_image = cached_image.pano_image
-        cache_key = 'ph' if pano_image.type == PanoImage.Type.PULSE_HEIGHT else 'movie'
+        cache_key = "ph" if pano_image.type == PanoImage.Type.PULSE_HEIGHT else "movie"
         self.latest_data_cache[pano_image.module_id][cache_key] = cached_image
 
     async def _discover_module_from_image(self, pano_image: PanoImage):

@@ -8,40 +8,35 @@ All three services are tested on the SAME port (GRPC_PORT / 50055) to
 demonstrate the multiplexed gRPC routing that is the core feature of the
 unified server.
 """
+
 from __future__ import annotations
 
-import grpc
 import json
-import multiprocessing
-import asyncio
 import socket
 import time
 
-import pytest
+import grpc
 from google.protobuf.empty_pb2 import Empty
 
 from panoseti_grpc.generated import (
-    daq_data_pb2,
-    daq_data_pb2_grpc,
     daq_control_pb2,
     daq_control_pb2_grpc,
+    daq_data_pb2_grpc,
 )
 from panoseti_grpc.telemetry.client import TelemetryClient
-
 from tests.unified_server.conftest import (
-    GRPC_PORT,
     DAQ_NODE_PORT,
-    poll_redis_list_len,
-    _run_unified_server,
+    GRPC_PORT,
     _start_server_process,
     _stop_server_process,
+    poll_redis_list_len,
     wait_for_port,
 )
-
 
 # ---------------------------------------------------------------------------
 # TCP connectivity
 # ---------------------------------------------------------------------------
+
 
 def test_server_accepts_tcp_connections(start_unified_server):
     """TCP connection to GRPC_PORT succeeds after server start."""
@@ -52,6 +47,7 @@ def test_server_accepts_tcp_connections(start_unified_server):
 # ---------------------------------------------------------------------------
 # DaqData service on unified port
 # ---------------------------------------------------------------------------
+
 
 def test_daq_data_ping_on_unified_server(start_unified_server):
     """DaqData Ping RPC reaches the DaqDataServicer on the shared port."""
@@ -65,6 +61,7 @@ def test_daq_data_ping_on_unified_server(start_unified_server):
 # ---------------------------------------------------------------------------
 # Telemetry service on unified port
 # ---------------------------------------------------------------------------
+
 
 def test_telemetry_log_rpc_on_unified_server(start_unified_server, redis_client):
     """Telemetry Log RPC routes to TelemetryServicer on the shared port."""
@@ -86,6 +83,7 @@ def test_telemetry_log_rpc_on_unified_server(start_unified_server, redis_client)
 # DaqControl service on unified port
 # ---------------------------------------------------------------------------
 
+
 def test_daq_control_status_on_unified_server(start_unified_server, tmp_path):
     """DaqControl StatusDaq routes to DaqControlServicer on the shared port."""
     with grpc.insecure_channel(f"localhost:{GRPC_PORT}") as channel:
@@ -105,6 +103,7 @@ def test_daq_control_status_on_unified_server(start_unified_server, tmp_path):
 # ---------------------------------------------------------------------------
 # All three on the same port
 # ---------------------------------------------------------------------------
+
 
 def test_all_three_services_reachable_same_port(start_unified_server, redis_client, tmp_path):
     """All three gRPC services respond on the same TCP port without interference."""
@@ -136,6 +135,7 @@ def test_all_three_services_reachable_same_port(start_unified_server, redis_clie
 # Graceful shutdown: port is freed after process exits
 # ---------------------------------------------------------------------------
 
+
 def test_graceful_shutdown_frees_port(daq_node_server_toml, tmp_path_factory):
     """After the server process exits, the TCP port is released and re-bindable.
 
@@ -144,7 +144,6 @@ def test_graceful_shutdown_frees_port(daq_node_server_toml, tmp_path_factory):
     """
     # Use a dedicated port to avoid affecting other test fixtures
     SHUTDOWN_PORT = 50070
-    from pathlib import Path
 
     # Rewrite TOML with a unique port for this test
     shutdown_toml = tmp_path_factory.mktemp("shutdown_cfg") / "shutdown.toml"

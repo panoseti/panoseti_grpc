@@ -1,28 +1,23 @@
 #!/usr/bin/env python3
-import time
-import asyncio
-import signal
 import argparse
-import logging
+import asyncio
 import json
+import logging
 import os.path
-import sys
-from rich import print
-from rich.pretty import pprint
+import signal
+import time
 from pathlib import Path
 
-from google.protobuf.json_format import MessageToDict
+from rich import print
+from rich.pretty import pprint
 
-from panoseti_grpc.generated import (
-    daq_data_pb2,
-    daq_data_pb2_grpc
-)
-from panoseti_grpc.generated.daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
 from panoseti_grpc.telemetry.logger import get_logger
-from .client import DaqDataClient, AioDaqDataClient
-from .plot import PulseHeightDistribution, PanoImagePreviewer
 
-CFG_DIR = Path('daq_data/config')
+from .client import AioDaqDataClient
+from .plot import PanoImagePreviewer, PulseHeightDistribution
+
+CFG_DIR = Path("daq_data/config")
+
 
 async def run_pulse_height_distribution(
     addc: AioDaqDataClient,
@@ -44,7 +39,7 @@ async def run_pulse_height_distribution(
         stream_pulse_height_data=True,
         update_interval_seconds=-1,
         module_ids=module_ids,
-        parse_pano_images=True
+        parse_pano_images=True,
     )
     ph_dist = PulseHeightDistribution(durations_seconds, module_ids, plot_update_interval)
     async for parsed_pano_image in stream_images_responses:
@@ -75,11 +70,14 @@ async def run_pano_image_preview(
         parse_pano_images=True,
         wait_for_ready=wait_for_ready,
     )
-    previewer = PanoImagePreviewer(stream_movie_data, stream_pulse_height_data, module_ids, plot_update_interval=plot_update_interval)
+    previewer = PanoImagePreviewer(
+        stream_movie_data, stream_pulse_height_data, module_ids, plot_update_interval=plot_update_interval
+    )
     async for parsed_pano_image in stream_images_responses:
         if shutdown_event.is_set():
             break
         previewer.update(parsed_pano_image)
+
 
 async def run_speed_test(
     addc: AioDaqDataClient,
@@ -87,29 +85,29 @@ async def run_speed_test(
     module_ids: tuple[int],
     shutdown_event: asyncio.Event,
 ):
-        # Stream images of all types as fast as possible
-        stream_images_responses = await addc.stream_images(
-            host,
-            stream_movie_data=True,
-            stream_pulse_height_data=True,
-            update_interval_seconds=-1,
-            module_ids=module_ids,
-            parse_pano_images=True
-        )
-        # ph_dist = PulseHeightDistribution(durations_seconds, module_ids, plot_update_interval)
-        npackets = 0
-        ref_t = time.monotonic()
-        logger = get_logger("daq_data.cli", level=logging.INFO)
-        async for _ in stream_images_responses:
-            if shutdown_event.is_set():
-                break
-            curr_t = time.monotonic()
-            npackets += 1
-            delta_t = curr_t - ref_t
-            if delta_t > 1:
-                logger.info(f"{npackets:>6} pkts / {delta_t:6.5f}s = {npackets / delta_t: 10.5f} (pkts/s)")
-                npackets = 0
-                ref_t = curr_t
+    # Stream images of all types as fast as possible
+    stream_images_responses = await addc.stream_images(
+        host,
+        stream_movie_data=True,
+        stream_pulse_height_data=True,
+        update_interval_seconds=-1,
+        module_ids=module_ids,
+        parse_pano_images=True,
+    )
+    # ph_dist = PulseHeightDistribution(durations_seconds, module_ids, plot_update_interval)
+    npackets = 0
+    ref_t = time.monotonic()
+    logger = get_logger("daq_data.cli", level=logging.INFO)
+    async for _ in stream_images_responses:
+        if shutdown_event.is_set():
+            break
+        curr_t = time.monotonic()
+        npackets += 1
+        delta_t = curr_t - ref_t
+        if delta_t > 1:
+            logger.info(f"{npackets:>6} pkts / {delta_t:6.5f}s = {npackets / delta_t: 10.5f} (pkts/s)")
+            npackets = 0
+            ref_t = curr_t
 
 
 async def do_ping_fn(addc, host):
@@ -120,10 +118,12 @@ async def do_ping_fn(addc, host):
     else:
         print(f"PING {host=}: [red] failed [/red]")
 
+
 async def do_list_hosts_fn(addc):
-    print(f"DAQ host status (True = valid, False = invalid):")
+    print("DAQ host status (True = valid, False = invalid):")
     host_status_dict = await addc.get_daq_host_status()
     pprint(host_status_dict, expand_all=True)
+
 
 async def do_reflect_services_fn(addc: AioDaqDataClient, host):
     print("-------------- ReflectServices --------------")
@@ -133,27 +133,30 @@ async def do_reflect_services_fn(addc: AioDaqDataClient, host):
     except ValueError as e:
         print(f"Error reflecting services: {e}")
 
+
 async def do_init_fn(addc, host, hp_io_cfg, timeout=15.0):
     print("-------------- InitHpIo --------------")
     if host is None:
-        print(f"Initializing hp_io thread on all hosts")
+        print("Initializing hp_io thread on all hosts")
     else:
         print(f"Initializing hp_io thread on {host=}")
     await addc.init_hp_io(host, hp_io_cfg, timeout=timeout)
 
+
 def parse_log_level(log_level):
-    if log_level == 'debug':
+    if log_level == "debug":
         return logging.DEBUG
-    elif log_level == 'info':
+    elif log_level == "info":
         return logging.INFO
-    elif log_level == 'warning':
+    elif log_level == "warning":
         return logging.WARNING
-    elif log_level == 'error':
+    elif log_level == "error":
         return logging.ERROR
-    elif log_level == 'critical':
+    elif log_level == "critical":
         return logging.CRITICAL
     else:
         raise ValueError(f"Invalid log level: {log_level}")
+
 
 def load_hp_io_cfg(args):
     hp_io_cfg = None
@@ -161,9 +164,9 @@ def load_hp_io_cfg(args):
     if args.init_sim or args.cfg_path is not None:
         do_init = True
         if args.init_sim:
-            hp_io_cfg_path = CFG_DIR / 'hp_io_config_simulate.json'
+            hp_io_cfg_path = CFG_DIR / "hp_io_config_simulate.json"
         elif args.cfg_path is not None:
-            hp_io_cfg_path = f'{args.cfg_path}'
+            hp_io_cfg_path = f"{args.cfg_path}"
         else:
             hp_io_cfg_path = None
 
@@ -173,18 +176,17 @@ def load_hp_io_cfg(args):
         elif not hp_io_cfg_path and not os.path.exists(hp_io_cfg_path):
             raise FileNotFoundError(f"Config file not found: '{os.path.abspath(hp_io_cfg_path)}'")
         else:
-            with open(hp_io_cfg_path, "r") as f:
+            with open(hp_io_cfg_path) as f:
                 hp_io_cfg = json.load(f)
     return hp_io_cfg, do_init
+
 
 async def run_demo_api(args):
     # Graceful Shutdown Setup
     shutdown_event = asyncio.Event()
 
     def _signal_handler(*_):
-        logging.getLogger("daq_data.client").info(
-            "Shutdown signal received, closing client stream..."
-        )
+        logging.getLogger("daq_data.client").info("Shutdown signal received, closing client stream...")
         shutdown_event.set()
 
     loop = asyncio.get_running_loop()
@@ -201,7 +203,9 @@ async def run_demo_api(args):
     host = args.host
     module_ids = args.module_ids
     log_level = parse_log_level(args.log_level)
-    async with AioDaqDataClient(args.daq_config_path, args.net_config_path, stop_event=shutdown_event, log_level=log_level) as addc:
+    async with AioDaqDataClient(
+        args.daq_config_path, args.net_config_path, stop_event=shutdown_event, log_level=log_level
+    ) as addc:
         if do_ping:
             await do_ping_fn(addc, host)
 
@@ -233,7 +237,7 @@ async def run_demo_api(args):
                         plot_update_interval=refresh_period,
                         module_ids=module_ids,
                         wait_for_ready=True,
-                        shutdown_event=shutdown_event
+                        shutdown_event=shutdown_event,
                     )
                 )
                 plot_tasks.append(plot_view_task)
@@ -246,25 +250,20 @@ async def run_demo_api(args):
                         plot_update_interval=refresh_period,
                         durations_seconds=(10, 60, 600),
                         module_ids=module_ids,
-                        shutdown_event=shutdown_event
+                        shutdown_event=shutdown_event,
                     )
                 )
                 plot_tasks.append(plot_phdist_task)
             if args.plot_speed:
                 plot_speed_task = asyncio.create_task(
-                    run_speed_test(
-                        addc,
-                        host,
-                        module_ids=module_ids,
-                        shutdown_event=shutdown_event
-                    )
+                    run_speed_test(addc, host, module_ids=module_ids, shutdown_event=shutdown_event)
                 )
                 plot_tasks.append(plot_speed_task)
             # use gather to concurrently do different plots
             await asyncio.gather(*plot_tasks)
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "daq_config_path",
@@ -303,7 +302,7 @@ if __name__ == "__main__":
         "--init",
         help="initialize the hp_io thread with CFG_PATH='/path/to/hp_io_config.json'",
         type=str,
-        dest="cfg_path"
+        dest="cfg_path",
     )
 
     parser.add_argument(
@@ -339,18 +338,19 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--module-ids",
-        help="whitelist for the module ids to stream data from. If empty, data from all available modules are returned.",
+        help="whitelist for the module ids to stream data from. "
+        "If empty, data from all available modules are returned.",
         nargs="*",
         type=int,
         default=[],
     )
 
-    default_log_level = 'info'
+    default_log_level = "info"
     parser.add_argument(
         "--log-level",
         help=f"set the log level for the DaqDataClient logger. Default: '{default_log_level}'",
         choices=["debug", "info", "warning", "error", "critical"],
-        default=default_log_level
+        default=default_log_level,
     )
 
     args = parser.parse_args()

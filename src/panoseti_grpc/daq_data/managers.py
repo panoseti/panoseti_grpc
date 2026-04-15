@@ -1,15 +1,18 @@
 """Classes for managing DaqData server state."""
+
 from __future__ import annotations
-import uuid
+
 import asyncio
-from contextlib import asynccontextmanager
 import logging
+import uuid
+from contextlib import asynccontextmanager
+
 import grpc
 
 from .config import DaqDataServerConfig
 from .hp_io_manager import HpIoManager
-from .state import ReaderState
 from .simulate import SimulationManager
+from .state import ReaderState
 
 
 class HpIoTaskManager:
@@ -44,7 +47,7 @@ class HpIoTaskManager:
         """Creates a new hp_io task. Stops any existing task first."""
         await self.stop()
 
-        is_sim = hp_io_cfg.get('simulate_daq', False)
+        is_sim = hp_io_cfg.get("simulate_daq", False)
         sim_setup_task = None
         if is_sim:
             sim_setup_task = asyncio.create_task(self.simulation_manager.setup_environment())
@@ -53,8 +56,13 @@ class HpIoTaskManager:
         active_data_products_queue = asyncio.Queue()
 
         self.hp_io_manager = HpIoManager(
-            self.server_cfg, hp_io_cfg, self.reader_states,
-            self.stop_event, self.hp_io_valid_event, active_data_products_queue, self.logger,
+            self.server_cfg,
+            hp_io_cfg,
+            self.reader_states,
+            self.stop_event,
+            self.hp_io_valid_event,
+            active_data_products_queue,
+            self.logger,
         )
         self.hp_io_task = asyncio.create_task(self.hp_io_manager.run())
         try:
@@ -73,7 +81,7 @@ class HpIoTaskManager:
                     self.logger.error("Failed to start UDS simulation loop after IO manager was ready.")
                     await self.stop()
                     return False
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self.logger.error("Timeout waiting for hp_io task to become valid.")
             await self.stop()
             return False
@@ -89,7 +97,7 @@ class HpIoTaskManager:
             try:
                 await asyncio.wait_for(self.hp_io_task, timeout=2.0)
                 self.logger.info("Successfully terminated hp_io task.")
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self.logger.warning("Timeout stopping hp_io task. Cancelling.")
                 self.hp_io_task.cancel()
             except Exception as e:
@@ -116,7 +124,8 @@ class ClientManager:
             ReaderState(
                 cancel_reader_event=self._cancel_readers_event,
                 shutdown_event=self._shutdown_event,
-            ) for _ in range(self.max_clients)
+            )
+            for _ in range(self.max_clients)
         ]
         self._active_readers = 0
         self._writer_lock = asyncio.Lock()

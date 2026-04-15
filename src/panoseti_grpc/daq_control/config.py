@@ -1,28 +1,25 @@
 """
 Daq Control Service configuration classes for validation
 """
-from pydantic import (
-    BaseModel,
-    Field,
-    field_validator,
-    model_validator,
-    ValidationError,
-    IPvAnyAddress,
-    DirectoryPath
-)
-from typing import Annotated
+
 from pathlib import Path
+from typing import Annotated
+
+from pydantic import BaseModel, DirectoryPath, Field, IPvAnyAddress, model_validator
 
 
 class DaqControlServerConfig(BaseModel):
     """Server-level configuration for the DaqControl gRPC service."""
+
     grpc_port: int = Field(50051, ge=1024, le=65535)
     log_dir: str = "/var/log/panoseti"
     grpc_logging: bool = True
     shutdown_grace_period: float = Field(5.0, ge=0)
     log_level: str = Field("INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
 
+
 Uint8 = Annotated[int, Field(ge=0, le=255)]
+
 
 class StartDaqModel(BaseModel):
     data_dir: Path = Field(...)
@@ -33,43 +30,42 @@ class StartDaqModel(BaseModel):
     run_dir: Path = Field(...)
     obs: str = Field(..., min_length=1, max_length=16)
     module_id: list[Uint8] = Field(...)
-    
-    @model_validator(mode='after')
-    def create_run_dir(self) -> 'StartDaqModel':
+
+    @model_validator(mode="after")
+    def create_run_dir(self) -> "StartDaqModel":
         self.data_dir.mkdir(parents=True, exist_ok=True)
         full_path = self.data_dir / self.run_dir
         full_path.mkdir(parents=True, exist_ok=True)
         return self
 
+
 class StopDaqModel(BaseModel):
     data_dir: DirectoryPath = Field(...)
     run_dir: Path = Field(...)
 
-    @model_validator(mode='after')
-    def check_run_dir(self) -> 'StopDaqModel':
+    @model_validator(mode="after")
+    def check_run_dir(self) -> "StopDaqModel":
         full_path = self.data_dir / self.run_dir
         if not full_path.is_dir():
-            raise ValueError('{full_path} not exist.')
+            raise ValueError("{full_path} not exist.")
         return self
-    
+
+
 class StatusDaqModel(BaseModel):
     data_dir: DirectoryPath = Field(...)
     check_hashpipe_running: bool = Field(...)
     check_disk_usage: bool = Field(...)
     check_run_dirs: bool = Field(...)
 
+
 class CleanupDataModel(BaseModel):
     data_dir: DirectoryPath = Field(...)
     run_dir: Path = Field(...)
     module_id: list[Uint8] = Field(...)
 
-    @model_validator(mode='after')
-    def check_run_dir(self) -> 'CleanupDataModel':
+    @model_validator(mode="after")
+    def check_run_dir(self) -> "CleanupDataModel":
         full_path = self.data_dir / self.run_dir
         if not full_path.is_dir():
-            raise ValueError('{full_path} not exist.')
+            raise ValueError("{full_path} not exist.")
         return self
-
-
-
-

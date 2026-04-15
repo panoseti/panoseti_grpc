@@ -1,21 +1,18 @@
 """Unit tests for Pydantic config models and DataProduct enum."""
+
 import pytest
 from pydantic import ValidationError
 
 from panoseti_grpc.daq_data.config import (
     DaqDataServerConfig,
     UdsAcquisitionConfig,
-    AcquisitionMethodsConfig,
-    SimulateDaqConfig,
-    SimSourceDataConfig,
-    UdsSimStrategyConfig,
 )
 from panoseti_grpc.daq_data.state import DataProduct
-
 
 # ---------------------------------------------------------------------------
 # DataProduct enum
 # ---------------------------------------------------------------------------
+
 
 class TestDataProductEnum:
     def test_valid_values_parse(self):
@@ -58,6 +55,7 @@ class TestDataProductEnum:
 
     def test_pano_image_type(self):
         from panoseti_grpc.generated.daq_data_pb2 import PanoImage
+
         assert DataProduct.PH256.pano_image_type == PanoImage.Type.PULSE_HEIGHT
         assert DataProduct.IMG16.pano_image_type == PanoImage.Type.MOVIE
 
@@ -65,6 +63,7 @@ class TestDataProductEnum:
 # ---------------------------------------------------------------------------
 # UdsAcquisitionConfig
 # ---------------------------------------------------------------------------
+
 
 class TestUdsAcquisitionConfig:
     def test_defaults_are_valid(self):
@@ -96,6 +95,7 @@ class TestUdsAcquisitionConfig:
 # ---------------------------------------------------------------------------
 # DaqDataServerConfig
 # ---------------------------------------------------------------------------
+
 
 class TestDaqDataServerConfig:
     def test_defaults_parse_without_arguments(self):
@@ -152,9 +152,7 @@ class TestDaqDataServerConfig:
                     "movie_pff_path": "some/movie.pff",
                     "ph_pff_path": "some/ph.pff",
                 },
-                "strategies": {
-                    "uds": {"data_products": ["img16", "ph256"]}
-                }
+                "strategies": {"uds": {"data_products": ["img16", "ph256"]}},
             }
         }
         cfg = DaqDataServerConfig.model_validate(raw)

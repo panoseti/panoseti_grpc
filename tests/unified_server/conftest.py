@@ -23,18 +23,16 @@ Three server fixtures are provided:
 Ports are intentionally different from 50051 to avoid conflicts with other
 running services or test suites.
 """
+
 from __future__ import annotations
 
 import asyncio
-import json
 import multiprocessing
 import os
 import socket
-import tempfile
 import time
-import tomllib
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 
 import pytest
 import redis as redis_sync
@@ -47,9 +45,9 @@ from panoseti_grpc.telemetry.logger import PanosetiLogFactory
 # ---------------------------------------------------------------------------
 REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
-REDIS_TEST_DB: int = 2          # Isolated DB index to avoid clobbering other tests
+REDIS_TEST_DB: int = 2  # Isolated DB index to avoid clobbering other tests
 
-GRPC_PORT: int = int(os.getenv("GRPC_PORT", "50055"))         # All-services server
+GRPC_PORT: int = int(os.getenv("GRPC_PORT", "50055"))  # All-services server
 HEADNODE_PORT: int = int(os.getenv("HEADNODE_PORT", "50056"))  # Telemetry-only server
 DAQ_NODE_PORT: int = int(os.getenv("DAQ_NODE_PORT", "50057"))  # daq_data + daq_control
 
@@ -59,6 +57,7 @@ SERVER_STARTUP_TIMEOUT: float = 30.0
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def wait_for_port(host: str, port: int, timeout: float = SERVER_STARTUP_TIMEOUT) -> bool:
     """Poll until a TCP port accepts connections or timeout expires.
@@ -114,6 +113,7 @@ def poll_redis_key(
 # Server subprocess entry point
 # ---------------------------------------------------------------------------
 
+
 def _run_unified_server(toml_path: str) -> None:
     """Target function for server subprocess.
 
@@ -150,6 +150,7 @@ def _stop_server_process(proc: multiprocessing.Process, timeout: float = 5.0) ->
 # ---------------------------------------------------------------------------
 # TOML config builders
 # ---------------------------------------------------------------------------
+
 
 def _build_unified_toml(
     toml_path: Path,
@@ -312,6 +313,7 @@ log_level         = "INFO"
 # Session fixtures: temp directories
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def unified_socket_dir(tmp_path_factory):
     """Temporary directory for UDS sockets used by the all-services server."""
@@ -327,6 +329,7 @@ def daq_node_socket_dir(tmp_path_factory):
 # ---------------------------------------------------------------------------
 # Session fixtures: server TOML files
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 def unified_server_toml(tmp_path_factory, unified_socket_dir):
@@ -372,6 +375,7 @@ def daq_node_server_toml(tmp_path_factory, daq_node_socket_dir):
 # ---------------------------------------------------------------------------
 # Session fixtures: running server processes
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 def _require_redis() -> None:
@@ -430,19 +434,15 @@ def start_daq_node_server(daq_node_server_toml):
 # Redis fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def redis_client() -> Generator[redis_sync.Redis, None, None]:
     """Session-scoped Redis client connected to the test DB."""
-    r = redis_sync.Redis(
-        host=REDIS_HOST, port=REDIS_PORT, db=REDIS_TEST_DB, decode_responses=True
-    )
+    r = redis_sync.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_TEST_DB, decode_responses=True)
     try:
         r.ping()
     except redis_sync.ConnectionError:
-        pytest.fail(
-            f"Redis not available at {REDIS_HOST}:{REDIS_PORT}. "
-            "Start Redis locally or run via docker compose."
-        )
+        pytest.fail(f"Redis not available at {REDIS_HOST}:{REDIS_PORT}. Start Redis locally or run via docker compose.")
     r.flushdb()
     yield r
     r.flushdb()
@@ -452,6 +452,7 @@ def redis_client() -> Generator[redis_sync.Redis, None, None]:
 # ---------------------------------------------------------------------------
 # Auto-use: reset PanosetiLogFactory singleton between tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def reset_log_factory():

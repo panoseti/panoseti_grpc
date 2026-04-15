@@ -1,24 +1,27 @@
 # tests/conftest.py
 
-import sys
-import pytest
-import pytest_asyncio
 import asyncio
 import json
 import logging
-import grpc
+import sys
 from pathlib import Path
-from panoseti_grpc.ublox_control.server import UbloxControlServicer, serve
-from panoseti_grpc.ublox_control.resources import make_rich_logger, load_package_json
-from panoseti_grpc.generated import ublox_control_pb2_grpc
+
+import grpc
+import pytest
+import pytest_asyncio
+
+from panoseti_grpc.ublox_control.resources import make_rich_logger
+from panoseti_grpc.ublox_control.server import UbloxControlServicer
 
 TEST_CFG_DIR = Path("tests/config")
 TEST_CFG_DIR.mkdir(exist_ok=True, parents=True)
 TEST_DATA_DIR = Path("tests/ublox_control/test_data")
 
+
 @pytest.fixture(scope="session")
 def ubx_packets_data_path():
     return TEST_DATA_DIR / "ubx_packets.jsonl"
+
 
 # Create a dummy server config for testing
 @pytest.fixture(scope="session")
@@ -55,11 +58,7 @@ async def live_server(server_config):
     cmd = [sys.executable, "-m", "panoseti_grpc.ublox_control.server"]
 
     # Start the server as a subprocess
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
+    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
 
     # Wait for the server to become ready by polling the gRPC port
     try:
@@ -90,5 +89,3 @@ async def live_server(server_config):
             print(f"--- Server STDOUT ---\n{stdout.decode()}\n--------------------")
         if stderr:
             print(f"--- Server STDERR ---\n{stderr.decode()}\n--------------------")
-
-

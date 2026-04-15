@@ -16,6 +16,7 @@ Usage examples
     pseti-cli daq-data stream --seconds 5
     pseti-cli daq-control status
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,7 +26,6 @@ import logging
 import os
 import sys
 import time
-from typing import Any
 
 import grpc
 from google.protobuf.empty_pb2 import Empty
@@ -95,7 +95,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     Returns 0 if all enabled services respond, 1 if any fail.
     """
     host, port = args.host, args.port
-    logger = get_logger("pseti-cli.status", grpc_enabled=args.grpc_logging)
+    get_logger("pseti-cli.status", grpc_enabled=args.grpc_logging)
 
     table = Table(title=f"Server status — {host}:{port}", show_header=True)
     table.add_column("Service", style="bold")
@@ -220,7 +220,7 @@ def cmd_telemetry_log(args: argparse.Namespace) -> int:
 
     Returns 0 on success, 1 on failure.
     """
-    logger = get_logger("pseti-cli.telemetry", grpc_enabled=args.grpc_logging)
+    get_logger("pseti-cli.telemetry", grpc_enabled=args.grpc_logging)
     client = TelemetryClient(host=args.host, port=args.port)
     try:
         future = client.send_log_future(
@@ -234,10 +234,10 @@ def cmd_telemetry_log(args: argparse.Namespace) -> int:
         return 1
 
     if result.success:
-        console.print(f"[green]✓[/green] Log accepted by telemetry service.")
+        console.print("[green]✓[/green] Log accepted by telemetry service.")
         return 0
     else:
-        console.print(f"[red]✗ Server rejected log (success=False)[/red]")
+        console.print("[red]✗ Server rejected log (success=False)[/red]")
         return 1
 
 
@@ -284,7 +284,7 @@ def cmd_daq_data_init_sim(args: argparse.Namespace) -> int:
     """
     from panoseti_grpc.util.resources import load_package_json
 
-    logger = get_logger("pseti-cli.daq-data", grpc_enabled=args.grpc_logging)
+    get_logger("pseti-cli.daq-data", grpc_enabled=args.grpc_logging)
 
     try:
         hp_io_cfg = load_package_json("panoseti_grpc", "daq_data/config/hp_io_config_simulate.json")
@@ -297,10 +297,13 @@ def cmd_daq_data_init_sim(args: argparse.Namespace) -> int:
     try:
         with _make_channel(args.host, args.port) as channel:
             stub = daq_data_pb2_grpc.DaqDataStub(channel)
-            req = daq_data_pb2.InitHpIoRequest(**{
-                k: v for k, v in hp_io_cfg.items()
-                if k in {f.name for f in daq_data_pb2.InitHpIoRequest.DESCRIPTOR.fields}
-            })
+            req = daq_data_pb2.InitHpIoRequest(
+                **{
+                    k: v
+                    for k, v in hp_io_cfg.items()
+                    if k in {f.name for f in daq_data_pb2.InitHpIoRequest.DESCRIPTOR.fields}
+                }
+            )
             resp = stub.InitHpIo(req, timeout=args.timeout, wait_for_ready=True)
     except grpc.RpcError as e:
         console.print(f"[red]✗ InitHpIo RPC failed — {e.code().name}: {e.details()}[/red]")
@@ -352,9 +355,7 @@ async def _stream_images(host: str, port: int, seconds: float, timeout: float) -
                 module_id = resp.pano_image.module_id
                 frame_number = resp.pano_image.frame_number
                 dp = "movie" if resp.pano_image.type == daq_data_pb2.PanoImage.MOVIE else "ph"
-                console.print(
-                    f"frame #{frame_number:6d}  module={module_id}  type={dp}"
-                )
+                console.print(f"frame #{frame_number:6d}  module={module_id}  type={dp}")
     except grpc.aio.AioRpcError as e:
         if e.code() == grpc.StatusCode.CANCELLED:
             pass  # Normal stream cancellation
@@ -384,7 +385,7 @@ def cmd_daq_control_status(args: argparse.Namespace) -> int:
 
     Returns 0 on success, 1 on failure.
     """
-    logger = get_logger("pseti-cli.daq-control", grpc_enabled=args.grpc_logging)
+    get_logger("pseti-cli.daq-control", grpc_enabled=args.grpc_logging)
     try:
         with _make_channel(args.host, args.port) as channel:
             stub = daq_control_pb2_grpc.DaqControlStub(channel)
@@ -400,11 +401,12 @@ def cmd_daq_control_status(args: argparse.Namespace) -> int:
         return 1
 
     if not resp.success:
-        console.print(f"[red]✗ StatusDaq returned success=False[/red]")
+        console.print("[red]✗ StatusDaq returned success=False[/red]")
         return 1
 
     if args.json:
         from google.protobuf.json_format import MessageToDict
+
         print(json.dumps(MessageToDict(resp, preserving_proto_field_name=True)))
         return 0
 

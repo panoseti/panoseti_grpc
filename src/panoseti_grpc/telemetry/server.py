@@ -9,28 +9,30 @@ Features:
 - Descriptive Error Reporting
 """
 
-import time
 import asyncio
-import signal
 import os
-import grpc
+import signal
+import time
 from pathlib import Path
+
+import grpc
+from google.protobuf.json_format import MessageToDict
 
 # gRPC Imports
 from panoseti_grpc.generated import telemetry_pb2, telemetry_pb2_grpc
-from google.protobuf.json_format import MessageToDict
 
 # Local Imports
-from .config import TelemetryConfig, LogSchema
-from .resources import make_rich_logger, get_config_path
+from .config import LogSchema, TelemetryConfig
+from .resources import get_config_path, make_rich_logger
 
 # Create the main logger
 logger = make_rich_logger("telemetry_server")
 
 # --- Configuration ---
-BATCH_SIZE = 100         # Max items to send in one Redis command
-BATCH_INTERVAL = 0.5     # Max time to wait before flushing (seconds)
+BATCH_SIZE = 100  # Max items to send in one Redis command
+BATCH_INTERVAL = 0.5  # Max time to wait before flushing (seconds)
 LOG_REDIS_KEY = "logs:ingress"
+
 
 class RedisBatcher:
     """
@@ -88,6 +90,7 @@ class RedisBatcher:
         except asyncio.CancelledError:
             pass
 
+
 class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
     """
     Implements the Telemetry gRPC service.
@@ -101,7 +104,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
         # Initialize the Batcher
         self.batcher = RedisBatcher(redis_client)
         logger.info(f"TelemetryServicer initialized with config: [bold cyan]{self.config_path}[/]")
-        logger.info(f"[bold green]Telemetry Server Online[/]", extra={"markup": True})
+        logger.info("[bold green]Telemetry Server Online[/]", extra={"markup": True})
 
     def _load_config(self):
         """Loads or reloads the configuration."""
@@ -119,11 +122,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
 
     def _proto_to_dict(self, message):
         """Helper to safely convert Proto to Dict for Pydantic."""
-        return MessageToDict(
-            message,
-            preserving_proto_field_name=True,
-            always_print_fields_with_no_presence=True
-        )
+        return MessageToDict(message, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)
 
     async def Log(self, request, context) -> telemetry_pb2.StatusResponse:
         """
@@ -145,7 +144,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
                 "thread_name": request.thread_name,
                 "git_commit": request.git_commit,
                 "git_branch": request.git_branch,
-                "payload_json": request.payload_json
+                "payload_json": request.payload_json,
             }
 
             # 2. Validate (Pydantic)
@@ -167,7 +166,6 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
             # We log the error locally so the server admin sees it
             logger.warning(f"Log Ingest Rejected: {e}")
             return telemetry_pb2.StatusResponse(success=False, message=str(e))
-
 
     async def ReportStatus(self, request, context):
         start_time = time.perf_counter()
@@ -210,7 +208,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
                 logger.warning(
                     f"[bold yellow]Unregistered Type:[/bold yellow] '{device_type}' not found in TOML. "
                     f"Routing to SANDBOX (TTL=1h). Check `telemetry_config.toml`.",
-                    extra={"markup": True}
+                    extra={"markup": True},
                 )
             else:
                 # Check for Mode vs Payload Mismatches
@@ -219,7 +217,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
                     logger.warning(
                         f"[bold orange3]Protocol Mismatch:[/bold orange3] Production device '{device_type}' "
                         f"sent via 'log_flexible'. Schema will be STRICTLY enforced.",
-                        extra={"markup": True}
+                        extra={"markup": True},
                     )
 
             # 2. Validation & Config Lookup
@@ -243,7 +241,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
                 return telemetry_pb2.StatusResponse(success=False, message=friendly_msg)
 
             # 3. Add Timestamp (Server Receipt Time)
-            validated_data['Computer_UTC'] = time.time()
+            validated_data["Computer_UTC"] = time.time()
 
             # 4. Write to Redis (Async)
             # Cast all values to strings to ensure Redis compatibility
@@ -268,7 +266,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
             logger.debug(
                 f"Stored [bold cyan]{device_type}[/] for [yellow]{device_id}[/] "
                 f"({payload_size}b) in {duration_ms:.2f}ms [dim](TTL: {ttl}s)[/]",
-                extra={"markup": True}
+                extra={"markup": True},
             )
 
             return telemetry_pb2.StatusResponse(success=True)
@@ -280,7 +278,9 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
             await context.abort(grpc.StatusCode.INTERNAL, str(e))
 
 
-async def serve(redis_host='localhost', redis_port=6379, redis_db: int = 0, port=50051, uds_path=None, config_path=None):
+async def serve(
+    redis_host="localhost", redis_port=6379, redis_db: int = 0, port=50051, uds_path=None, config_path=None
+):
     """
     Main entry point for running the server.
     Args:
@@ -289,6 +289,7 @@ async def serve(redis_host='localhost', redis_port=6379, redis_db: int = 0, port
     """
     # 1. Setup Redis (Async)
     import redis.asyncio as redis
+
     logger.info(f"Connecting to Redis at [bold]{redis_host}:{redis_port}[/]...")
 
     # --- 1. ROBUST REDIS CONNECTION (Modified) ---
@@ -296,7 +297,9 @@ async def serve(redis_host='localhost', redis_port=6379, redis_db: int = 0, port
     max_retries = 10
     for i in range(max_retries):
         try:
-            logger.info(f"Connecting to Redis at [bold]DB={redis_db}, {redis_host}:6379[/] (Attempt {i + 1}/{max_retries})...")
+            logger.info(
+                f"Connecting to Redis at [bold]DB={redis_db}, {redis_host}:6379[/] (Attempt {i + 1}/{max_retries})..."
+            )
             # Create client
             r = redis.Redis(host=redis_host, port=6379, db=redis_db, decode_responses=True)
             # Force a connection check
@@ -331,6 +334,7 @@ async def serve(redis_host='localhost', redis_port=6379, redis_db: int = 0, port
 
     # 2b. Enable gRPC reflection for service discovery
     from grpc_reflection.v1alpha import reflection as grpc_reflection
+
     SERVICE_NAMES = (
         telemetry_pb2.DESCRIPTOR.services_by_name["Telemetry"].full_name,
         grpc_reflection.SERVICE_NAME,
@@ -338,13 +342,13 @@ async def serve(redis_host='localhost', redis_port=6379, redis_db: int = 0, port
     grpc_reflection.enable_server_reflection(SERVICE_NAMES, server)
 
     # 3. Bind Ports (TCP and Optional UDS)
-    server.add_insecure_port(f'[::]:{port}')
+    server.add_insecure_port(f"[::]:{port}")
     logger.info(f"gRPC Server listening on TCP port [bold]{port}[/]")
 
     if uds_path:
         if os.path.exists(uds_path):
             os.unlink(uds_path)
-        server.add_insecure_port(f'unix://{uds_path}')
+        server.add_insecure_port(f"unix://{uds_path}")
         logger.info(f"gRPC Server listening on UDS [bold]{uds_path}[/]")
 
     # 4. Graceful Shutdown Setup
@@ -382,6 +386,7 @@ def main():
         asyncio.run(serve(redis_host=REDIS_HOST, port=GRPC_PORT))
     except KeyboardInterrupt:
         pass
+
 
 if __name__ == "__main__":
     main()

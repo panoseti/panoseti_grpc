@@ -4,10 +4,9 @@ Unit tests for the unified_main.py CLI (panoseti-server / python -m panoseti_grp
 Tests are run via subprocess so they exercise the real argparse entrypoint.
 No running server is required.
 """
+
 import subprocess
 import sys
-
-import pytest
 
 
 def run_cli(*args: str, timeout: int = 10) -> subprocess.CompletedProcess:
@@ -24,6 +23,7 @@ def run_cli(*args: str, timeout: int = 10) -> subprocess.CompletedProcess:
 # --list-services
 # ---------------------------------------------------------------------------
 
+
 def test_list_services_exit_zero():
     """--list-services exits 0 and prints all three registered service names."""
     result = run_cli("--list-services")
@@ -36,6 +36,7 @@ def test_list_services_exit_zero():
 def test_list_services_no_server_started():
     """--list-services must not attempt to start a server (fast exit)."""
     import time
+
     start = time.monotonic()
     result = run_cli("--list-services")
     elapsed = time.monotonic() - start
@@ -47,6 +48,7 @@ def test_list_services_no_server_started():
 # ---------------------------------------------------------------------------
 # --help
 # ---------------------------------------------------------------------------
+
 
 def test_help_flag_exit_zero():
     """--help exits 0."""
@@ -74,6 +76,7 @@ def test_help_documents_profile_choices():
 # --profile validation
 # ---------------------------------------------------------------------------
 
+
 def test_invalid_profile_exits_nonzero():
     """An invalid --profile value causes a non-zero exit (argparse error)."""
     result = run_cli("--profile", "invalid_profile_xyz")
@@ -90,6 +93,7 @@ def test_valid_profile_names_are_accepted():
 # ---------------------------------------------------------------------------
 # --config
 # ---------------------------------------------------------------------------
+
 
 def test_config_nonexistent_file_exits_nonzero(tmp_path):
     """--config pointing to a non-existent file causes non-zero exit."""
@@ -115,6 +119,7 @@ daq_control = false
 # ---------------------------------------------------------------------------
 # --services override flag
 # ---------------------------------------------------------------------------
+
 
 def test_services_flag_with_list_services_exits_zero():
     """--services telemetry --list-services exits 0 (flag is parsed correctly)."""

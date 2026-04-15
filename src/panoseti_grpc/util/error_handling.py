@@ -1,5 +1,7 @@
 """Shared gRPC error-handling utilities for all panoseti_grpc services."""
+
 from __future__ import annotations
+
 import asyncio
 import functools
 import logging
@@ -12,6 +14,7 @@ def grpc_error_handler(func):
 
     CancelledError is always re-raised so that task cancellation is never suppressed.
     """
+
     @functools.wraps(func)
     async def wrapper(self, request, context):
         try:
@@ -21,4 +24,5 @@ def grpc_error_handler(func):
         except Exception as e:
             logging.exception(f"Error in {func.__name__}: {str(e)}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Internal server error: {str(e)}")
+
     return wrapper

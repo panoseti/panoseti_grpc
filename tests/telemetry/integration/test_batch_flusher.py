@@ -2,15 +2,14 @@
 Tests for the RedisBatcher: verifies that bursts of Log RPCs are all
 delivered to Redis and that the batcher correctly serialises entries.
 """
+
 import json
 import time
-import pytest
 
 LOG_KEY = "logs:ingress"
 
 
-def _wait_for_tagged(redis_client, key: str, tag: str, expected: int,
-                     timeout: float = 15.0, poll: float = 0.3) -> list:
+def _wait_for_tagged(redis_client, key: str, tag: str, expected: int, timeout: float = 15.0, poll: float = 0.3) -> list:
     """
     Poll the entire Redis list until at least *expected* items contain *tag*,
     or until *timeout* elapses.  Returns the matching items.
@@ -84,8 +83,7 @@ def test_batch_flush_delivers_logs_in_order(grpc_client, redis_client):
     tagged = _wait_for_tagged(redis_client, LOG_KEY, tag, expected=N, timeout=15.0)
 
     assert len(tagged) >= N, (
-        f"Expected {N} tagged log entries, got {len(tagged)}. "
-        "Some messages may have been dropped by the batcher."
+        f"Expected {N} tagged log entries, got {len(tagged)}. Some messages may have been dropped by the batcher."
     )
 
     # Verify monotonic index ordering within our messages
@@ -100,5 +98,5 @@ def test_batch_flush_delivers_logs_in_order(grpc_client, redis_client):
             pass
 
     if len(indices) >= 2:
-        for a, b in zip(sorted(indices), sorted(indices)[1:]):
+        for a, b in zip(sorted(indices), sorted(indices)[1:], strict=False):
             assert a < b, f"Duplicate or out-of-order index found: {indices}"

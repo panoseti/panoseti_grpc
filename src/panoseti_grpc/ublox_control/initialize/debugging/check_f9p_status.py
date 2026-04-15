@@ -29,35 +29,30 @@ Created on 07 Aug 2021
 :license: BSD 3-Clause
 """
 
+import sys
 from queue import Queue
 from sys import argv
 from threading import Event, Thread
 from time import sleep
 
+from pygnssutils.gnssntripclient import NTRIP2, RTCM, GNSSNTRIPClient
+from pyubx2 import POLL, UBX_PAYLOADS_POLL, UBX_PROTOCOL, UBXMessage, UBXReader
 from serial import Serial
 
-from pyubx2 import POLL, UBX_PAYLOADS_POLL, UBX_PROTOCOL, UBXMessage, UBXReader
-from pygnssutils.gnssntripclient import GNSSNTRIPClient, NTRIP2, RTCM
 
 def get_vacc_mm_from_navpvt(pkt: bytes) -> int:
     # UBX header check
-    if pkt[:2] != b'\xb5\x62' or pkt[2:4] != b'\x01\x07':
+    if pkt[:2] != b"\xb5\x62" or pkt[2:4] != b"\x01\x07":
         raise ValueError("Not UBX-NAV-PVT")
-    length = int.from_bytes(pkt[4:6], 'little')
+    length = int.from_bytes(pkt[4:6], "little")
     if length != 92:
         raise ValueError("Unexpected NAV-PVT length")
-    payload = pkt[6:6+length]
+    payload = pkt[6 : 6 + length]
     # vAcc is U4 (mm) at payload[44:48]
-    return int.from_bytes(payload[44:48], 'little', signed=False)
+    return int.from_bytes(payload[44:48], "little", signed=False)
 
 
-def io_data(
-    ubr: UBXReader,
-    readqueue: Queue,
-    sendqueue: Queue,
-    stop: Event,
-    ser
-):
+def io_data(ubr: UBXReader, readqueue: Queue, sendqueue: Queue, stop: Event, ser):
     """
     THREADED
     Read and parse inbound UBX data and place
@@ -67,7 +62,7 @@ def io_data(
     """
     # pylint: disable=broad-exception-caught
     state = {}
-    
+
     """
     Start an NTRIP client and stream RTCM bytes to 'port' at 'baud'.
     Blocks until interrupted (Ctrl-C) or client stops.
@@ -79,53 +74,75 @@ def io_data(
         "server": "132.239.152.4",
         "port": 2105,
         "mountpoint": "P479_RTCM3",
-        "https": 0,               
+        "https": 0,
         "ntripversion": "2.0",
-        "datatype": "RTCM",        
+        "datatype": "RTCM",
         "ntripuser": "",
         "ntrippassword": "",
-        "ggainterval": 15,        
-        "ntripggamode":1,             
-        "reflat": 37.8731,    
-        "reflon": -122.2571}
+        "ggainterval": 15,
+        "ntripggamode": 1,
+        "reflat": 37.8731,
+        "reflon": -122.2571,
+    }
     # --- extract settings ---
-    server      = settings["server"]
-    cport       = int(settings["port"])
-    mountpoint  = settings["mountpoint"]
-    https       = int(settings.get("https", 0))
+    server = settings["server"]
+    cport = int(settings["port"])
+    mountpoint = settings["mountpoint"]
+    https = int(settings.get("https", 0))
     ntripver_in = str(settings.get("ntripversion", "2.0")).strip()
-    ntripver    = NTRIP2 if ntripver_in in ("2.0", "2", "NTRIP2") else ntripver_in
+    ntripver = NTRIP2 if ntripver_in in ("2.0", "2", "NTRIP2") else ntripver_in
     datatype_in = str(settings.get("datatype", "RTCM")).upper()
-    datatype    = RTCM if datatype_in == "RTCM" else datatype_in
-    user        = settings["ntripuser"]
-    password    = settings["ntrippassword"]
+    datatype = RTCM if datatype_in == "RTCM" else datatype_in
+    user = settings["ntripuser"]
+    password = settings["ntrippassword"]
     ggainterval = int(settings.get("ggainterval", 15))
-    reflat      = settings.get("reflat", None)
-    reflon      = settings.get("reflon", None)
-    refalt      = settings.get("refalt", None)
-    ggamode     = int(settings.get("ggamode", 1 if (reflat is not None and reflon is not None) else 0))
-    verbosity   = int(settings.get("verbosity", 0))
+    reflat = settings.get("reflat", None)
+    reflon = settings.get("reflon", None)
+    refalt = settings.get("refalt", None)
+    ggamode = int(settings.get("ggamode", 1 if (reflat is not None and reflon is not None) else 0))
+    verbosity = int(settings.get("verbosity", 0))
 
     kw = dict(
-        server=server, port=cport, mountpoint=mountpoint,
-        https=https, version=ntripver, datatype=datatype,
-        ntripuser=user, ntrippassword=password,
-        ggainterval=ggainterval, ggamode=ggamode,
+        server=server,
+        port=cport,
+        mountpoint=mountpoint,
+        https=https,
+        version=ntripver,
+        datatype=datatype,
+        ntripuser=user,
+        ntrippassword=password,
+        ggainterval=ggainterval,
+        ggamode=ggamode,
         verbosity=verbosity,
     )
-    if reflat is not None: kw["reflat"] = float(reflat)
-    if reflon is not None: kw["reflon"] = float(reflon)
-    if refalt is not None: kw["refalt"] = float(refalt)
-    ser.reset_input_buffer(); ser.reset_output_buffer()
-    msg = UBXMessage(0x06, 0x71, msgmode=1, mode=0, ecefXOrLat=0, ecefYOrLon=0, ecefZOrAlt=0,
-                    ecefXOrLatHP=0, ecefYOrLonHP=0, ecefZOrAltHP=0, fixedPosAcc=0, svinMinDur=0, svinAccLimit=0)
+    if reflat is not None:
+        kw["reflat"] = float(reflat)
+    if reflon is not None:
+        kw["reflon"] = float(reflon)
+    if refalt is not None:
+        kw["refalt"] = float(refalt)
+    ser.reset_input_buffer()
+    ser.reset_output_buffer()
+    msg = UBXMessage(
+        0x06,
+        0x71,
+        msgmode=1,
+        mode=0,
+        ecefXOrLat=0,
+        ecefYOrLon=0,
+        ecefZOrAlt=0,
+        ecefXOrLatHP=0,
+        ecefYOrLonHP=0,
+        ecefZOrAltHP=0,
+        fixedPosAcc=0,
+        svinMinDur=0,
+        svinAccLimit=0,
+    )
     ser.write(msg.serialize())
     # --- start NAV-PVT watcher (for RTK stats) ---
-    fix  = {}
-    t_watch = None
 
     # --- monkey-patch write() to count bytes (no wrapper needed) ---
-    '''
+    """
     bytes_written = {"n": 0}
     orig_write = ser.write
     def counting_write(b):
@@ -133,7 +150,7 @@ def io_data(
         bytes_written["n"] += n
         return n
     ser.write = counting_write  # <-- patch
-    '''
+    """
     # --- run NTRIP client ---
     with GNSSNTRIPClient() as gnc:
         print(f"[NTRIP] ggamode={ggamode} ggainterval={ggainterval} reflat={reflat} reflon={reflon}")
@@ -149,21 +166,23 @@ def io_data(
                 (raw_data, parsed_data) = ubr.read()
                 p = parsed_data
                 if parsed_data:
-                    if getattr(p, "identity", "") == "NAV-PVT":     
-                        state["carrSoln"] = getattr(p, "carrSoln", None)   # 0/1/2
-                        state["hAcc"]     = getattr(p, "hAcc", None)       # mm
-                        state["vAcc"]     = get_vacc_mm_from_navpvt(raw_data)
+                    if getattr(p, "identity", "") == "NAV-PVT":
+                        state["carrSoln"] = getattr(p, "carrSoln", None)  # 0/1/2
+                        state["hAcc"] = getattr(p, "hAcc", None)  # mm
+                        state["vAcc"] = get_vacc_mm_from_navpvt(raw_data)
                         state["fixType"] = getattr(p, "fixType", None)
-                        state["numSV"]   = getattr(p, "numSV", None)
-                        state["pDOP"]    = getattr(p, "pDOP", None)   # 0.01 units (e.g. 123 => 1.23)
+                        state["numSV"] = getattr(p, "numSV", None)
+                        state["pDOP"] = getattr(p, "pDOP", None)  # 0.01 units (e.g. 123 => 1.23)
                         state["locked"] = getattr(p, "gnssFixOk", None)
-                        state['lat'] = getattr(p, 'lat', None)
-                        state['lon'] = getattr(p, 'lon', None)
-                        state['height'] = getattr(p, 'height', None)
-                        print(f"numSV: {state['numSV']}, hAcc (mm): {state['hAcc']}, vAcc (mm): {state['vAcc']}, fix type:  {state['fixType']}, locked: {state['locked']}")
-                    
+                        state["lat"] = getattr(p, "lat", None)
+                        state["lon"] = getattr(p, "lon", None)
+                        state["height"] = getattr(p, "height", None)
+                        print(
+                            f"numSV: {state['numSV']}, hAcc (mm): {state['hAcc']}, vAcc (mm): {state['vAcc']}, fix type:  {state['fixType']}, locked: {state['locked']}"
+                        )
+
                         print(f"Latitude: {state['lat']}, Longitude: {state['lon']}, Altitude: {state['height']}")
-                    #readqueue.put((raw_data, parsed_data))
+                    # readqueue.put((raw_data, parsed_data))
 
                 # refine this if outbound message rates exceed inbound
                 # now = time.time()
@@ -181,11 +200,11 @@ def io_data(
                 # ft = fix.get("fixType"); sv = fix.get("numSV"); pd = fix.get("pDOP")
                 # pd_s = f"{pd:.2f}" if isinstance(pd,(int,float)) else "n/a"
                 # print(f"... | fixType={ft} numSV={sv} pDOP={pd_s}")
-            #except KeyboardInterrupt:
+            # except KeyboardInterrupt:
             #    pass
         except Exception as err:
             print(f"\n\nSomething went wrong - {err}\n\n")
-            #continue
+            # continue
 
 
 def process_data(queue: Queue, stop: Event):
@@ -218,13 +237,7 @@ def main(**kwargs):
         stop_event.clear()
         io_thread = Thread(
             target=io_data,
-            args=(
-                ubxreader,
-                read_queue,
-                send_queue,
-                stop_event,
-                stream
-            ),
+            args=(ubxreader, read_queue, send_queue, stop_event, stream),
             daemon=True,
         )
         process_thread = Thread(
@@ -269,5 +282,4 @@ def main(**kwargs):
 
 
 if __name__ == "__main__":
-
     main(**dict(arg.split("=") for arg in argv[1:]))

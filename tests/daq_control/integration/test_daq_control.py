@@ -1,7 +1,7 @@
-import pytest
-import time
-import psutil
 from pathlib import Path
+
+import pytest
+
 from tests.daq_control.conftest import wait_for_file
 
 # Parameters reused across tests
@@ -56,7 +56,7 @@ def test_start_daq_already_running(grpc_client):
 def test_cleanup_data_while_running(grpc_client):
     """CleanupData must be rejected while hashpipe is running."""
     # with pytest.raises(ValueError):
-    assert grpc_client.CleanupData(CLEANUP_PARAMS)['success'] is False
+    assert grpc_client.CleanupData(CLEANUP_PARAMS)["success"] is False
 
 
 def test_status_daq_hashpipe_running(grpc_client):
@@ -99,4 +99,4 @@ def test_status_daq_run_dirs(grpc_client):
 
 def test_cleanup_data(grpc_client):
     """CleanupData removes the run directory after hashpipe is stopped."""
-    assert grpc_client.CleanupData(CLEANUP_PARAMS)['success'] is True
+    assert grpc_client.CleanupData(CLEANUP_PARAMS)["success"] is True

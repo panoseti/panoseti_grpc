@@ -9,14 +9,17 @@
 #
 # On success, print OK.  Otherwise print an error message
 
-import os, signal, sys
-sys.path.append('/app/')
+import os
+import sys
+
+sys.path.append("/app/")
 from panoseti_util import control_utils as util
+
 
 def main():
     try:
-        f = open(util.daq_hashpipe_pid_filename, 'r')
-    except:
+        f = open(util.daq_hashpipe_pid_filename)
+    except Exception:
         f = None
     if f:
         pid = int(f.read())
@@ -33,9 +36,10 @@ def main():
 
     try:
         os.unlink(util.daq_run_name_filename)
-    except:
+    except Exception:
         pass
 
-    print('stop_daq.py: OK')
+    print("stop_daq.py: OK")
+
 
 main()

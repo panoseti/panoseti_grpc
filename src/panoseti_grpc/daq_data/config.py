@@ -5,16 +5,21 @@ Validated at server startup via DaqDataServerConfig.model_validate(raw_dict).
 A ValidationError at startup is a clear, actionable signal that daq_data_server_config.json
 has a bad value, rather than a KeyError buried in a call stack mid-observation.
 """
+
 from __future__ import annotations
+
 from pydantic import BaseModel, Field, field_validator
 
 
 class UdsAcquisitionConfig(BaseModel):
     """Configuration for the UDS data source (one socket per data product)."""
+
     enabled: bool = True
     data_products: list[str] = ["img8", "img16", "ph256", "ph1024"]
     socket_path_template: str = "/tmp/hashpipe_grpc.dp_{dp_name}.sock"
-    read_timeout: float = Field(60.0, gt=0, description="Seconds to wait for data before closing an idle Hashpipe connection")
+    read_timeout: float = Field(
+        60.0, gt=0, description="Seconds to wait for data before closing an idle Hashpipe connection"
+    )
 
     @field_validator("socket_path_template")
     @classmethod
@@ -27,11 +32,14 @@ class UdsAcquisitionConfig(BaseModel):
     @classmethod
     def validate_data_products(cls, v: list[str]) -> list[str]:
         from .state import DataProduct
+
         for dp in v:
             try:
                 DataProduct(dp)
             except ValueError:
-                raise ValueError(f"Unknown data product '{dp}'. Valid values: {[d.value for d in DataProduct]}")
+                raise ValueError(
+                    f"Unknown data product '{dp}'. Valid values: {[d.value for d in DataProduct]}"
+                ) from None
         return v
 
 
@@ -61,6 +69,7 @@ class SimulateDaqConfig(BaseModel):
 
 class DaqDataServerConfig(BaseModel):
     """Top-level server configuration. Loaded from daq_data_server_config.json at startup."""
+
     init_from_default: bool = False
     default_hp_io_config_file: str = "hp_io_config_simulate.json"
     unix_domain_socket: str | None = None

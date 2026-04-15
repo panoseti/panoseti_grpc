@@ -1,30 +1,30 @@
+import asyncio
+import copy
+import json
+import logging
+import os
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.parse
+import uuid
+from pathlib import Path
+
 import pytest
 import pytest_asyncio
-import asyncio
-import json
-import sys
-import signal
-import logging
-from pathlib import Path
-import subprocess
-import time
-import os
-import urllib.parse
-import tempfile
-import uuid
-import copy
-from typing import Optional, Tuple
-
-from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import ParseDict
+from google.protobuf.struct_pb2 import Struct
 
-from panoseti_grpc.daq_data.server import serve
 from panoseti_grpc.daq_data.client import AioDaqDataClient, DaqDataClient
+from panoseti_grpc.daq_data.server import serve
 from panoseti_grpc.generated.daq_data_pb2 import PanoImage
 from panoseti_grpc.panoseti_util import control_utils as util
 
 TEST_CFG_DIR = Path("tests/daq_data/config")
 TEST_CFG_DIR.mkdir(exist_ok=True)
+
 
 def is_utility_available(name):
     """Check if a command-line utility is in the system PATH."""
@@ -61,7 +61,7 @@ def hashpipe_pcap_runner():
     module_ids = [250]
     cfg_str = ""
     for mid in module_ids:
-        module_dir = base_dir / "module_{}".format(mid) / run_name
+        module_dir = base_dir / f"module_{mid}" / run_name
         module_dir.mkdir(parents=True, exist_ok=True)
         cfg_str += f"{mid}\n"
 
@@ -81,32 +81,39 @@ def hashpipe_pcap_runner():
         "--mbps=1",
         "--loop=0",  # Loop indefinitely
         "--intf1=lo",  # Send to loopback interface
-        pcap_file
+        pcap_file,
     ]
 
     # This command now uses relative paths for RUNDIR and CONFIG, matching production.
     hashpipe_cmd = [
         "hashpipe",
-        "-p", "hashpipe.so",
-        "-I", "0",
-        "-o", "BINDHOST=lo",
-        "-o", f"RUNDIR={run_name}",
-        "-o", f"CONFIG={run_name}/module.config",
-        "-o", "MAXFILESIZE=1",
-        "-o", "GROUPPHFRAMES=0",
-        "-o", "OBS=TEST",
-        "net_thread", "compute_thread", "output_thread"
+        "-p",
+        "hashpipe.so",
+        "-I",
+        "0",
+        "-o",
+        "BINDHOST=lo",
+        "-o",
+        f"RUNDIR={run_name}",
+        "-o",
+        f"CONFIG={run_name}/module.config",
+        "-o",
+        "MAXFILESIZE=1",
+        "-o",
+        "GROUPPHFRAMES=0",
+        "-o",
+        "OBS=TEST",
+        "net_thread",
+        "compute_thread",
+        "output_thread",
     ]
 
     # --- 3. Start Processes ---
     # Start tcpreplay to generate UDP packets.
-    tcpreplay_proc = subprocess.Popen(tcpreplay_cmd)#, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    tcpreplay_proc = subprocess.Popen(tcpreplay_cmd)  # , stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # Start the hashpipe process with the CWD set to the base directory.
-    hashpipe_proc = subprocess.Popen(
-        hashpipe_cmd,
-        cwd=base_dir
-    )
+    hashpipe_proc = subprocess.Popen(hashpipe_cmd, cwd=base_dir)
 
     # --- 4. Wait for Initialization and Validation ---
     num_retries = 20
@@ -150,7 +157,7 @@ def hashpipe_pcap_runner():
                 cwd=base_dir,
                 capture_output=True,
                 text=True,
-                timeout=10  # Add a timeout to prevent hanging
+                timeout=10,  # Add a timeout to prevent hanging
             )
             print(f"stop_daq.py stdout:\n{completed_process.stdout}")
             print(f"stop_daq.py stderr:\n{completed_process.stderr}")
@@ -181,7 +188,7 @@ def hashpipe_pcap_runner():
 @pytest.fixture(scope="session")
 def server_config_base():
     """Provides a base server configuration dictionary."""
-    with open(TEST_CFG_DIR / "daq_data_server_config.json", "r") as f:
+    with open(TEST_CFG_DIR / "daq_data_server_config.json") as f:
         cfg = json.load(f)
     return cfg
 
@@ -189,14 +196,12 @@ def server_config_base():
 @pytest.fixture(scope="session")
 def uds_sim_server_config(server_config_base):
     cfg = copy.deepcopy(server_config_base)
-    cfg['simulate_daq_cfg']['simulation_mode'] = 'uds'
+    cfg["simulate_daq_cfg"]["simulation_mode"] = "uds"
     dps = ["img8", "img16", "ph256", "ph1024"]
-    cfg['acquisition_methods'] = {"uds": {
-        "enabled": True,
-        "data_products": dps,
-        "socket_path_template": "/tmp/hashpipe_grpc.dp_{dp_name}.sock"
-    }}
-    cfg['simulate_daq_cfg']['strategies'] = {"uds": {"data_products": dps}}
+    cfg["acquisition_methods"] = {
+        "uds": {"enabled": True, "data_products": dps, "socket_path_template": "/tmp/hashpipe_grpc.dp_{dp_name}.sock"}
+    }
+    cfg["simulate_daq_cfg"]["strategies"] = {"uds": {"data_products": dps}}
     return cfg
 
 
@@ -227,7 +232,7 @@ async def sim_server_process(request):
         # Wait for the server task to finish, which it should upon the event being set.
         # This allows the 'serve' function to complete its cleanup.
         await asyncio.wait_for(server_task, timeout=5.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         # If the server hangs, then cancel the task as a fallback.
         server_task.cancel()
         await asyncio.gather(server_task, return_exceptions=True)
@@ -240,11 +245,10 @@ async def sim_server_process(request):
                 pass
 
 
-
 @pytest_asyncio.fixture(scope="function")
 async def default_server_process(uds_sim_server_config):
     """A non-parameterized fixture that runs a standard RPC simulation server."""
-    assert os.name == 'posix', "Only supported on POSIX systems."
+    assert os.name == "posix", "Only supported on POSIX systems."
     config = uds_sim_server_config
 
     # Use a unique socket path for each test invocation to prevent collisions
@@ -276,7 +280,7 @@ async def default_server_process(uds_sim_server_config):
         try:
             # Wait for the server task to finish, which it should upon the event being set
             await asyncio.wait_for(server_task, timeout=5.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             server_task.cancel()
             await asyncio.gather(server_task, return_exceptions=True)
 
@@ -298,7 +302,7 @@ async def n_sim_servers_fixture_factory(server_config_base):
     # This list will hold TemporaryDirectory objects for automatic cleanup
     temp_dirs = []
 
-    async def _factory(num_servers: int, uds_paths: Optional[list[str]] = None):
+    async def _factory(num_servers: int, uds_paths: list[str] | None = None):
         # The uds_paths argument is now ignored in favor of automatic temp dirs.
 
         for i in range(num_servers):
@@ -316,15 +320,15 @@ async def n_sim_servers_fixture_factory(server_config_base):
             config["unix_domain_socket"] = uds_path_str
 
             # Data-plane UDS socket template for the internal simulation data flow.
-            uds_cfg = config['acquisition_methods']['uds']
-            template_basename = Path(uds_cfg['socket_path_template']).name
+            uds_cfg = config["acquisition_methods"]["uds"]
+            template_basename = Path(uds_cfg["socket_path_template"]).name
             new_template_path = str(temp_dir_path / template_basename)
-            uds_cfg['socket_path_template'] = new_template_path
+            uds_cfg["socket_path_template"] = new_template_path
 
             # Update other configuration details for this specific instance.
-            config['simulate_daq_cfg']['sim_module_ids'] = [module_id]
-            config['simulate_daq_cfg']['simulation_mode'] = 'uds'
-            config['acquisition_methods']['uds']['enabled'] = True
+            config["simulate_daq_cfg"]["sim_module_ids"] = [module_id]
+            config["simulate_daq_cfg"]["simulation_mode"] = "uds"
+            config["acquisition_methods"]["uds"]["enabled"] = True
 
             uds_path = Path(urllib.parse.urlparse(uds_path_str).path)
             shutdown_event = asyncio.Event()
@@ -352,15 +356,15 @@ async def n_sim_servers_fixture_factory(server_config_base):
         yield _factory
     finally:
         # Stop all gRPC server tasks
-        server_tasks = [sd['task'] for sd in all_server_details if sd.get('task')]
+        server_tasks = [sd["task"] for sd in all_server_details if sd.get("task")]
         for sd in all_server_details:
-            if sd.get('stop_event'):
-                sd['stop_event'].set()
+            if sd.get("stop_event"):
+                sd["stop_event"].set()
 
         if server_tasks:
             try:
                 await asyncio.wait_for(asyncio.gather(*server_tasks), timeout=5.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 for task in server_tasks:
                     if not task.done():
                         task.cancel()
@@ -376,18 +380,10 @@ async def async_client(default_server_process):
     """Provides a connected AioDaqDataClient for API tests."""
 
     daq_config = {
-        "daq_nodes": [
-            {
-                "ip_addr": default_server_process['ip_addr'],
-                "data_dir": default_server_process['data_dir']
-            }
-        ]
+        "daq_nodes": [{"ip_addr": default_server_process["ip_addr"], "data_dir": default_server_process["data_dir"]}]
     }
     async with AioDaqDataClient(
-            daq_config,
-            network_config=None,
-            log_level=logging.DEBUG,
-            stop_event=default_server_process['stop_event']
+        daq_config, network_config=None, log_level=logging.DEBUG, stop_event=default_server_process["stop_event"]
     ) as client:
         yield client
 
@@ -396,12 +392,7 @@ async def async_client(default_server_process):
 def sync_client(default_server_process):
     """Provides a connected DaqDataClient for API tests."""
     daq_config = {
-        "daq_nodes": [
-            {
-                "ip_addr": default_server_process['ip_addr'],
-                "data_dir": default_server_process['data_dir']
-            }
-        ]
+        "daq_nodes": [{"ip_addr": default_server_process["ip_addr"], "data_dir": default_server_process["data_dir"]}]
     }
     with DaqDataClient(daq_config, network_config=None, log_level=logging.DEBUG) as client:
         yield client
@@ -411,7 +402,11 @@ def sync_client(default_server_process):
 def sample_pano_image():
     header_dict = {"test_field": "test_value"}
     return PanoImage(
-        type=PanoImage.Type.MOVIE, header=ParseDict(header_dict, Struct()),
-        image_array=[i for i in range(256)], shape=[16, 16],
-        bytes_per_pixel=1, file="test_upload.pff", module_id=101,
+        type=PanoImage.Type.MOVIE,
+        header=ParseDict(header_dict, Struct()),
+        image_array=[i for i in range(256)],
+        shape=[16, 16],
+        bytes_per_pixel=1,
+        file="test_upload.pff",
+        module_id=101,
     )

@@ -10,12 +10,12 @@ panoseti-server --config /path/to/server.toml     # custom config file
 panoseti-server --services telemetry,daq_data     # override enabled services
 panoseti-server --list-services                   # print registered services and exit
 """
+
 from __future__ import annotations
 
 import argparse
 import asyncio
 import logging
-import sys
 from pathlib import Path
 
 
@@ -61,7 +61,7 @@ def main() -> None:
     args = parser.parse_args()
 
     # Lazy import to keep startup fast for --list-services
-    from panoseti_grpc.server import PanosetiServerConfig, PanosetiServer, ServiceRegistry
+    from panoseti_grpc.server import PanosetiServer, PanosetiServerConfig, ServiceRegistry
 
     if args.list_services:
         print("Registered PANOSETI gRPC services:")

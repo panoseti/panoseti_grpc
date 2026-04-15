@@ -1,11 +1,11 @@
 import asyncio
 import os
-from pathlib import Path
 
 import grpc
 import pytest
 
 from panoseti_grpc.daq_data.client import AioDaqDataClient
+
 # from tests.daq_data_hashpipe.conftest import hashpipe_pcap_runner  # type: ignore
 
 pytestmark = pytest.mark.asyncio
@@ -21,11 +21,11 @@ async def _await_stream_next_or_stop(stream, timeout=5.0):
     except StopAsyncIteration:
         # This is the "Success" case for checking if a stream has ended.
         return None
-    except asyncio.TimeoutError:
+    except TimeoutError:
         # This means the stream is still open and "hanging" (waiting for data).
-        raise asyncio.TimeoutError(f"Stream did not end within {timeout} seconds.")
+        raise TimeoutError(f"Stream did not end within {timeout} seconds.") from None
     except grpc.aio.AioRpcError as e:
-        raise grpc.aio.AioRpcError(f"Stream had an unexpected gRPC error {e=} within {timeout} seconds.")
+        raise grpc.aio.AioRpcError(f"Stream had an unexpected gRPC error {e=} within {timeout} seconds.") from e
 
 
 # 1) gRPC server is re-initialized (InitHpIo) during DAQ: DAQ keeps running; clients see clean cancellation and can reconnect.
@@ -78,10 +78,11 @@ async def test_server_reinit_during_real_daq(default_server_process):
 
             assert stream_closed, f"Stream did not close after re-init (iteration {i})"
 
+
 @pytest.mark.usefixtures("hashpipe_pcap_runner")
 async def test_init_waits_for_uds_ready(default_server_process):
     """After InitHpIo(simulate_daq=False), the server must create UDS listener sockets."""
-    daq_config = {"daq_nodes": [{"ip_addr": default_server_process['ip_addr']}]}
+    daq_config = {"daq_nodes": [{"ip_addr": default_server_process["ip_addr"]}]}
     async with AioDaqDataClient(daq_config, network_config=None) as client:
         hp_io_cfg = {
             "data_dir": "/tmp/ci_run_dir",
@@ -96,9 +97,10 @@ async def test_init_waits_for_uds_ready(default_server_process):
             path = f"/tmp/hashpipe_grpc.dp_{dp}.sock"
             assert os.path.exists(path), f"UDS socket for data product '{dp}' was not created at {path}"
 
+
 @pytest.mark.usefixtures("hashpipe_pcap_runner")
 async def test_first_frame_with_real_daq(default_server_process):
-    daq_config = {"daq_nodes": [{"ip_addr": default_server_process['ip_addr']}]}
+    daq_config = {"daq_nodes": [{"ip_addr": default_server_process["ip_addr"]}]}
     async with AioDaqDataClient(daq_config, network_config=None) as client:
         hp_io_cfg = {
             "data_dir": "/tmp/ci_run_dir",
@@ -109,21 +111,21 @@ async def test_first_frame_with_real_daq(default_server_process):
         }
         assert await client.init_hp_io(hosts=None, hp_io_cfg=hp_io_cfg)
         stream = await client.stream_images(
-            hosts=None,
-            stream_movie_data=True,
-            stream_pulse_height_data=True,
-            update_interval_seconds=0.1
+            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1
         )
+
         # Allow up to 10s for the first frame
         async def next_or_timeout():
             return await asyncio.wait_for(stream.__anext__(), timeout=10.0)
+
         img = await next_or_timeout()
-        assert img and img['type'] in ('MOVIE','PULSE_HEIGHT')
+        assert img and img["type"] in ("MOVIE", "PULSE_HEIGHT")
 
 
 # ---------------------------------------------------------------------------
 # Additional robustness tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.usefixtures("hashpipe_pcap_runner")
 async def test_module_id_filter_with_real_data(default_server_process):
@@ -131,7 +133,7 @@ async def test_module_id_filter_with_real_data(default_server_process):
     When module_ids is a non-empty whitelist, frames from other modules must
     not be delivered to the stream.
     """
-    daq_config = {"daq_nodes": [{"ip_addr": default_server_process['ip_addr']}]}
+    daq_config = {"daq_nodes": [{"ip_addr": default_server_process["ip_addr"]}]}
 
     hp_io_cfg_base = {
         "data_dir": "/tmp/ci_run_dir",
@@ -145,8 +147,7 @@ async def test_module_id_filter_with_real_data(default_server_process):
         # First init without filter to discover which module(s) are present
         assert await client.init_hp_io(hosts=None, hp_io_cfg=hp_io_cfg_base) is True
         discovery_stream = await client.stream_images(
-            hosts=None, stream_movie_data=True, stream_pulse_height_data=True,
-            update_interval_seconds=0.1, timeout=10.0
+            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout=10.0
         )
         first_img = await asyncio.wait_for(discovery_stream.__anext__(), timeout=10.0)
         discovered_module = first_img["module_id"]
@@ -156,8 +157,7 @@ async def test_module_id_filter_with_real_data(default_server_process):
         assert await client.init_hp_io(hosts=None, hp_io_cfg=filtered_cfg) is True
 
         filtered_stream = await client.stream_images(
-            hosts=None, stream_movie_data=True, stream_pulse_height_data=True,
-            update_interval_seconds=0.1, timeout=10.0
+            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout=10.0
         )
 
         for _ in range(10):
@@ -174,7 +174,7 @@ async def test_concurrent_clients_receive_same_frames(default_server_process):
     the same module. Frame IDs from both clients should largely overlap
     (allowing ±2 tolerance for scheduling jitter).
     """
-    daq_config = {"daq_nodes": [{"ip_addr": default_server_process['ip_addr']}]}
+    daq_config = {"daq_nodes": [{"ip_addr": default_server_process["ip_addr"]}]}
 
     hp_io_cfg = {
         "data_dir": "/tmp/ci_run_dir",
@@ -184,18 +184,17 @@ async def test_concurrent_clients_receive_same_frames(default_server_process):
         "module_ids": [],
     }
 
-    async with AioDaqDataClient(daq_config, network_config=None) as client_a, \
-               AioDaqDataClient(daq_config, network_config=None) as client_b:
-
+    async with (
+        AioDaqDataClient(daq_config, network_config=None) as client_a,
+        AioDaqDataClient(daq_config, network_config=None) as client_b,
+    ):
         assert await client_a.init_hp_io(hosts=None, hp_io_cfg=hp_io_cfg) is True
 
         stream_a = await client_a.stream_images(
-            hosts=None, stream_movie_data=True, stream_pulse_height_data=True,
-            update_interval_seconds=0.1, timeout=10.0
+            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout=10.0
         )
         stream_b = await client_b.stream_images(
-            hosts=None, stream_movie_data=True, stream_pulse_height_data=True,
-            update_interval_seconds=0.1, timeout=10.0
+            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout=10.0
         )
 
         SAMPLES = 15
@@ -212,8 +211,6 @@ async def test_concurrent_clients_receive_same_frames(default_server_process):
         # Both clients must see data from the same module
         modules_a = {img["module_id"] for img in results_a}
         modules_b = {img["module_id"] for img in results_b}
-        assert modules_a == modules_b, (
-            f"Both clients should see the same module set; A={modules_a}, B={modules_b}"
-        )
+        assert modules_a == modules_b, f"Both clients should see the same module set; A={modules_a}, B={modules_b}"
         assert len(results_a) == SAMPLES
         assert len(results_b) == SAMPLES

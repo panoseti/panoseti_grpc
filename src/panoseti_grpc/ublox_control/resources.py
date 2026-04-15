@@ -1,51 +1,39 @@
 """
 Common functions for gRPC UbloxControl service.
 """
+
+import datetime
+import importlib.resources as resources
+import logging
 import os
 import sys
-import json5
-import logging
-import datetime
-from typing import List, Callable, Tuple, Any, Dict
-from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
+
+import json5
 import redis
-import inspect
-
-import importlib.resources as resources
-
+from pyubx2 import POLL_LAYER_RAM, SET_LAYER_RAM, TXN_NONE, UBX_PROTOCOL, UBXMessage, UBXReader
 from rich import print
+
 # from rich.markup import escape
 from rich.logging import RichHandler
-from rich.pretty import pprint
-
-import datetime
-from unittest import TestResult
-
 from serial import Serial
-from pyubx2 import UBXReader, UBX_PROTOCOL, UBXMessage, SET_LAYER_RAM, POLL_LAYER_RAM, TXN_COMMIT, TXN_NONE
-
-from panoseti_grpc.generated import (
-    ublox_control_pb2,
-    ublox_control_pb2_grpc,
-)
 
 # message enums
-from panoseti_grpc.generated.ublox_control_pb2 import InitF9tResponse, CaptureUbloxRequest, CaptureUbloxResponse
-
 
 
 """ Config globals"""
 F9T_BAUDRATE = 38400
 
-CFG_DIR = Path('ublox_control/config')
-ublox_control_config_file = 'ublox_control_server_config.json'
+CFG_DIR = Path("ublox_control/config")
+ublox_control_config_file = "ublox_control_server_config.json"
 ublox_control_anchor_package = "panoseti_grpc"
 
 # Configuration for metadata capture from the u-blox ZED-F9T timing chip
 default_f9t_cfg_file = "f9t_config.json5"
 
 f9t_cfg_path = CFG_DIR / default_f9t_cfg_file
+
 
 def load_package_json(package, fname):
     """Define the resource path relative to the package root
@@ -58,10 +46,11 @@ def load_package_json(package, fname):
 
     # 2. Use 'as_file' to obtain a path-like object that can be opened
     #    This is necessary because the resource might be inside a zip file
-    with resource_path.open('r') as f:
+    with resource_path.open("r") as f:
         data = json5.load(f)
 
     return data
+
 
 try:
     default_f9t_cfg = load_package_json(ublox_control_anchor_package, f9t_cfg_path)
@@ -105,7 +94,7 @@ def make_rich_logger(name: str, level=logging.INFO) -> logging.Logger:
         level=level,
         show_time=True,
         show_level=True,
-        show_path=False, # Set to False for cleaner output
+        show_path=False,  # Set to False for cleaner output
         rich_tracebacks=True,
         tracebacks_theme="monokai",
     )
@@ -115,9 +104,7 @@ def make_rich_logger(name: str, level=logging.INFO) -> logging.Logger:
     # This handler writes logs to the file defined above.
     file_handler = logging.FileHandler(log_file_path)
     file_handler.setLevel(level)
-    file_formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - [%(funcName)s] - %(message)s"
-    )
+    file_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - [%(funcName)s] - %(message)s")
     file_handler.setFormatter(file_formatter)
 
     # Add handlers to the logger, but only if they haven't been added already
@@ -129,6 +116,8 @@ def make_rich_logger(name: str, level=logging.INFO) -> logging.Logger:
 
 
 """ Redis utility functions """
+
+
 def get_f9t_redis_key(chip_name, chip_uid, prot_msg):
     """
     Returns the hashset key for the given prot_msg and chip
@@ -142,9 +131,9 @@ def get_f9t_redis_key(chip_name, chip_uid, prot_msg):
     try:
         if len(chip_uid) != 10:
             raise ValueError(chip_uid_emsg)
-        int(chip_uid, 16)   # verifies chip_uid is a valid hex integer
-    except ValueError or AssertionError:
-        raise ValueError(chip_uid_emsg)
+        int(chip_uid, 16)  # verifies chip_uid is a valid hex integer
+    except (ValueError, AssertionError):
+        raise ValueError(chip_uid_emsg) from None
     return f"UBLOX_{chip_name.upper()}_{chip_uid.upper()}_{prot_msg.upper()}"
 
 
@@ -179,7 +168,8 @@ def get_f9t_redis_key(chip_name, chip_uid, prot_msg):
 #     return all_pass, test_results
 #
 
-def test_redis_connection(host, port=6379, socket_timeout=1, logger=None) -> Tuple[bool, str]:
+
+def test_redis_connection(host, port=6379, socket_timeout=1, logger=None) -> tuple[bool, str]:
     """
     Test Redis connection with specified connection parameters.
         1. Connect to Redis.
@@ -191,22 +181,24 @@ def test_redis_connection(host, port=6379, socket_timeout=1, logger=None) -> Tup
 
     try:
         # print(f"Connecting to {host}:{port}")
-        if logger: logger.debug(f"Connecting to {host}:{port}")
+        if logger:
+            logger.debug(f"Connecting to {host}:{port}")
         r = redis.Redis(host=host, port=port, db=0, socket_timeout=socket_timeout)
         if not r.ping():
             # raise FileNotFoundError(f'Cannot connect to {host}:{port}')
-            if logger: logger.error(f"Cannot connect to {host}:{port}")
-            return False, f'Cannot connect to {host}:{port}'
+            if logger:
+                logger.error(f"Cannot connect to {host}:{port}")
+            return False, f"Cannot connect to {host}:{port}"
 
-        timestamp = datetime.datetime.now().isoformat()
+        datetime.datetime.now().isoformat()
         # Create a redis pipeline to efficiently send key updates.
         pipe = r.pipeline()
 
         # Queue updates to a test hash: write current timestamp to 10 test keys
         for i in range(20):
-            field = f't{i}'
+            field = f"t{i}"
             value = datetime.datetime.now().isoformat()
-            pipe.hset('TEST', field, value)
+            pipe.hset("TEST", field, value)
 
         # Execute the pipeline and get results
         results = pipe.execute(raise_on_error=False)
@@ -215,21 +207,22 @@ def test_redis_connection(host, port=6379, socket_timeout=1, logger=None) -> Tup
         success = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                success.append('0')
+                success.append("0")
                 failures += 1
                 print(f"Command {i} failed: {result=}")
-                if logger: logger.debug(f"Command {i} failed: {result=}")
+                if logger:
+                    logger.debug(f"Command {i} failed: {result=}")
             else:
-                success.append('1')
+                success.append("1")
         # print(f'[{timestamp}]: success = [{" ".join(success)}]')
         if logger:
             if all(success):
-                logger.debug(f'success = [{" ".join(success)}]')
+                logger.debug(f"success = [{' '.join(success)}]")
 
     except Exception as e:
         # Fail safely by reporting a failure in case of any exceptions
         return False, f"Error: {e}"
-    test_result = (failures == 0)
+    test_result = failures == 0
     return test_result, f"{failures=}"
 
 
@@ -276,6 +269,7 @@ def test_redis_connection(host, port=6379, socket_timeout=1, logger=None) -> Tup
 #             #         print("Received payload too short.")
 #             #     break
 
+
 def poll_f9t_config(device, cfg=default_f9t_cfg):
     """
     Poll the current configuration settings for each cfg_key specified in the cfg dict.
@@ -283,40 +277,40 @@ def poll_f9t_config(device, cfg=default_f9t_cfg):
     """
     layer = POLL_LAYER_RAM
     position = 0
-    ubx_cfg = cfg['protocol']['ubx']
+    ubx_cfg = cfg["protocol"]["ubx"]
 
-    msg = UBXMessage.config_poll(layer, position, keys=ubx_cfg['cfg_keys'])
-    print('Polling configuration:')
-    with Serial(device, F9T_BAUDRATE, timeout=ubx_cfg['timeout (s)']) as stream:
+    msg = UBXMessage.config_poll(layer, position, keys=ubx_cfg["cfg_keys"])
+    print("Polling configuration:")
+    with Serial(device, F9T_BAUDRATE, timeout=ubx_cfg["timeout (s)"]) as stream:
         stream.write(msg.serialize())
         ubr_poll_status = UBXReader(stream, protfilter=UBX_PROTOCOL)
         raw_data, parsed_data = ubr_poll_status.read()
         if parsed_data is not None:
-            print('\t', parsed_data)
+            print("\t", parsed_data)
 
 
 def set_f9t_config(device, cfg=default_f9t_cfg):
     """Tell chip to start sending metadata packets for each cfg_key"""
     layer = SET_LAYER_RAM
     transaction = TXN_NONE
-    timeout = cfg['timeout (s)']
-    ubx_cfg = cfg['protocol']['ubx']
+    timeout = cfg["timeout (s)"]
+    ubx_cfg = cfg["protocol"]["ubx"]
 
     # Tell chip to start sending metadata packets for each cfg_key. Note: Unspecified keys are initialized to 0.
-    cfgData = [(cfg_key, 1) for cfg_key in ubx_cfg['cfg_keys']]  # 1 = start sending packets of type cfg_key.
+    cfgData = [(cfg_key, 1) for cfg_key in ubx_cfg["cfg_keys"]]  # 1 = start sending packets of type cfg_key.
     msg = UBXMessage.config_set(layer, transaction, cfgData)
 
     with Serial(device, F9T_BAUDRATE, timeout=timeout) as stream:
-        print('Updating configuration:')
+        print("Updating configuration:")
         stream.write(msg.serialize())
         ubr = UBXReader(stream, protfilter=UBX_PROTOCOL)
-        for i in range(1):
+        for _i in range(1):
             raw_data, parsed_data = ubr.read()
             if parsed_data is not None:
-                print('\t', parsed_data)
+                print("\t", parsed_data)
 
 
-def ubx_to_dict(msg: UBXMessage) -> Dict[str, Any]:
+def ubx_to_dict(msg: UBXMessage) -> dict[str, Any]:
     """
     Converts the parsed attributes of a UBXMessage to a dictionary suitable for JSON.
     It filters out internal attributes (starting with '_') and methods.
@@ -327,7 +321,7 @@ def ubx_to_dict(msg: UBXMessage) -> Dict[str, Any]:
 
     d = {}
     # Iterate over public attributes
-    for attr in filter(lambda a: not a.startswith('_'), dir(msg)):
+    for attr in filter(lambda a: not a.startswith("_"), dir(msg)):
         value = getattr(msg, attr)
         # Exclude methods and other non-serializable types
         if callable(value):
@@ -337,7 +331,7 @@ def ubx_to_dict(msg: UBXMessage) -> Dict[str, Any]:
         if isinstance(value, bytes):
             # Attempt to decode as UTF-8, fallback to hex representation
             try:
-                d[attr] = value.decode('utf-8').strip('\x00')
+                d[attr] = value.decode("utf-8").strip("\x00")
             except UnicodeDecodeError:
                 d[attr] = value.hex()
         # Ensure other values are JSON-serializable

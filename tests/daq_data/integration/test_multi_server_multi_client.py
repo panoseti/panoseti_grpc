@@ -1,10 +1,12 @@
 import asyncio
-import pytest
+
 import grpc
+import pytest
 
 from panoseti_grpc.daq_data.client import AioDaqDataClient
 
 pytestmark = pytest.mark.asyncio
+
 
 # Helpers
 async def _collect_n(stream, n):
@@ -13,27 +15,31 @@ async def _collect_n(stream, n):
         out.append(await stream.__anext__())
     return out
 
+
 async def _drain_until(stream, predicate, timeout=5.0):
     """
     Drain stream until predicate(image) returns True or timeout.
     Returns the last image that satisfied the predicate or None.
     """
     try:
-        with asyncio.TimeoutError():
+        with TimeoutError():
             pass
     except TypeError:
         # Older Python doesn't allow context manager for TimeoutError.
         # Emulate with wait_for
         pass
     try:
+
         async def _loop():
             while True:
                 img = await stream.__anext__()
                 if predicate(img):
                     return img
+
         return await asyncio.wait_for(_loop(), timeout=timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return None
+
 
 # 1. UDS mode: multi-rate streams from a single client
 async def test_uds_multi_rate_streams_single_client(default_server_process):
@@ -55,11 +61,12 @@ async def test_uds_multi_rate_streams_single_client(default_server_process):
             hosts=None,
             stream_movie_data=True,
             stream_pulse_height_data=True,
-            update_interval_seconds=0.2,   # slow
+            update_interval_seconds=0.2,  # slow
         )
 
         # Collect some samples concurrently and ensure both streams deliver
         got_fast, got_slow = 0, 0
+
         async def read_fast():
             nonlocal got_fast
             for _ in range(5):
@@ -75,14 +82,16 @@ async def test_uds_multi_rate_streams_single_client(default_server_process):
         await asyncio.gather(read_fast(), read_slow())
         assert got_fast >= 5 and got_slow >= 2
 
+
 # 3. UDS mode: multiple clients per server with independent pacing
 async def test_uds_multi_clients_independent_pacing(default_server_process):
     """Validates that separate client connections maintain their own pacing/timers (per README)."""
     daq_config = {"daq_nodes": [{"ip_addr": default_server_process["ip_addr"]}]}
 
-    async with AioDaqDataClient(daq_config, network_config=None) as client_a, \
-               AioDaqDataClient(daq_config, network_config=None) as client_b:
-
+    async with (
+        AioDaqDataClient(daq_config, network_config=None) as client_a,
+        AioDaqDataClient(daq_config, network_config=None) as client_b,
+    ):
         assert await client_a.init_sim(hosts=None) is True
         # Client B should not need to re-init; ensure StreamImages precondition holds.
         # Here, we intentionally stream on B without re-initializing to verify server state continuity.
@@ -112,6 +121,7 @@ async def test_uds_multi_clients_independent_pacing(default_server_process):
         await asyncio.gather(consume_a(), consume_b())
         assert a_count >= 4 and b_count >= 2
 
+
 # 4. UDS mode: multiple servers, single client, verify each host produces data
 @pytest.mark.parametrize("num_servers", [2, 3])
 async def test_uds_multi_servers_single_client(n_sim_servers_fixture_factory, num_servers):
@@ -140,6 +150,7 @@ async def test_uds_multi_servers_single_client(n_sim_servers_fixture_factory, nu
 
         assert seen == expected_modules, f"Expected data from all modules: {expected_modules}, got {seen}"
 
+
 # 5. UDS mode: module_ids filtering on multi-server setup
 @pytest.mark.parametrize("num_servers", [3])
 async def test_uds_multi_servers_module_filtering(n_sim_servers_fixture_factory, num_servers):
@@ -156,13 +167,14 @@ async def test_uds_multi_servers_module_filtering(n_sim_servers_fixture_factory,
             stream_movie_data=True,
             stream_pulse_height_data=True,
             update_interval_seconds=0.05,
-            module_ids=(target,)  # whitelist single module
+            module_ids=(target,),  # whitelist single module
         )
 
         # Verify only target module appears for a while
         for _ in range(6):
             img = await stream.__anext__()
             assert img["module_id"] == target
+
 
 # 6. UDS mode: mixed rates across multiple servers and clients
 @pytest.mark.parametrize("num_servers", [2])
@@ -174,23 +186,18 @@ async def test_uds_multi_servers_multi_clients_mixed_rates(n_sim_servers_fixture
     details = await n_sim_servers_fixture_factory(num_servers)
     daq_config = {"daq_nodes": [{"ip_addr": d["ip_addr"]} for d in details]}
 
-    async with AioDaqDataClient(daq_config, network_config=None) as client_a, \
-               AioDaqDataClient(daq_config, network_config=None) as client_b:
-
+    async with (
+        AioDaqDataClient(daq_config, network_config=None) as client_a,
+        AioDaqDataClient(daq_config, network_config=None) as client_b,
+    ):
         assert await client_a.init_sim(hosts=None) is True
         # Client B piggybacks on initialized server state
 
         fast_movies = await client_a.stream_images(
-            hosts=None,
-            stream_movie_data=True,
-            stream_pulse_height_data=False,
-            update_interval_seconds=0.03
+            hosts=None, stream_movie_data=True, stream_pulse_height_data=False, update_interval_seconds=0.03
         )
         slow_ph = await client_b.stream_images(
-            hosts=None,
-            stream_movie_data=False,
-            stream_pulse_height_data=True,
-            update_interval_seconds=0.2
+            hosts=None, stream_movie_data=False, stream_pulse_height_data=True, update_interval_seconds=0.2
         )
 
         expected_modules = {d["module_id"] for d in details}
@@ -214,6 +221,7 @@ async def test_uds_multi_servers_multi_clients_mixed_rates(n_sim_servers_fixture
         assert expected_modules.issubset(seen_movies)
         assert expected_modules.issubset(seen_ph)
 
+
 # 7. UDS mode: enforce StreamImages precondition (must init first)
 async def test_uds_stream_requires_init(default_server_process):
     """StreamImages should fail with FAILED_PRECONDITION when hp_io task is not valid."""
@@ -221,13 +229,11 @@ async def test_uds_stream_requires_init(default_server_process):
     async with AioDaqDataClient(daq_config, network_config=None) as client:
         with pytest.raises(grpc.aio.AioRpcError) as e:
             stream = await client.stream_images(
-                hosts=None,
-                stream_movie_data=True,
-                stream_pulse_height_data=False,
-                update_interval_seconds=0.1
+                hosts=None, stream_movie_data=True, stream_pulse_height_data=False, update_interval_seconds=0.1
             )
             await stream.__anext__()
         assert e.value.code() == grpc.StatusCode.FAILED_PRECONDITION
+
 
 # 8. UDS mode: many concurrent streams per client to the same set of servers
 @pytest.mark.parametrize("num_servers", [2])
@@ -259,6 +265,7 @@ async def test_uds_many_concurrent_streams(n_sim_servers_fixture_factory, num_se
         results = await asyncio.gather(*(read_some(s) for s in streams))
         assert all(x >= 3 for x in results)
 
+
 # 9. UDS mode: validate module_ids empty tuple streams data from all modules
 @pytest.mark.parametrize("num_servers", [2])
 async def test_uds_module_ids_empty_means_all(n_sim_servers_fixture_factory, num_servers):
@@ -274,7 +281,7 @@ async def test_uds_module_ids_empty_means_all(n_sim_servers_fixture_factory, num
             stream_movie_data=True,
             stream_pulse_height_data=True,
             update_interval_seconds=0.05,
-            module_ids=()  # all modules
+            module_ids=(),  # all modules
         )
 
         expected_modules = {d["module_id"] for d in details}
@@ -286,6 +293,7 @@ async def test_uds_module_ids_empty_means_all(n_sim_servers_fixture_factory, num
                 break
 
         assert seen == expected_modules
+
 
 # 10. UDS mode: mixed server restart tolerance while client maintains other streams
 @pytest.mark.parametrize("num_servers", [3])

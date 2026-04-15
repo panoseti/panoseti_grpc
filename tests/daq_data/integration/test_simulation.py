@@ -1,14 +1,13 @@
-import pytest
 import asyncio
+
+import pytest
+
 from panoseti_grpc.daq_data.client import AioDaqDataClient
 
 pytestmark = pytest.mark.asyncio
 
-@pytest.mark.parametrize(
-    'sim_server_process',
-    ['uds_sim_server_config'],
-    indirect=True
-)
+
+@pytest.mark.parametrize("sim_server_process", ["uds_sim_server_config"], indirect=True)
 async def test_simulation_modes(sim_server_process):
     """
     Tests that the UDS simulation mode can be initialized and stream data.
@@ -20,18 +19,21 @@ async def test_simulation_modes(sim_server_process):
         assert success is True, "init_sim should succeed for all simulation modes"
 
         # 2. Request a data stream to confirm the data path is alive.
-        stream = await asyncio.wait_for(client.stream_images(
-            hosts=None,
-            stream_movie_data=True,
-            stream_pulse_height_data=True,
-            update_interval_seconds=0.01,
+        stream = await asyncio.wait_for(
+            client.stream_images(
+                hosts=None,
+                stream_movie_data=True,
+                stream_pulse_height_data=True,
+                update_interval_seconds=0.01,
+                timeout=10.0,
+            ),
             timeout=10.0,
-        ), timeout=10.0)
+        )
 
         # 3. Receive and validate a few images.
         MIN_IMAGES_RECEIVED = 10
         received_images = 0
-        async for image in stream:
+        async for _image in stream:
             received_images += 1
             if received_images >= MIN_IMAGES_RECEIVED:
                 break

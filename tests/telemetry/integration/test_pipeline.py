@@ -1,7 +1,9 @@
-import pytest
 import time
 from concurrent.futures import ThreadPoolExecutor
-from tests.telemetry.conftest import poll_redis_key, poll_redis_field
+
+import pytest
+
+from tests.telemetry.conftest import poll_redis_field, poll_redis_key
 
 
 def test_flexible_struct_flow(grpc_client, redis_client):
@@ -32,19 +34,18 @@ def test_strict_gps_with_extras(grpc_client, redis_client):
     """
     device_id = "dome_test_gps"
 
-    grpc_client.log_strict("gnss", device_id, {
-        "satellites": 8,
-        "lat": 37.0,
-        "lon": -122.0,
-        "fix_mode": "3D",
-        "extra_data": {"dilution_of_precision": 1.2}
-    })
+    grpc_client.log_strict(
+        "gnss",
+        device_id,
+        {"satellites": 8, "lat": 37.0, "lon": -122.0, "fix_mode": "3D", "extra_data": {"dilution_of_precision": 1.2}},
+    )
 
     # CHECK: Expect Production prefix
     expected_key = f"UBLOX_ZED-F9T_{device_id}"
 
-    assert poll_redis_field(redis_client, expected_key, "satellites", expected="8"), \
+    assert poll_redis_field(redis_client, expected_key, "satellites", expected="8"), (
         f"Field 'satellites' not found in {expected_key!r}"
+    )
     assert redis_client.hget(expected_key, "extra_dilution_of_precision") == "1.2"
 
     # Check TTL (Should be -1 aka Permanent for production)
@@ -60,7 +61,7 @@ def test_invalid_schema_rejection(grpc_client):
         "satellites": 999,  # Invalid: must be <= 100
         "lat": 37.0,
         "lon": -122.0,
-        "fix_mode": "3D"
+        "fix_mode": "3D",
     }
 
     # Should raise ValueError from client wrapper
@@ -81,11 +82,7 @@ def test_concurrent_clients(grpc_client, redis_client):
                 # This should pass now that server.py uses including_default_value_fields=True
                 # (iteration=0 and value=0.0 will be preserved)
                 grpc_client.log_test(
-                    device_id=dev_id,
-                    iteration=i,
-                    value=float(client_idx),
-                    message="STRESS_TEST",
-                    active=True
+                    device_id=dev_id, iteration=i, value=float(client_idx), message="STRESS_TEST", active=True
                 )
             except Exception as e:
                 return f"Client {client_idx} failed: {e}"
@@ -97,7 +94,7 @@ def test_concurrent_clients(grpc_client, redis_client):
     for res in results:
         assert res == "OK"
 
-    key = f"TEST-STRICT_worker_0"
+    key = "TEST-STRICT_worker_0"
     assert poll_redis_key(redis_client, key), f"Key {key!r} not found after concurrent writes"
     assert redis_client.hget(key, "message") == "STRESS_TEST"
 
@@ -113,20 +110,15 @@ def test_time_series_integrity(grpc_client, redis_client):
 
     for i in range(num_updates):
         # We use a monotonically increasing 'iteration'
-        grpc_client.log_test(
-            device_id=device_id,
-            iteration=i,
-            value=float(i * 10),
-            message=f"SEQ_{i}",
-            active=True
-        )
+        grpc_client.log_test(device_id=device_id, iteration=i, value=float(i * 10), message=f"SEQ_{i}", active=True)
         # No sleep here! We want to hammer the server.
 
     key = f"TEST-STRICT_{device_id}"
 
     # Wait for last write to land in Redis
-    assert poll_redis_field(redis_client, key, "iteration", expected=str(num_updates - 1)), \
+    assert poll_redis_field(redis_client, key, "iteration", expected=str(num_updates - 1)), (
         f"Final iteration not found in {key!r}"
+    )
 
     # Verify Redis holds the FINAL state
     final_iteration = redis_client.hget(key, "iteration")
@@ -150,8 +142,9 @@ def test_interleaved_clients_same_type(grpc_client, redis_client):
 
     key_a = f"UBLOX_ZED-F9T_{dev_a}"
     key_b = f"UBLOX_ZED-F9T_{dev_b}"
-    assert poll_redis_key(redis_client, key_a) and poll_redis_key(redis_client, key_b), \
+    assert poll_redis_key(redis_client, key_a) and poll_redis_key(redis_client, key_b), (
         "Both device keys must appear in Redis"
+    )
 
     lat_a = redis_client.hget(key_a, "lat")
     lat_b = redis_client.hget(key_b, "lat")
@@ -226,8 +219,9 @@ def test_concurrent_field_merging(grpc_client, redis_client):
         exc.submit(client_pressure)
 
     key = f"DEV_TEST-FLEX_{device_id}"
-    assert poll_redis_field(redis_client, key, "temp") and poll_redis_field(redis_client, key, "pressure"), \
+    assert poll_redis_field(redis_client, key, "temp") and poll_redis_field(redis_client, key, "pressure"), (
         "Both fields must appear in Redis after concurrent writes"
+    )
 
     # Verify BOTH fields exist and have the last values
     assert float(redis_client.hget(key, "temp")) == 9.0

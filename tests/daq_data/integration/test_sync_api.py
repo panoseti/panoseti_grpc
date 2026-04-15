@@ -1,9 +1,11 @@
 import asyncio
+
 import pytest
-from panoseti_grpc.generated.daq_data_pb2 import PanoImage
+
 from panoseti_grpc.daq_data.client import DaqDataClient
 
 pytestmark = pytest.mark.asyncio
+
 
 async def test_sync_ping(sync_client: DaqDataClient):
     """Test the Ping RPC with the sync client."""
@@ -49,19 +51,16 @@ async def test_sync_stream_images(sync_client: DaqDataClient):
         image_types_seen = set()
         for image in image_stream:
             assert isinstance(image, dict)
-            assert 'type' in image and image['type'] in ('MOVIE', 'PULSE_HEIGHT')
-            image_types_seen.add(image['type'])
+            assert "type" in image and image["type"] in ("MOVIE", "PULSE_HEIGHT")
+            image_types_seen.add(image["type"])
             received_images += 1
             if received_images >= 4:
                 break
         return received_images, image_types_seen
 
     # 3. Run the synchronous loop in a thread and get the results.
-    received_count, types_seen = await asyncio.wait_for(
-        asyncio.to_thread(stream_and_validate_data),
-        timeout=5.0
-    )
+    received_count, types_seen = await asyncio.wait_for(asyncio.to_thread(stream_and_validate_data), timeout=5.0)
 
     assert received_count >= 4, "Should receive at least 4 images"
-    assert 'MOVIE' in types_seen, "Should have received at least one MOVIE image"
-    assert 'PULSE_HEIGHT' in types_seen, "Should have received at least one PULSE_HEIGHT image"
+    assert "MOVIE" in types_seen, "Should have received at least one MOVIE image"
+    assert "PULSE_HEIGHT" in types_seen, "Should have received at least one PULSE_HEIGHT image"

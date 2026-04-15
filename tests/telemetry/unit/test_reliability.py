@@ -1,8 +1,10 @@
-import pytest
 import logging
 import time
 from unittest.mock import MagicMock
-from panoseti_grpc.telemetry.client import AsyncGrpcHandler, TelemetryClient
+
+import pytest
+
+from panoseti_grpc.telemetry.client import AsyncGrpcHandler
 
 
 # -----------------------------------------------------------------------------
@@ -39,6 +41,7 @@ def crash_proof_logger():
 # 2. Test Cases
 # -----------------------------------------------------------------------------
 
+
 def test_handler_survives_unserializable_object(crash_proof_logger):
     """
     Scenario: User logs an object that crashes json.dumps().
@@ -46,9 +49,12 @@ def test_handler_survives_unserializable_object(crash_proof_logger):
     logger, _ = crash_proof_logger
 
     class UnserializableObj:
-        def __str__(self): return "I am problematic"
+        def __str__(self):
+            return "I am problematic"
 
-        def __repr__(self): return "I am problematic"
+        def __repr__(self):
+            return "I am problematic"
+
         # Removing to_json/dict to force serialization issues if not handled strings
 
     try:
@@ -72,7 +78,7 @@ def test_handler_survives_schema_violation(crash_proof_logger):
     # 1. Configure the Mock to crash on the FIRST call, succeed on SECOND
     mock_client.send_log_future.side_effect = [
         RuntimeError("Protobuf Schema Mismatch!"),  # 1st log crashes
-        MagicMock()  # 2nd log returns a fresh future
+        MagicMock(),  # 2nd log returns a fresh future
     ]
 
     # 2. Send logs
@@ -84,8 +90,9 @@ def test_handler_survives_schema_violation(crash_proof_logger):
 
     # 3. Verify the worker tried TWICE
     # If the thread died after the first error, this would be 1
-    assert mock_client.send_log_future.call_count == 2, \
+    assert mock_client.send_log_future.call_count == 2, (
         f"Worker died! Call count is {mock_client.send_log_future.call_count}"
+    )
 
 
 def test_handler_survives_queue_overflow(crash_proof_logger):
@@ -108,6 +115,6 @@ def test_handler_survives_queue_overflow(crash_proof_logger):
     # Wait for drain
     time.sleep(0.5)
 
-    # We expect at least 10 calls (the queue size). 
+    # We expect at least 10 calls (the queue size).
     # Some might be dropped, some might process fast.
     assert mock_client.send_log_future.call_count >= 10

@@ -1,7 +1,7 @@
-import pytest
-import time
 import json
 import logging
+import time
+
 from panoseti_grpc.telemetry.logger import get_logger
 
 LOG_KEY = "logs:ingress"
@@ -19,7 +19,7 @@ def test_basic_log_rpc(grpc_client, redis_client):
         timestamp=timestamp,
         file_path=__file__,
         line_number=15,
-        function_name="test_basic_log_rpc"
+        function_name="test_basic_log_rpc",
     )
 
     future.result()
@@ -44,11 +44,7 @@ def test_async_logger_pipeline(redis_client, start_grpc_server):
     # FIXED: Use 'port' argument
     # client = TelemetryClient(host="localhost", port=50051)
 
-    logger = get_logger(
-        logger_name,
-        grpc_enabled=True,
-        level=logging.INFO
-    )
+    logger = get_logger(logger_name, grpc_enabled=True, level=logging.INFO)
 
     test_payload = {"sensor_id": 99, "status": "nominal"}
     logger.info(json.dumps(test_payload))
