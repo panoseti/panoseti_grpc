@@ -1,10 +1,10 @@
-from typing import Any
 import asyncio
 import multiprocessing
 import os
 import socket
 import time
 import uuid
+from typing import Any
 
 import pytest
 import redis
@@ -19,7 +19,7 @@ from panoseti_grpc.telemetry.server import serve
 # ---------------------------------------------------------------------------
 
 
-def poll_redis_key( redis_client: Any, key: Any, timeout: Any = 10.0, interval: Any = 0.1)-> bool:
+def poll_redis_key(redis_client: Any, key: Any, timeout: Any = 10.0, interval: Any = 0.1) -> bool:
     """Sync poll: return True once the Redis key exists, False on timeout."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -29,7 +29,9 @@ def poll_redis_key( redis_client: Any, key: Any, timeout: Any = 10.0, interval: 
     return False
 
 
-def poll_redis_field( redis_client: Any, key: Any, field: Any, expected: Any = None, timeout: Any = 10.0, interval: Any = 0.1)-> bool:
+def poll_redis_field(
+    redis_client: Any, key: Any, field: Any, expected: Any = None, timeout: Any = 10.0, interval: Any = 0.1
+) -> bool:
     """
     Sync poll: return True once `redis_client.hget(key, field)` is not None.
     If `expected` is provided, also check that the value equals str(expected).
@@ -54,7 +56,7 @@ TEST_DB_INDEX = 1
 
 
 @pytest.fixture(autouse=True)
-def reset_log_factory() -> None:
+def reset_log_factory() -> Any:
     """
     Resets the singleton gRPC client cache before every test.
     This prevents state pollution where a client created in Test A
@@ -66,7 +68,7 @@ def reset_log_factory() -> None:
 
 
 @pytest.fixture(scope="session")
-def redis_connection() -> None:
+def redis_connection() -> Any:
     """Establishes the connection once per session."""
     r = redis.Redis(host=REDIS_HOST, port=6379, db=TEST_DB_INDEX, decode_responses=True)
     try:
@@ -79,7 +81,7 @@ def redis_connection() -> None:
 
 
 @pytest.fixture(scope="session")
-def redis_client( redis_connection: Any) -> None:
+def redis_client(redis_connection: Any) -> Any:
     """
     Provides a clean Redis for EACH test function.
     """
@@ -89,13 +91,13 @@ def redis_client( redis_connection: Any) -> None:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def clean_redis( redis_connection: Any) -> None:
+def clean_redis(redis_connection: Any) -> Any:
     """Ensure a clean slate for the integration tests."""
     redis_connection.flushdb()
     yield
 
 
-def _run_server_process( redis_host: Any, port: Any) -> None:
+def _run_server_process(redis_host: Any, port: Any) -> Any:
     # We need to tell the server to use the TEST DB
     # Since the server code might hardcode DB=0, we should pass it or mock it.
     # A cleaner way for integration tests without changing server code
@@ -106,7 +108,7 @@ def _run_server_process( redis_host: Any, port: Any) -> None:
 
 
 @pytest.fixture(scope="session")
-def start_grpc_server() -> None:
+def start_grpc_server() -> Any:
     proc = multiprocessing.Process(target=_run_server_process, args=(REDIS_HOST, SERVER_PORT), daemon=True)
     proc.start()
 
@@ -136,12 +138,12 @@ def start_grpc_server() -> None:
 
 
 @pytest.fixture(scope="function")
-def grpc_client( start_grpc_server: Any) -> None:
+def grpc_client(start_grpc_server: Any) -> Any:
     return TelemetryClient(host="localhost", port=SERVER_PORT)
 
 
 @pytest.fixture(scope="module")
-def distributed_session( redis_client: Any, start_grpc_server: Any) -> None:
+def distributed_session(redis_client: Any, start_grpc_server: Any) -> Any:
     """
     Manages a unique session ID for workers to synchronize on.
     Ensures a clean slate before and after the test run.

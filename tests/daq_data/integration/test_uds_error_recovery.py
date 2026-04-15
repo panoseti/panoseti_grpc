@@ -3,12 +3,12 @@ Tests for UDS error-recovery paths: producer restart, slow-consumer
 backpressure, and DEADLINE_EXCEEDED when the data source goes idle.
 """
 
-from typing import Any
 import asyncio
 import copy
 import os
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import grpc
 import pytest
@@ -24,7 +24,8 @@ pytestmark = pytest.mark.asyncio
 # ---------------------------------------------------------------------------
 
 
-def _make_server_config( server_config_base: Any, socket_dir: Path, module_id: int = 224, max_reader_dequeue_timeouts: int = 3
+def _make_server_config(
+    server_config_base: Any, socket_dir: Path, module_id: int = 224, max_reader_dequeue_timeouts: int = 3
 ) -> None:
     cfg = copy.deepcopy(server_config_base)
     cfg["unix_domain_socket"] = f"unix://{socket_dir / 'grpc.sock'}"
@@ -39,11 +40,11 @@ def _make_server_config( server_config_base: Any, socket_dir: Path, module_id: i
             "socket_path_template": str(socket_dir / "hashpipe_grpc.dp_{dp_name}.sock"),
         }
     }
-    cfg["simulate_daq_cfg"]["strategies"] = {"uds": {"data_products": dps}}
+    cfg["simulate_daq_cfg"]["strategies"] = {"uds": {"data_products": dps, "sim_module_ids": [module_id]}}
     return cfg
 
 
-async def _start_server(cfg:dict[Any]) -> tuple[asyncio.Event, asyncio.Task]:
+async def _start_server(cfg: dict[Any]) -> tuple[asyncio.Event, asyncio.Task]:
     shutdown = asyncio.Event()
     task = asyncio.create_task(serve(cfg, shutdown, in_main_thread=False))
     uds_path = Path(cfg["unix_domain_socket"].replace("unix://", ""))

@@ -54,7 +54,7 @@ class SimSourceDataConfig(BaseModel):
 
 
 class UdsSimStrategyConfig(BaseModel):
-    sim_module_ids: list[int]
+    sim_module_ids: list[int] = Field(default_factory=lambda: [224])
     data_products: list[str] = ["ph256", "img16"]
     frame_limit: int = Field(-1, description="Max frames to send; -1 means unlimited")
 

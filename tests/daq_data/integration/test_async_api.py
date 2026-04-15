@@ -1,4 +1,3 @@
-from typing import Any
 import asyncio
 
 import pytest
@@ -30,7 +29,7 @@ async def test_async_stream_images(async_client):
     )
     received_images = 0
     async for image in stream:
-        assert isinstance(image,dict[Any])
+        assert isinstance(image, dict)
         received_images += 1
         if received_images >= 2:
             break

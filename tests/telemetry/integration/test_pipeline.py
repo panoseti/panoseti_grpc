@@ -1,13 +1,13 @@
-from typing import Any
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 import pytest
 
 from tests.telemetry.conftest import poll_redis_field, poll_redis_key
 
 
-def test_flexible_struct_flow( grpc_client: Any, redis_client: Any) -> None:
+def test_flexible_struct_flow(grpc_client: Any, redis_client: Any) -> None:
     """
     Verifies that 'flexible' logging works for configured EXPERIMENTAL devices.
     """
@@ -29,7 +29,7 @@ def test_flexible_struct_flow( grpc_client: Any, redis_client: Any) -> None:
     assert ttl > 0 and ttl <= 3600  # Config says 3600s
 
 
-def test_strict_gps_with_extras( grpc_client: Any, redis_client: Any) -> None:
+def test_strict_gps_with_extras(grpc_client: Any, redis_client: Any) -> None:
     """
     Verifies that 'strict' logging works for configured PRODUCTION devices.
     """
@@ -53,7 +53,7 @@ def test_strict_gps_with_extras( grpc_client: Any, redis_client: Any) -> None:
     assert redis_client.ttl(expected_key) == -1
 
 
-def test_invalid_schema_rejection( grpc_client: Any) -> None:
+def test_invalid_schema_rejection(grpc_client: Any) -> None:
     """
     Verifies that strict mode actually enforces schema.
     """
@@ -72,11 +72,11 @@ def test_invalid_schema_rejection( grpc_client: Any) -> None:
     assert "Server rejected data" in str(excinfo.value)
 
 
-def test_concurrent_clients( grpc_client: Any, redis_client: Any) -> None:
+def test_concurrent_clients(grpc_client: Any, redis_client: Any) -> None:
     num_clients = 10
     messages_per_client = 5
 
-    def worker( client_idx: Any) -> None:
+    def worker(client_idx: Any) -> None:
         dev_id = f"worker_{client_idx}"
         for i in range(messages_per_client):
             try:
@@ -100,7 +100,7 @@ def test_concurrent_clients( grpc_client: Any, redis_client: Any) -> None:
     assert redis_client.hget(key, "message") == "STRESS_TEST"
 
 
-def test_time_series_integrity( grpc_client: Any, redis_client: Any) -> None:
+def test_time_series_integrity(grpc_client: Any, redis_client: Any) -> None:
     """
     Scenario: A client sends a sequence of strictly ordered updates.
     We assert that the final state in Redis matches the LAST update,
@@ -129,7 +129,7 @@ def test_time_series_integrity( grpc_client: Any, redis_client: Any) -> None:
     assert final_message == f"SEQ_{num_updates - 1}"
 
 
-def test_interleaved_clients_same_type( grpc_client: Any, redis_client: Any) -> None:
+def test_interleaved_clients_same_type(grpc_client: Any, redis_client: Any) -> None:
     """
     Scenario: Two different devices of the SAME type (gps) logging simultaneously.
     Ensures the server doesn't cross-contaminate data between IDs.
@@ -154,7 +154,7 @@ def test_interleaved_clients_same_type( grpc_client: Any, redis_client: Any) -> 
     assert lat_b == "90.0"
 
 
-def test_rapid_reconnect_simulation( grpc_client: Any, redis_client: Any) -> None:
+def test_rapid_reconnect_simulation(grpc_client: Any, redis_client: Any) -> None:
     """
     Scenario: Simulates a flaky connection where a client connects,
     sends 1 message, disconnects, and repeats.
@@ -172,7 +172,7 @@ def test_rapid_reconnect_simulation( grpc_client: Any, redis_client: Any) -> Non
     assert float(val) == 4.0
 
 
-def test_huge_payload( grpc_client: Any, redis_client: Any) -> None:
+def test_huge_payload(grpc_client: Any, redis_client: Any) -> None:
     """
     Scenario: Sending a very large flexible payload (near gRPC limits).
     """
@@ -192,7 +192,7 @@ def test_huge_payload( grpc_client: Any, redis_client: Any) -> None:
     assert val == big_string
 
 
-def test_concurrent_field_merging( grpc_client: Any, redis_client: Any) -> None:
+def test_concurrent_field_merging(grpc_client: Any, redis_client: Any) -> None:
     """
     CREATIVE SCENARIO: Two different clients update THE SAME device ID,
     but they write to DIFFERENT fields.
@@ -229,7 +229,7 @@ def test_concurrent_field_merging( grpc_client: Any, redis_client: Any) -> None:
     assert float(redis_client.hget(key, "pressure")) == 109.0
 
 
-def test_unknown_experimental_device( grpc_client: Any, redis_client: Any) -> None:
+def test_unknown_experimental_device(grpc_client: Any, redis_client: Any) -> None:
     """
     Verifies that a completely unknown device type goes to SANDBOX.
     """

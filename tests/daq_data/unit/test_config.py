@@ -22,8 +22,8 @@ class TestDataProductEnum:
         assert DataProduct("ph1024") == DataProduct.PH1024
 
     def test_string_equality(self) -> None:
-        assert DataProduct.IMG16 == "img16"
-        assert DataProduct.PH256 == "ph256"
+        assert DataProduct.IMG16 == "img16"  # type: ignore[comparison-overlap]
+        assert DataProduct.PH256 == "ph256"  # type: ignore[comparison-overlap]
 
     def test_invalid_value_raises(self) -> None:
         with pytest.raises(ValueError):

@@ -9,17 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Unified QA Infrastructure**: Introduced `tests/qa.py` and `tests/qa.toml` for containerized linting and testing.
-- **Python 3.14 Modernization**: Updated `src/panoseti_grpc/util/` and `src/panoseti_grpc/telemetry/` to leverage Python 3.14 features.
+- **Python 3.14 Modernization**: Updated `src/panoseti_grpc/util/`, `src/panoseti_grpc/telemetry/`, and `src/panoseti_grpc/daq_data/` to leverage Python 3.14 features.
     - Used PEP 695 type parameters for generic functions (e.g., `def foo[T](...)`).
     - Adopted `Type | None` syntax for optional types (PEP 604).
     - Integrated `from __future__ import annotations` across all modernized modules.
 
 ### Changed
-- **Strict Typing Compliance**: Achieved 100% MyPy `strict` mode compliance for `daq_control`, `telemetry`, and `util` subdirectories.
+- **Strict Typing Compliance**: Achieved 100% MyPy `strict` mode compliance for `daq_control`, `telemetry`, `util`, and `daq_data` subdirectories.
 - **Ruff Linting**: Standardized code style and formatting using Ruff (120-character line limit).
 - **gRPC Message Renaming**: (Breaking) Renamed `StatusDaqRequest/Response` to `DaqStatusRequest/Response` in `daq_control.proto` for naming consistency.
 - **Telemetry Configuration**: Updated `TelemetryConfig.load` and `validate_and_flatten` with stricter type hints and Pydantic 2.x validation.
 - **Logging Pipeline**: Refactored `AsyncGrpcHandler` and `PanosetiLogFactory` for better type safety and resource management.
+- **DAQ Data Service**: Completed strict typing for asynchronous streaming components (`UdsDataSource`, `HpIoManager`, `ClientManager`, `HpIoTaskManager`), including generic type parameterization for `asyncio.Queue` and `asyncio.Task`.
 
 ### Fixed
 - Fixed numerous "Missing return type annotation" and "Incompatible types in assignment" errors identified by MyPy.

@@ -3,6 +3,7 @@ Unit tests for daq_control/config.py Pydantic validation models.
 """
 
 from typing import Any
+
 import pytest
 from pydantic import ValidationError
 

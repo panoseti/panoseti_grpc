@@ -1,7 +1,7 @@
-from typing import Any
 import asyncio
 import sys
 import time
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -64,7 +64,7 @@ def test_factory_singleton_behavior() -> None:
 
 
 # --- OPTIONAL: Sanity check for file logger (Existing test preserved) ---
-def test_file_logger_creation_and_writing( tmp_path: Any) -> None:
+def test_file_logger_creation_and_writing(tmp_path: Any) -> None:
     """Verify logger creates file and writes to it."""
     log_dir = tmp_path / "logs"
     service_name = "FileTest"
@@ -83,7 +83,7 @@ def test_file_logger_creation_and_writing( tmp_path: Any) -> None:
     assert expected_file.exists(), f"Log file missing: {list(log_dir.iterdir())}"
 
 
-def test_console_logger_output( capsys: Any) -> None:
+def test_console_logger_output(capsys: Any) -> None:
     """Verify logger writes to stdout."""
     logger = get_logger("ConsoleTest", log_dir=None, grpc_enabled=False, console=True)
 
@@ -137,7 +137,7 @@ async def test_stream_reader_invalid_utf8():
 
     logged_messages = []
 
-    def mock_logger_method( msg: Any) -> None:
+    def mock_logger_method(msg: Any) -> None:
         logged_messages.append(msg)
 
     await _stream_reader(mock_stream, mock_logger_method)
@@ -165,7 +165,7 @@ async def test_stream_reader_skips_whitespace_lines():
 
     logged_messages = []
 
-    def mock_logger_method( msg: Any) -> None:
+    def mock_logger_method(msg: Any) -> None:
         logged_messages.append(msg)
 
     await _stream_reader(mock_stream, mock_logger_method)

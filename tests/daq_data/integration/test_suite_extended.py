@@ -1,4 +1,3 @@
-from typing import Any
 import asyncio
 from pathlib import Path
 
@@ -45,7 +44,7 @@ async def test_uds_stream_high_frequency(default_server_process):
         received_images = 0
         frame_numbers = []
         async for image in stream:
-            assert isinstance(image,dict[Any])
+            assert isinstance(image, dict)
             frame_numbers.append(image["frame_number"])
             received_images += 1
             if received_images >= 100:

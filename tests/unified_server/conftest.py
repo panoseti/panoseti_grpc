@@ -24,7 +24,6 @@ Ports are intentionally different from 50051 to avoid conflicts with other
 running services or test suites.
 """
 
-from typing import Any
 from __future__ import annotations
 
 import asyncio
@@ -34,6 +33,7 @@ import socket
 import time
 from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 
 import pytest
 import redis as redis_sync
@@ -60,7 +60,7 @@ SERVER_STARTUP_TIMEOUT: float = 30.0
 # ---------------------------------------------------------------------------
 
 
-def wait_for_port(host: str, port: int, timeout: float = SERVER_STARTUP_TIMEOUT)-> bool:
+def wait_for_port(host: str, port: int, timeout: float = SERVER_STARTUP_TIMEOUT) -> bool:
     """Poll until a TCP port accepts connections or timeout expires.
 
     Returns True on success, False on timeout.
@@ -75,12 +75,7 @@ def wait_for_port(host: str, port: int, timeout: float = SERVER_STARTUP_TIMEOUT)
     return False
 
 
-def poll_redis_list_len(
-    r: redis_sync.Redis,
-    key: str,
-    min_len: int,
-    timeout: float = 10.0,
-    interval: float = 0.1)-> bool:
+def poll_redis_list_len(r: Any, key: str, min_len: int, timeout: float = 10.0, interval: float = 0.1) -> bool:
     """Block until a Redis list has at least ``min_len`` entries, or timeout.
 
     Returns True if condition was met, False on timeout.
@@ -94,11 +89,7 @@ def poll_redis_list_len(
     return False
 
 
-def poll_redis_key(
-    r: redis_sync.Redis,
-    key: str,
-    timeout: float = 10.0,
-    interval: float = 0.1)-> bool:
+def poll_redis_key(r: Any, key: str, timeout: float = 10.0, interval: float = 0.1) -> bool:
     """Block until a Redis key exists, or timeout."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -113,17 +104,17 @@ def poll_redis_key(
 # ---------------------------------------------------------------------------
 
 
-def _run_unified_server(toml_path: str)-> None:
+def _run_unified_server(toml_path: str) -> Any:
     """Target function for server subprocess.
 
     Loads PanosetiServerConfig from the given TOML path and runs the unified
     server until the process is terminated.
     """
     cfg = PanosetiServerConfig.from_toml(toml_path)
-    asyncio.run(PanosetiServer.run(cfg, in_main_thread=False))
+    asyncio.run(PanosetiServer.run(cfg))
 
 
-def _start_server_process(toml_path: str, port: int)-> multiprocessing.Process:
+def _start_server_process(toml_path: str, port: int) -> multiprocessing.Process:
     """Spawn a server subprocess and wait for its port to be ready."""
     proc = multiprocessing.Process(
         target=_run_unified_server,
@@ -137,7 +128,7 @@ def _start_server_process(toml_path: str, port: int)-> multiprocessing.Process:
     return proc
 
 
-def _stop_server_process(proc: multiprocessing.Process, timeout: float = 5.0)-> None:
+def _stop_server_process(proc: multiprocessing.Process, timeout: float = 5.0) -> Any:
     """Terminate a server subprocess, escalating to SIGKILL if needed."""
     proc.terminate()
     proc.join(timeout=timeout)
@@ -152,12 +143,8 @@ def _stop_server_process(proc: multiprocessing.Process, timeout: float = 5.0)-> 
 
 
 def _build_unified_toml(
-    toml_path: Path,
-    socket_dir: Path,
-    redis_host: str,
-    redis_port: int,
-    redis_db: int,
-    port: int)-> None:
+    toml_path: Path, socket_dir: Path, redis_host: str, redis_port: int, redis_db: int, port: int
+) -> Any:
     """Write a complete all-services TOML suitable for simulation testing."""
     socket_template = str(socket_dir / "hashpipe_grpc.dp_{dp_name}.sock")
     content = f"""
@@ -220,12 +207,7 @@ log_level         = "INFO"
     toml_path.write_text(content)
 
 
-def _build_headnode_toml(
-    toml_path: Path,
-    redis_host: str,
-    redis_port: int,
-    redis_db: int,
-    port: int)-> None:
+def _build_headnode_toml(toml_path: Path, redis_host: str, redis_port: int, redis_db: int, port: int) -> Any:
     """Write a headnode-profile (telemetry only) TOML."""
     content = f"""
 [server]
@@ -246,10 +228,7 @@ shutdown_grace_period = 3.0
     toml_path.write_text(content)
 
 
-def _build_daq_node_toml(
-    toml_path: Path,
-    socket_dir: Path,
-    port: int)-> None:
+def _build_daq_node_toml(toml_path: Path, socket_dir: Path, port: int) -> Any:
     """Write a daq_node-profile (daq_data + daq_control, no telemetry) TOML."""
     socket_template = str(socket_dir / "daq_node_grpc.dp_{dp_name}.sock")
     content = f"""
@@ -311,13 +290,13 @@ log_level         = "INFO"
 
 
 @pytest.fixture(scope="session")
-def unified_socket_dir( tmp_path_factory: Any) -> None:
+def unified_socket_dir(tmp_path_factory: Any) -> Any:
     """Temporary directory for UDS sockets used by the all-services server."""
     return tmp_path_factory.mktemp("unified_socks")
 
 
 @pytest.fixture(scope="session")
-def daq_node_socket_dir( tmp_path_factory: Any) -> None:
+def daq_node_socket_dir(tmp_path_factory: Any) -> Any:
     """Temporary directory for UDS sockets used by the daq_node server."""
     return tmp_path_factory.mktemp("daq_node_socks")
 
@@ -328,7 +307,7 @@ def daq_node_socket_dir( tmp_path_factory: Any) -> None:
 
 
 @pytest.fixture(scope="session")
-def unified_server_toml( tmp_path_factory: Any, unified_socket_dir: Any) -> None:
+def unified_server_toml(tmp_path_factory: Any, unified_socket_dir: Any) -> Any:
     """Write and return the TOML path for the all-services unified server."""
     toml_path = tmp_path_factory.mktemp("unified_cfg") / "server.toml"
     _build_unified_toml(
@@ -343,7 +322,7 @@ def unified_server_toml( tmp_path_factory: Any, unified_socket_dir: Any) -> None
 
 
 @pytest.fixture(scope="session")
-def headnode_server_toml( tmp_path_factory: Any) -> None:
+def headnode_server_toml(tmp_path_factory: Any) -> Any:
     """Write and return the TOML path for the headnode (telemetry-only) server."""
     toml_path = tmp_path_factory.mktemp("headnode_cfg") / "server.toml"
     _build_headnode_toml(
@@ -357,7 +336,7 @@ def headnode_server_toml( tmp_path_factory: Any) -> None:
 
 
 @pytest.fixture(scope="session")
-def daq_node_server_toml( tmp_path_factory: Any, daq_node_socket_dir: Any) -> None:
+def daq_node_server_toml(tmp_path_factory: Any, daq_node_socket_dir: Any) -> Any:
     """Write and return the TOML path for the daq_node (no telemetry) server."""
     toml_path = tmp_path_factory.mktemp("daq_node_cfg") / "server.toml"
     _build_daq_node_toml(
@@ -374,7 +353,7 @@ def daq_node_server_toml( tmp_path_factory: Any, daq_node_socket_dir: Any) -> No
 
 
 @pytest.fixture(scope="session")
-def _require_redis()-> None:
+def _require_redis() -> Any:
     """Session-scoped guard: fail fast if Redis is unavailable.
 
     Server fixtures that start a telemetry-enabled server depend on this so
@@ -399,7 +378,7 @@ def _require_redis()-> None:
 
 
 @pytest.fixture(scope="session")
-def start_unified_server( unified_server_toml: Any, _require_redis: Any) -> None:
+def start_unified_server(unified_server_toml: Any, _require_redis: Any) -> Any:
     """Start the all-services unified server; stop it after the session."""
     proc = _start_server_process(str(unified_server_toml), GRPC_PORT)
     # Extra wait for telemetry → Redis connection and daq_data UDS sockets
@@ -409,7 +388,7 @@ def start_unified_server( unified_server_toml: Any, _require_redis: Any) -> None
 
 
 @pytest.fixture(scope="session")
-def start_headnode_server( headnode_server_toml: Any, _require_redis: Any) -> None:
+def start_headnode_server(headnode_server_toml: Any, _require_redis: Any) -> Any:
     """Start the headnode (telemetry-only) server; stop it after the session."""
     proc = _start_server_process(str(headnode_server_toml), HEADNODE_PORT)
     time.sleep(1.0)
@@ -418,7 +397,7 @@ def start_headnode_server( headnode_server_toml: Any, _require_redis: Any) -> No
 
 
 @pytest.fixture(scope="session")
-def start_daq_node_server( daq_node_server_toml: Any) -> None:
+def start_daq_node_server(daq_node_server_toml: Any) -> Any:
     """Start the daq_node server (daq_data + daq_control); stop after session."""
     proc = _start_server_process(str(daq_node_server_toml), DAQ_NODE_PORT)
     time.sleep(1.5)
@@ -432,7 +411,7 @@ def start_daq_node_server( daq_node_server_toml: Any) -> None:
 
 
 @pytest.fixture(scope="session")
-def redis_client()-> Generator[redis_sync.Redis, None, None]:
+def redis_client() -> Generator[redis_sync.Redis, None, None]:
     """Session-scoped Redis client connected to the test DB."""
     r = redis_sync.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_TEST_DB, decode_responses=True)
     try:
@@ -451,7 +430,7 @@ def redis_client()-> Generator[redis_sync.Redis, None, None]:
 
 
 @pytest.fixture(autouse=True)
-def reset_log_factory() -> None:
+def reset_log_factory() -> Any:
     """Prevent gRPC client state from leaking between tests."""
     PanosetiLogFactory.reset_clients()
     yield

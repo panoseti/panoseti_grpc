@@ -1,11 +1,12 @@
 import json
 import time
 import uuid
+from typing import Any
 
 from panoseti_grpc.telemetry.logger import get_logger
 
 
-def fetch_logs( redis_client: Any, session_id: str)-> list[ dict[Any]]:
+def fetch_logs(redis_client: Any, session_id: str) -> list[dict[str, Any]]:
     """
     Parses the 'logs:ingress' list.
     The Telemetry Server stores logs as JSON strings.
@@ -33,7 +34,7 @@ def fetch_logs( redis_client: Any, session_id: str)-> list[ dict[Any]]:
     return parsed_logs
 
 
-def wait_for_logs( redis_client: Any, session_id: Any, min_count: Any, timeout: Any = 20) -> None:
+def wait_for_logs(redis_client: Any, session_id: Any, min_count: Any, timeout: Any = 20) -> None:
     """Wait for at least X logs to appear in Redis, with a timeout."""
     start = time.time()
     while time.time() - start < timeout:
@@ -44,7 +45,7 @@ def wait_for_logs( redis_client: Any, session_id: Any, min_count: Any, timeout: 
     raise TimeoutError(f"Only found {len(fetch_logs(redis_client, session_id))} logs after {timeout}s")
 
 
-def test_distributed_throughput( redis_client: Any, distributed_session: Any) -> None:
+def test_distributed_throughput(redis_client: Any, distributed_session: Any) -> None:
     """
     Verifies the system can handle concurrent traffic from multiple workers.
     Each worker sends ~20 logs/sec.
@@ -60,7 +61,7 @@ def test_distributed_throughput( redis_client: Any, distributed_session: Any) ->
     assert len(hosts) > 1, "Only one worker is sending logs!"
 
 
-def test_distributed_integrity( redis_client: Any, distributed_session: Any) -> None:
+def test_distributed_integrity(redis_client: Any, distributed_session: Any) -> None:
     """
     Verifies that for every worker, the sequence numbers are strictly
     monotonic (no dropped logs).
@@ -83,7 +84,7 @@ def test_distributed_integrity( redis_client: Any, distributed_session: Any) -> 
             assert diff == 1, f"Gap detected on {host}: {sorted_seqs[i]} -> {sorted_seqs[i + 1]}"
 
 
-def test_distributed_concurrency_isolation( redis_client: Any, distributed_session: Any) -> None:
+def test_distributed_concurrency_isolation(redis_client: Any, distributed_session: Any) -> None:
     """
     Ensures that logs from different workers don't "bleed" into each other
     and that metadata (host/service) remains consistent.
@@ -100,7 +101,7 @@ def test_distributed_concurrency_isolation( redis_client: Any, distributed_sessi
         assert isinstance(log["seq"], int)
 
 
-def test_high_frequency_burst( redis_client: Any, distributed_session: Any) -> None:
+def test_high_frequency_burst(redis_client: Any, distributed_session: Any) -> None:
     """
     Validates that the system remains responsive when workers
     increase their log rate.
@@ -119,7 +120,7 @@ def test_high_frequency_burst( redis_client: Any, distributed_session: Any) -> N
     assert mps > 10, "Cluster throughput is lower than expected for 4 workers"
 
 
-def test_mixed_traffic_stability( redis_client: Any, distributed_session: Any) -> None:
+def test_mixed_traffic_stability(redis_client: Any, distributed_session: Any) -> None:
     """
     Scenario: The system is under load from 4 standard workers.
     We inject 'Rogue' data from the Test Runner to ensure the Server/Redis pipeline handles
@@ -187,7 +188,7 @@ def test_mixed_traffic_stability( redis_client: Any, distributed_session: Any) -
     assert rogue_count >= 20, "Server dropped the complex payloads!"
 
 
-def test_session_bleeding( redis_client: Any) -> None:
+def test_session_bleeding(redis_client: Any) -> None:
     """
     Scenario: Rapidly switch Session IDs.
     Goal: Ensure logs from 'Session A' do not appear in the time window
@@ -229,7 +230,7 @@ def test_session_bleeding( redis_client: Any) -> None:
     )
 
 
-def test_worker_recovery( redis_client: Any) -> None:
+def test_worker_recovery(redis_client: Any) -> None:
     """
     Scenario: The coordination key (Session ID) disappears (simulating network split
     or leader failover). Workers should go silent.

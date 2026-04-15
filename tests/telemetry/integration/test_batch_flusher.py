@@ -3,14 +3,16 @@ Tests for the RedisBatcher: verifies that bursts of Log RPCs are all
 delivered to Redis and that the batcher correctly serialises entries.
 """
 
-from typing import Any
 import json
 import time
+from typing import Any
 
 LOG_KEY = "logs:ingress"
 
 
-def _wait_for_tagged( redis_client: Any, key: str, tag: str, expected: int, timeout: float = 15.0, poll: float = 0.3)-> list[Any]:
+def _wait_for_tagged(
+    redis_client: Any, key: str, tag: str, expected: int, timeout: float = 15.0, poll: float = 0.3
+) -> list[Any]:
     """
     Poll the entire Redis list until at least *expected* items contain *tag*,
     or until *timeout* elapses.  Returns the matching items.
@@ -27,7 +29,7 @@ def _wait_for_tagged( redis_client: Any, key: str, tag: str, expected: int, time
     return [item for item in all_items if tag in item]
 
 
-def test_batch_flush_delivers_all_logs( grpc_client: Any, redis_client: Any) -> None:
+def test_batch_flush_delivers_all_logs(grpc_client: Any, redis_client: Any) -> None:
     """
     Send exactly N Log RPCs in a burst; after the batcher has had time to
     flush, Redis must contain at least N items tagged with our unique marker.
@@ -58,7 +60,7 @@ def test_batch_flush_delivers_all_logs( grpc_client: Any, redis_client: Any) -> 
     )
 
 
-def test_batch_flush_delivers_logs_in_order( grpc_client: Any, redis_client: Any) -> None:
+def test_batch_flush_delivers_logs_in_order(grpc_client: Any, redis_client: Any) -> None:
     """
     A sequential burst of N logs must all arrive in Redis.
     Each message embeds a unique tag + index, so we can verify

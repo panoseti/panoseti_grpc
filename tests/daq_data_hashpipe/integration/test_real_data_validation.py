@@ -6,11 +6,11 @@ All tests require RUN_REAL_DATA_TESTS=1 and are gated by the
 `hashpipe_pcap_runner` session fixture.
 """
 
-from typing import Any
 from __future__ import annotations
 
 import asyncio
 import time
+from typing import Any
 
 import numpy as np
 import pytest

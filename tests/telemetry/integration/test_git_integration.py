@@ -1,7 +1,7 @@
-from typing import Any
 import json
 import logging
 import time
+from typing import Any
 from unittest.mock import patch
 
 import panoseti_grpc.telemetry.client as client_module
@@ -10,7 +10,7 @@ from panoseti_grpc.telemetry.logger import get_logger
 LOG_KEY = "logs:ingress"
 
 
-def test_git_metadata_flow( redis_client: Any) -> None:
+def test_git_metadata_flow(redis_client: Any) -> None:
     # Patch the CONSTANT in the client module
     with patch.object(client_module, "CACHED_COMMIT", "deadbeef"):
         # Force a new client/logger creation to pick up any dynamic usage

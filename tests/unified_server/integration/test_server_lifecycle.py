@@ -9,12 +9,12 @@ demonstrate the multiplexed gRPC routing that is the core feature of the
 unified server.
 """
 
-from typing import Any
 from __future__ import annotations
 
 import json
 import socket
 import time
+from typing import Any
 
 import grpc
 from google.protobuf.empty_pb2 import Empty
@@ -39,7 +39,7 @@ from tests.unified_server.conftest import (
 # ---------------------------------------------------------------------------
 
 
-def test_server_accepts_tcp_connections( start_unified_server: Any) -> None:
+def test_server_accepts_tcp_connections(start_unified_server: Any) -> None:
     """TCP connection to GRPC_PORT succeeds after server start."""
     with socket.create_connection(("localhost", GRPC_PORT), timeout=2.0) as s:
         assert s.fileno() != -1
@@ -50,7 +50,7 @@ def test_server_accepts_tcp_connections( start_unified_server: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_daq_data_ping_on_unified_server( start_unified_server: Any) -> None:
+def test_daq_data_ping_on_unified_server(start_unified_server: Any) -> None:
     """DaqData Ping RPC reaches the DaqDataServicer on the shared port."""
     with grpc.insecure_channel(f"localhost:{GRPC_PORT}") as channel:
         stub = daq_data_pb2_grpc.DaqDataStub(channel)
@@ -64,7 +64,7 @@ def test_daq_data_ping_on_unified_server( start_unified_server: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_telemetry_log_rpc_on_unified_server( start_unified_server: Any, redis_client: Any) -> None:
+def test_telemetry_log_rpc_on_unified_server(start_unified_server: Any, redis_client: Any) -> None:
     """Telemetry Log RPC routes to TelemetryServicer on the shared port."""
     client = TelemetryClient(host="localhost", port=GRPC_PORT)
     future = client.send_log_future(
@@ -85,11 +85,11 @@ def test_telemetry_log_rpc_on_unified_server( start_unified_server: Any, redis_c
 # ---------------------------------------------------------------------------
 
 
-def test_daq_control_status_on_unified_server( start_unified_server: Any, tmp_path: Any) -> None:
+def test_daq_control_status_on_unified_server(start_unified_server: Any, tmp_path: Any) -> None:
     """DaqControl StatusDaq routes to DaqControlServicer on the shared port."""
     with grpc.insecure_channel(f"localhost:{GRPC_PORT}") as channel:
         stub = daq_control_pb2_grpc.DaqControlStub(channel)
-        request = daq_control_pb2.StatusDaqRequest(
+        request = daq_control_pb2.DaqStatusRequest(
             data_dir=str(tmp_path),
             check_hashpipe_running=True,
             check_disk_usage=False,
@@ -106,7 +106,7 @@ def test_daq_control_status_on_unified_server( start_unified_server: Any, tmp_pa
 # ---------------------------------------------------------------------------
 
 
-def test_all_three_services_reachable_same_port( start_unified_server: Any, redis_client: Any, tmp_path: Any) -> None:
+def test_all_three_services_reachable_same_port(start_unified_server: Any, redis_client: Any, tmp_path: Any) -> None:
     """All three gRPC services respond on the same TCP port without interference."""
     # 1. DaqData Ping
     with grpc.insecure_channel(f"localhost:{GRPC_PORT}") as channel:
@@ -116,7 +116,7 @@ def test_all_three_services_reachable_same_port( start_unified_server: Any, redi
     # 2. DaqControl StatusDaq
     with grpc.insecure_channel(f"localhost:{GRPC_PORT}") as channel:
         dc_stub = daq_control_pb2_grpc.DaqControlStub(channel)
-        dc_req = daq_control_pb2.StatusDaqRequest(
+        dc_req = daq_control_pb2.DaqStatusRequest(
             data_dir=str(tmp_path),
             check_hashpipe_running=True,
             check_disk_usage=False,
@@ -137,7 +137,7 @@ def test_all_three_services_reachable_same_port( start_unified_server: Any, redi
 # ---------------------------------------------------------------------------
 
 
-def test_graceful_shutdown_frees_port( daq_node_server_toml: Any, tmp_path_factory: Any) -> None:
+def test_graceful_shutdown_frees_port(daq_node_server_toml: Any, tmp_path_factory: Any) -> None:
     """After the server process exits, the TCP port is released and re-bindable.
 
     Uses the daq_node profile (no telemetry, no Redis) for an isolated test

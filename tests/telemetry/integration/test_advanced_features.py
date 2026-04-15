@@ -1,6 +1,6 @@
-from typing import Any
 import logging
 import time
+from typing import Any
 
 import pytest
 
@@ -13,7 +13,7 @@ from .test_logging_scenarios import LOG_KEY, wait_for_service_log
 
 
 # --- HELPER FOR ROBUST WAITING ---
-def wait_for_worker_logs( redis_client: Any, session_id: Any, min_count: Any = 1, timeout: Any = 15) -> None:
+def wait_for_worker_logs(redis_client: Any, session_id: Any, min_count: Any = 1, timeout: Any = 15) -> None:
     """
     Polls Redis until the workers report in with the specific session ID.
     Replaces brittle time.sleep() calls.
@@ -31,7 +31,7 @@ def wait_for_worker_logs( redis_client: Any, session_id: Any, min_count: Any = 1
 # --- A. OMNI-CHANNEL LOGGING TEST ---
 
 
-def test_triple_destination_logging( tmp_path: Any, capsys: Any, redis_client: Any, start_grpc_server: Any) -> None:
+def test_triple_destination_logging(tmp_path: Any, capsys: Any, redis_client: Any, start_grpc_server: Any) -> None:
     service_name = "OMNI_TEST"
     log_dir = tmp_path / "omni_logs"
     log_dir.mkdir()
@@ -67,7 +67,7 @@ def test_triple_destination_logging( tmp_path: Any, capsys: Any, redis_client: A
 # --- B. DISTRIBUTED WORKER CONTROL TESTS ---
 
 
-def test_distributed_session_switching( redis_client: Any, start_grpc_server: Any) -> None:
+def test_distributed_session_switching(redis_client: Any, start_grpc_server: Any) -> None:
     """
     Validates that the worker swarm can dynamically switch sessions.
     """
@@ -107,7 +107,7 @@ def test_distributed_session_switching( redis_client: Any, start_grpc_server: An
 # --- C. ROBUSTNESS TESTS ---
 
 
-def test_queue_overflow_protection( redis_client: Any) -> None:
+def test_queue_overflow_protection(redis_client: Any) -> None:
     service_name = "OVERFLOW_TEST"
     client = TelemetryClient(host="localhost", port=50051)
 
@@ -132,7 +132,7 @@ def test_queue_overflow_protection( redis_client: Any) -> None:
     assert duration < 2.0, "Logging blocked main thread!"
 
 
-def test_logger_reconfiguration( tmp_path: Any, start_grpc_server: Any) -> None:
+def test_logger_reconfiguration(tmp_path: Any, start_grpc_server: Any) -> None:
     """
     Validates dynamic reconfiguration and strict level filtering.
     """

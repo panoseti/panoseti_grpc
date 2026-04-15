@@ -4,7 +4,6 @@ abrupt-disconnect recovery, socket permissions, frame-ID monotonicity
 after re-init, and dynamic module discovery.
 """
 
-from typing import Any
 import asyncio
 import copy
 import os
@@ -12,6 +11,7 @@ import socket
 import stat
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -26,7 +26,7 @@ pytestmark = pytest.mark.asyncio
 # ---------------------------------------------------------------------------
 
 
-def _make_server_config( server_config_base: Any, socket_dir: Path, module_id: int = 224) -> None:
+def _make_server_config(server_config_base: Any, socket_dir: Path, module_id: int = 224) -> dict[str, Any]:
     """Return a config where every path lives under *socket_dir*."""
     cfg = copy.deepcopy(server_config_base)
     cfg["unix_domain_socket"] = f"unix://{socket_dir / 'grpc.sock'}"
@@ -40,11 +40,11 @@ def _make_server_config( server_config_base: Any, socket_dir: Path, module_id: i
             "socket_path_template": str(socket_dir / "hashpipe_grpc.dp_{dp_name}.sock"),
         }
     }
-    cfg["simulate_daq_cfg"]["strategies"] = {"uds": {"data_products": dps}}
+    cfg["simulate_daq_cfg"]["strategies"] = {"uds": {"data_products": dps, "sim_module_ids": [module_id]}}
     return cfg
 
 
-async def _start_server(cfg:dict[Any]) -> tuple[asyncio.Event, asyncio.Task]:
+async def _start_server(cfg: dict[str, Any]) -> tuple[asyncio.Event, asyncio.Task[None]]:
     shutdown = asyncio.Event()
     task = asyncio.create_task(serve(cfg, shutdown, in_main_thread=False))
     uds_path = Path(cfg["unix_domain_socket"].replace("unix://", ""))
@@ -58,7 +58,7 @@ async def _start_server(cfg:dict[Any]) -> tuple[asyncio.Event, asyncio.Task]:
     return shutdown, task
 
 
-async def _stop_server(shutdown: asyncio.Event, task: asyncio.Task, uds_path: Path):
+async def _stop_server(shutdown: asyncio.Event, task: asyncio.Task[None], uds_path: Path) -> None:
     shutdown.set()
     try:
         await asyncio.wait_for(task, timeout=5.0)

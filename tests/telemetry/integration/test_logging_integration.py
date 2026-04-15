@@ -1,14 +1,14 @@
-from typing import Any
 import json
 import logging
 import time
+from typing import Any
 
 from panoseti_grpc.telemetry.logger import get_logger
 
 LOG_KEY = "logs:ingress"
 
 
-def test_basic_log_rpc( grpc_client: Any, redis_client: Any) -> None:
+def test_basic_log_rpc(grpc_client: Any, redis_client: Any) -> None:
     """Verifies that a direct gRPC Log call ends up in Redis."""
     msg = "Integration Test - Raw RPC"
     timestamp = time.time()
@@ -38,7 +38,7 @@ def test_basic_log_rpc( grpc_client: Any, redis_client: Any) -> None:
     assert payload["text"] == msg
 
 
-def test_async_logger_pipeline( redis_client: Any, start_grpc_server: Any) -> None:
+def test_async_logger_pipeline(redis_client: Any, start_grpc_server: Any) -> None:
     """Verifies the end-to-end Python Logger -> Redis flow."""
     logger_name = "TEST_LOGGER_PIPELINE"
 
@@ -85,7 +85,7 @@ def test_async_logger_pipeline( redis_client: Any, start_grpc_server: Any) -> No
         assert "_meta" in stored_payload
 
 
-def test_burst_logging( redis_client: Any, start_grpc_server: Any) -> None:
+def test_burst_logging(redis_client: Any, start_grpc_server: Any) -> None:
     """Chaos Test: Sends 500 logs rapidly."""
     burst_count = 500
     service_name = "BURST_TEST"
@@ -106,7 +106,7 @@ def test_burst_logging( redis_client: Any, start_grpc_server: Any) -> None:
     assert delta >= burst_count, f"Packet Loss Detected! Sent {burst_count}, Stored {delta}"
 
 
-def test_severity_mapping( redis_client: Any, start_grpc_server: Any) -> None:
+def test_severity_mapping(redis_client: Any, start_grpc_server: Any) -> None:
     """Verifies Python Log Levels -> PANOSETI Severities."""
     service_name = "LEVEL_TEST"
     logger = get_logger(service_name, grpc_enabled=True, level=logging.DEBUG)

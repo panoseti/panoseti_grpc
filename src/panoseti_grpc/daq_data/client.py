@@ -87,7 +87,7 @@ class DaqDataClient:
         # Load daq config, if necessary
         if daq_config is None:
             raise ValueError("daq_config cannot be None")
-        
+
         daq_config_dict: dict[str, Any] = {}
         if isinstance(daq_config, (str, Path)):
             if not os.path.exists(daq_config):
@@ -522,7 +522,7 @@ class AioDaqDataClient:
         # Load daq config, if necessary
         if daq_config is None:
             raise ValueError("daq_config cannot be None")
-        
+
         daq_config_dict: dict[str, Any] = {}
         if isinstance(daq_config, (str, Path)):
             if not os.path.exists(daq_config):

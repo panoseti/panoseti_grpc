@@ -115,6 +115,7 @@ line-length = 120
 target-version = "py312"
 exclude = [
     "src/panoseti_grpc/generated",
+    "src/panoseti_grpc/ublox_control",
     "**/*.ipynb",
 ]
 
@@ -132,12 +133,22 @@ ignore = ["E203"]
 python_version = "3.14"
 strict = true
 ignore_missing_imports = true
-exclude = ["src/panoseti_grpc/generated"]
+exclude = ["src/panoseti_grpc/generated", "src/panoseti_grpc/ublox_control"]
+plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = "panoseti_grpc.generated.*"
 ignore_errors = true
 follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = "panoseti_grpc.ublox_control.*"
+ignore_errors = true
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
 
 [tool.pytest.ini_options]
 minversion = "6.0"

@@ -1,4 +1,3 @@
-from typing import Any
 import asyncio
 
 import pytest
@@ -39,7 +38,7 @@ async def test_sync_stream_images(sync_client: DaqDataClient):
     assert await asyncio.to_thread(sync_client.init_sim, hosts=None) is True
 
     # 2. The stream returns a blocking generator. The entire iteration loop must run in a thread.
-    def stream_and_validate_data() -> None:
+    def stream_and_validate_data() -> tuple[int, set[str]]:
         """Synchronous function to get and validate data from the stream."""
         image_stream = sync_client.stream_images(
             hosts=None,
@@ -51,7 +50,7 @@ async def test_sync_stream_images(sync_client: DaqDataClient):
         received_images = 0
         image_types_seen = set()
         for image in image_stream:
-            assert isinstance(image,dict[Any])
+            assert isinstance(image, dict)
             assert "type" in image and image["type"] in ("MOVIE", "PULSE_HEIGHT")
             image_types_seen.add(image["type"])
             received_images += 1

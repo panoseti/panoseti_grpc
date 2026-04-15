@@ -2,14 +2,14 @@
 Tests for concurrent Redis HSET field-merging behavior in the Telemetry service.
 """
 
-from typing import Any
 import threading
 import time
+from typing import Any
 
 from tests.telemetry.conftest import poll_redis_field, poll_redis_key
 
 
-def test_two_threads_different_fields_no_cross_contamination( grpc_client: Any, redis_client: Any) -> None:
+def test_two_threads_different_fields_no_cross_contamination(grpc_client: Any, redis_client: Any) -> None:
     """
     Thread A updates lat/lon; Thread B updates satellites on the same device_id.
     After both finish, the Redis hash must contain all four fields with correct values.
@@ -73,7 +73,7 @@ def test_two_threads_different_fields_no_cross_contamination( grpc_client: Any, 
     assert satellites is not None, "Field 'satellites' must be present after concurrent writes"
 
 
-def test_rapid_field_overwrite_last_writer_wins( grpc_client: Any, redis_client: Any) -> None:
+def test_rapid_field_overwrite_last_writer_wins(grpc_client: Any, redis_client: Any) -> None:
     """
     20 sequential updates to the fix_mode field: the final Redis value must
     match the last write (no stale values cached anywhere in the pipeline).
@@ -108,7 +108,7 @@ def test_rapid_field_overwrite_last_writer_wins( grpc_client: Any, redis_client:
     )
 
 
-def test_independent_devices_do_not_share_fields( grpc_client: Any, redis_client: Any) -> None:
+def test_independent_devices_do_not_share_fields(grpc_client: Any, redis_client: Any) -> None:
     """
     Updates to device A must not affect the Redis hash for device B,
     even when both share the same device_type.

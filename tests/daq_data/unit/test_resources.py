@@ -1,4 +1,3 @@
-from typing import Any
 import numpy as np
 import pytest
 from google.protobuf.json_format import ParseDict
@@ -56,7 +55,7 @@ def test_parse_pano_image() -> None:
 
     parsed = parse_pano_image(raw_image)
 
-    assert isinstance(parsed,dict[Any])
+    assert isinstance(parsed, dict)
     assert parsed["type"] == "MOVIE"
     assert parsed["module_id"] == 42
     assert isinstance(parsed["image_array"], np.ndarray)

@@ -90,7 +90,7 @@ def test_partial_payload_filling() -> None:
     # Pydantic models usually require all fields unless marked Optional
     # Let's verify that missing fields raise errors
     with pytest.raises(ValidationError) as exc:
-        GnssModel(lat=34.0, lon=-118.0)  # Missing 'satellites', 'fix_mode'
+        GnssModel(lat=34.0, lon=-118.0)  # type: ignore[call-arg] # Missing 'satellites', 'fix_mode'
     assert "satellites" in str(exc.value)
 
 

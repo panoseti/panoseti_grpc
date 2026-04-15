@@ -63,12 +63,11 @@ def get_dp_name_from_props(pano_type: int | str, shape: list[int] | tuple[int, .
     for dp in DataProduct:
         if dp.image_shape == shape_tuple and dp.bytes_per_pixel == bytes_per_pixel and dp.is_ph == is_ph:
             return str(dp.value)
-    
+
     # Use cast to handle the protobuf enum Name method which returns str but MyPy might be picky
     type_name = PanoImage.Type.Name(cast(Any, pano_type_int))
     raise ValueError(
-        f"Unknown data product for properties: type={type_name}, "
-        f"shape={shape_tuple}, bpp={bytes_per_pixel}"
+        f"Unknown data product for properties: type={type_name}, shape={shape_tuple}, bpp={bytes_per_pixel}"
     )
 
 
@@ -92,7 +91,7 @@ def parse_pano_timestamps(pano_image: PanoImage, do_wr: bool = False) -> dict[st
         h_q0 = h["quabo_0"]
         td["wr_unix_timestamp"] = pff.wr_to_unix_decimal(h_q0["pkt_tai"], h_q0["pkt_nsec"], h_q0["tv_sec"])
         td["pkt_unix_timestamp"] = pkt_to_unix_decimal(h_q0["tv_sec"], h_q0["tv_usec"])
-    
+
     if "wr_unix_timestamp" not in td or "pkt_unix_timestamp" not in td:
         return td
 

@@ -8,10 +8,10 @@ to Redis — covering the plumbing that daq_data/daq_control would use in
 production with grpc_logging=true.
 """
 
-from typing import Any
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import grpc
 from google.protobuf.empty_pb2 import Empty
@@ -35,7 +35,7 @@ REQUIRED_LOG_FIELDS = {"host", "service_name", "timestamp", "severity", "git_com
 # ---------------------------------------------------------------------------
 
 
-def test_log_arrives_in_redis( start_unified_server: Any, redis_client: Any) -> None:
+def test_log_arrives_in_redis(start_unified_server: Any, redis_client: Any) -> None:
     """A single Log RPC from TelemetryClient appears in the logs:ingress list."""
     client = TelemetryClient(host="localhost", port=GRPC_PORT)
     before_len = redis_client.llen(LOGS_KEY)
@@ -51,7 +51,7 @@ def test_log_arrives_in_redis( start_unified_server: Any, redis_client: Any) -> 
     assert reached, "Log did not appear in Redis logs:ingress within timeout"
 
 
-def test_log_entry_has_required_fields( start_unified_server: Any, redis_client: Any) -> None:
+def test_log_entry_has_required_fields(start_unified_server: Any, redis_client: Any) -> None:
     """Log entries stored in Redis contain all required LogSchema fields."""
     client = TelemetryClient(host="localhost", port=GRPC_PORT)
     before_len = redis_client.llen(LOGS_KEY)
@@ -74,7 +74,7 @@ def test_log_entry_has_required_fields( start_unified_server: Any, redis_client:
     assert not missing, f"Log entry missing required fields: {missing}. Entry: {log_json}"
 
 
-def test_log_entry_preserves_service_name( start_unified_server: Any, redis_client: Any) -> None:
+def test_log_entry_preserves_service_name(start_unified_server: Any, redis_client: Any) -> None:
     """The service_name field in Redis matches what was sent."""
     service_name = "test-service-name-check"
     client = TelemetryClient(host="localhost", port=GRPC_PORT)
@@ -101,7 +101,7 @@ def test_log_entry_preserves_service_name( start_unified_server: Any, redis_clie
 # ---------------------------------------------------------------------------
 
 
-def test_multiple_logs_all_reach_redis( start_unified_server: Any, redis_client: Any) -> None:
+def test_multiple_logs_all_reach_redis(start_unified_server: Any, redis_client: Any) -> None:
     """Five sequential log futures all succeed and appear in Redis."""
     client = TelemetryClient(host="localhost", port=GRPC_PORT)
     before_len = redis_client.llen(LOGS_KEY)
@@ -128,7 +128,7 @@ def test_multiple_logs_all_reach_redis( start_unified_server: Any, redis_client:
 # ---------------------------------------------------------------------------
 
 
-def test_daq_data_ping_does_not_corrupt_telemetry_redis( start_unified_server: Any, redis_client: Any) -> None:
+def test_daq_data_ping_does_not_corrupt_telemetry_redis(start_unified_server: Any, redis_client: Any) -> None:
     """DaqData Ping RPC does not write to or corrupt the telemetry Redis state."""
     client = TelemetryClient(host="localhost", port=GRPC_PORT)
     before_len = redis_client.llen(LOGS_KEY)

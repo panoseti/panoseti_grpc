@@ -103,41 +103,47 @@ def cmd_status(args: argparse.Namespace) -> int:
     table.add_column("Detail")
 
     all_ok = True
+    results: list[dict[str, str]] = []
+
+    def add_result(service: str, status: str, detail: str, is_ok: bool) -> None:
+        nonlocal all_ok
+        table.add_row(service, status, detail)
+        results.append({"service": service, "status": status, "detail": detail})
+        if not is_ok:
+            all_ok = False
 
     # --- DaqData: Ping RPC ---
     try:
         with _make_channel(host, port) as ch:
-            stub = daq_data_pb2_grpc.DaqDataStub(ch)
-            stub.Ping(Empty(), timeout=args.timeout, wait_for_ready=False)
-        table.add_row("daq_data", "[green]✓ OK[/green]", "Ping responded")
+            daq_data_stub = daq_data_pb2_grpc.DaqDataStub(ch)
+            daq_data_stub.Ping(Empty(), timeout=args.timeout, wait_for_ready=False)
+        add_result("daq_data", "[green]✓ OK[/green]", "Ping responded", True)
     except grpc.RpcError as e:
         code = e.code()
         if code == grpc.StatusCode.UNIMPLEMENTED:
-            table.add_row("daq_data", "[yellow]— disabled[/yellow]", "UNIMPLEMENTED (service not hosted)")
+            add_result("daq_data", "[yellow]— disabled[/yellow]", "UNIMPLEMENTED (service not hosted)", True)
         else:
-            table.add_row("daq_data", "[red]✗ FAIL[/red]", f"{code.name}: {e.details()}")
-            all_ok = False
+            add_result("daq_data", "[red]✗ FAIL[/red]", f"{code.name}: {e.details()}", False)
 
     # --- DaqControl: StatusDaq RPC ---
     try:
         with _make_channel(host, port) as ch:
-            stub = daq_control_pb2_grpc.DaqControlStub(ch)
-            req = daq_control_pb2.StatusDaqRequest(
+            daq_control_stub = daq_control_pb2_grpc.DaqControlStub(ch)
+            req = daq_control_pb2.DaqStatusRequest(
                 data_dir="/tmp",
                 check_hashpipe_running=True,
                 check_disk_usage=False,
                 check_run_dirs=False,
             )
-            resp = stub.StatusDaq(req, timeout=args.timeout, wait_for_ready=False)
+            resp = daq_control_stub.StatusDaq(req, timeout=args.timeout, wait_for_ready=False)
             hp_status = "running" if resp.hashpipe_running else "not running"
-            table.add_row("daq_control", "[green]✓ OK[/green]", f"StatusDaq OK (hashpipe {hp_status})")
+            add_result("daq_control", "[green]✓ OK[/green]", f"StatusDaq OK (hashpipe {hp_status})", True)
     except grpc.RpcError as e:
         code = e.code()
         if code == grpc.StatusCode.UNIMPLEMENTED:
-            table.add_row("daq_control", "[yellow]— disabled[/yellow]", "UNIMPLEMENTED (service not hosted)")
+            add_result("daq_control", "[yellow]— disabled[/yellow]", "UNIMPLEMENTED (service not hosted)", True)
         else:
-            table.add_row("daq_control", "[red]✗ FAIL[/red]", f"{code.name}: {e.details()}")
-            all_ok = False
+            add_result("daq_control", "[red]✗ FAIL[/red]", f"{code.name}: {e.details()}", False)
 
     # --- Telemetry: Log RPC (send a probe log, check success flag) ---
     try:
@@ -149,28 +155,20 @@ def cmd_status(args: argparse.Namespace) -> int:
         )
         result = future.result(timeout=args.timeout)
         if result.success:
-            table.add_row("telemetry", "[green]✓ OK[/green]", "Log RPC accepted")
+            add_result("telemetry", "[green]✓ OK[/green]", "Log RPC accepted", True)
         else:
-            table.add_row("telemetry", "[red]✗ FAIL[/red]", "Log RPC returned success=False")
-            all_ok = False
+            add_result("telemetry", "[red]✗ FAIL[/red]", "Log RPC returned success=False", False)
     except grpc.RpcError as e:
         code = e.code()
         if code == grpc.StatusCode.UNIMPLEMENTED:
-            table.add_row("telemetry", "[yellow]— disabled[/yellow]", "UNIMPLEMENTED (service not hosted)")
+            add_result("telemetry", "[yellow]— disabled[/yellow]", "UNIMPLEMENTED (service not hosted)", True)
         else:
-            table.add_row("telemetry", "[red]✗ FAIL[/red]", f"{code.name}: {e.details()}")
-            all_ok = False
+            add_result("telemetry", "[red]✗ FAIL[/red]", f"{code.name}: {e.details()}", False)
     except Exception as e:
-        table.add_row("telemetry", "[red]✗ FAIL[/red]", str(e))
-        all_ok = False
+        add_result("telemetry", "[red]✗ FAIL[/red]", str(e), False)
 
     if args.json:
-        # Machine-readable output:list[Any] of {service, ok, detail} dicts
-        rows = []
-        for row in table.rows:
-            cells = [c.renderable if hasattr(c, "renderable") else str(c) for c in row]
-            rows.append({"service": cells[0], "status": cells[1], "detail": cells[2]})
-        print(json.dumps({"host": host, "port": port, "services": rows}))
+        print(json.dumps({"host": host, "port": port, "services": results}))
     else:
         console.print(table)
 
@@ -389,7 +387,7 @@ def cmd_daq_control_status(args: argparse.Namespace) -> int:
     try:
         with _make_channel(args.host, args.port) as channel:
             stub = daq_control_pb2_grpc.DaqControlStub(channel)
-            req = daq_control_pb2.StatusDaqRequest(
+            req = daq_control_pb2.DaqStatusRequest(
                 data_dir=args.data_dir,
                 check_hashpipe_running=True,
                 check_disk_usage=True,

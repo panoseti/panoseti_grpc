@@ -5,12 +5,12 @@ Verifies that the unified server handles concurrent load without race
 conditions, dropped requests, or cross-service interference.
 """
 
-from typing import Any
 from __future__ import annotations
 
 import asyncio
 import json
 import threading
+from typing import Any
 
 import grpc
 from google.protobuf.empty_pb2 import Empty
@@ -31,7 +31,7 @@ from tests.unified_server.conftest import (
 # ---------------------------------------------------------------------------
 
 
-def test_20_concurrent_telemetry_logs( start_unified_server: Any, redis_client: Any) -> None:
+def test_20_concurrent_telemetry_logs(start_unified_server: Any, redis_client: Any) -> None:
     """20 concurrent Log RPCs complete without errors and all appear in Redis."""
     client = TelemetryClient(host="localhost", port=GRPC_PORT)
     before_len = redis_client.llen("logs:ingress")
@@ -58,7 +58,7 @@ def test_20_concurrent_telemetry_logs( start_unified_server: Any, redis_client: 
 # ---------------------------------------------------------------------------
 
 
-def test_concurrent_pings_and_logs( start_unified_server: Any, redis_client: Any) -> None:
+def test_concurrent_pings_and_logs(start_unified_server: Any, redis_client: Any) -> None:
     """Concurrent DaqData pings and Telemetry logs complete without blocking each other."""
     client = TelemetryClient(host="localhost", port=GRPC_PORT)
     before_len = redis_client.llen("logs:ingress")
@@ -101,7 +101,7 @@ def test_concurrent_pings_and_logs( start_unified_server: Any, redis_client: Any
     assert reached, "Not all concurrent logs appeared in Redis"
 
 
-def test_concurrent_daq_control_and_telemetry( start_unified_server: Any, redis_client: Any, tmp_path: Any) -> None:
+def test_concurrent_daq_control_and_telemetry(start_unified_server: Any, redis_client: Any, tmp_path: Any) -> None:
     """Concurrent DaqControl and Telemetry RPCs complete independently."""
     client = TelemetryClient(host="localhost", port=GRPC_PORT)
     redis_client.llen("logs:ingress")
@@ -123,7 +123,7 @@ def test_concurrent_daq_control_and_telemetry( start_unified_server: Any, redis_
         try:
             with grpc.insecure_channel(f"localhost:{GRPC_PORT}") as ch:
                 stub = daq_control_pb2_grpc.DaqControlStub(ch)
-                req = daq_control_pb2.StatusDaqRequest(
+                req = daq_control_pb2.DaqStatusRequest(
                     data_dir=str(tmp_path),
                     check_hashpipe_running=True,
                     check_disk_usage=False,
@@ -152,7 +152,7 @@ def test_concurrent_daq_control_and_telemetry( start_unified_server: Any, redis_
 # ---------------------------------------------------------------------------
 
 
-def test_repeated_daq_data_pings_stable( start_unified_server: Any) -> None:
+def test_repeated_daq_data_pings_stable(start_unified_server: Any) -> None:
     """25 sequential DaqData Pings all succeed — verifies connection stability."""
     with grpc.insecure_channel(f"localhost:{GRPC_PORT}") as channel:
         stub = daq_data_pb2_grpc.DaqDataStub(channel)
@@ -178,7 +178,7 @@ async def test_async_concurrent_cross_service_rpcs(start_unified_server, redis_c
     async def status_daq_control():
         async with grpc.aio.insecure_channel(f"localhost:{GRPC_PORT}") as ch:
             stub = daq_control_pb2_grpc.DaqControlStub(ch)
-            req = daq_control_pb2.StatusDaqRequest(
+            req = daq_control_pb2.DaqStatusRequest(
                 data_dir=str(tmp_path),
                 check_hashpipe_running=True,
                 check_disk_usage=False,

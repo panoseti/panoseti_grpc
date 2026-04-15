@@ -1,4 +1,3 @@
-from typing import Any
 import asyncio
 import copy
 import json
@@ -8,6 +7,7 @@ import tempfile
 import urllib.parse
 import uuid
 from pathlib import Path
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -23,7 +23,7 @@ TEST_CFG_DIR.mkdir(exist_ok=True)
 
 
 @pytest.fixture(scope="session")
-def server_config_base() -> None:
+def server_config_base() -> dict[str, Any]:
     """Provides a base server configuration dictionary."""
     with open(TEST_CFG_DIR / "daq_data_server_config.json") as f:
         cfg = json.load(f)
@@ -31,19 +31,19 @@ def server_config_base() -> None:
 
 
 @pytest.fixture(scope="session")
-def uds_sim_server_config( server_config_base: Any) -> None:
+def uds_sim_server_config(server_config_base: dict[str, Any]) -> dict[str, Any]:
     cfg = copy.deepcopy(server_config_base)
     cfg["simulate_daq_cfg"]["simulation_mode"] = "uds"
     dps = ["img8", "img16", "ph256", "ph1024"]
     cfg["acquisition_methods"] = {
         "uds": {"enabled": True, "data_products": dps, "socket_path_template": "/tmp/hashpipe_grpc.dp_{dp_name}.sock"}
     }
-    cfg["simulate_daq_cfg"]["strategies"] = {"uds": {"data_products": dps}}
+    cfg["simulate_daq_cfg"]["strategies"] = {"uds": {"data_products": dps, "sim_module_ids": [224]}}
     return cfg
 
 
 @pytest_asyncio.fixture(scope="function")
-async def sim_server_process(request):
+async def sim_server_process(request: Any) -> Any:
     """Parameterized fixture to start a server with a specific simulation config."""
     config = request.getfixturevalue(request.param)
     uds_path_str = config["unix_domain_socket"]
@@ -83,7 +83,7 @@ async def sim_server_process(request):
 
 
 @pytest_asyncio.fixture(scope="function")
-async def default_server_process(uds_sim_server_config):
+async def default_server_process(uds_sim_server_config: dict[str, Any]) -> Any:
     """A non-parameterized fixture that runs a standard RPC simulation server."""
     assert os.name == "posix", "Only supported on POSIX systems."
     config = uds_sim_server_config
@@ -226,7 +226,7 @@ async def async_client(default_server_process):
 
 
 @pytest.fixture
-def sync_client( default_server_process: Any) -> None:
+def sync_client(default_server_process: Any) -> None:
     """Provides a connected DaqDataClient for API tests."""
     daq_config = {
         "daq_nodes": [{"ip_addr": default_server_process["ip_addr"], "data_dir": default_server_process["data_dir"]}]

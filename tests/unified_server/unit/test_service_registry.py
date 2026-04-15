@@ -4,10 +4,12 @@ Unit tests for ServiceRegistry, ServiceDescriptor, and ServiceToggles.
 Verifies the extensibility contract of the unified server's service registry.
 """
 
+from typing import Any, cast
+
 import pytest
 
 from panoseti_grpc.server import (
-    PanosetiServer,
+    INIT_ORDER,
     ServiceDescriptor,
     ServiceRegistry,
     ServiceToggles,
@@ -26,19 +28,19 @@ def test_all_three_services_registered() -> None:
 
 def test_init_order_telemetry_first() -> None:
     """Telemetry must be the first service in INIT_ORDER (live before others log)."""
-    assert PanosetiServer.INIT_ORDER[0] == "telemetry"
+    assert INIT_ORDER[0] == "telemetry"
 
 
 def test_init_order_contains_all_registered_services() -> None:
     """Every registered service appears in INIT_ORDER."""
     registered = set(ServiceRegistry.all().keys())
-    in_order = set(PanosetiServer.INIT_ORDER)
+    in_order = set(INIT_ORDER)
     assert registered == in_order
 
 
 def test_init_order_has_no_duplicates() -> None:
     """INIT_ORDER must not contain duplicate entries."""
-    assert len(PanosetiServer.INIT_ORDER) == len(set(PanosetiServer.INIT_ORDER))
+    assert len(INIT_ORDER) == len(set(INIT_ORDER))
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +114,7 @@ def test_registry_register_custom_and_retrieve() -> None:
     """A new ServiceDescriptor can be registered and retrieved by name."""
     dummy_descriptor = ServiceDescriptor(
         name="dummy_test_svc",
-        servicer_factory=lambda cfg, ev: None,
+        servicer_factory=cast(Any, lambda cfg, ev: None),
         add_to_server_fn=lambda svc, srv: None,
         service_names_for_reflection=["dummy.test.Dummy"],
         config_field="dummy_test_svc",
@@ -132,7 +134,7 @@ def test_registry_register_overwrites_existing() -> None:
     original = ServiceRegistry.get("daq_control")
     replacement = ServiceDescriptor(
         name="daq_control",
-        servicer_factory=lambda cfg, ev: None,
+        servicer_factory=cast(Any, lambda cfg, ev: None),
         add_to_server_fn=lambda svc, srv: None,
         service_names_for_reflection=["replaced"],
         config_field="daq_control",

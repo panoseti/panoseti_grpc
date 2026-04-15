@@ -116,7 +116,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 se = reader_state.shutdown_event
                 if se and se.is_set():
                     break
-                
+
                 try:
                     now = time.monotonic()
                     interval = float(reader_state.config["update_interval_seconds"])

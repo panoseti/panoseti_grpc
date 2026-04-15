@@ -1,9 +1,9 @@
 # tests/test_simulation.py
 
-from typing import Any
 import asyncio
 import base64
 import json
+from typing import Any
 
 import pytest
 from pyubx2 import UBXReader
@@ -13,7 +13,7 @@ from panoseti_grpc.generated import ublox_control_pb2
 
 # This assumes you have run save_raw_ubx.py and have ubx_packets.jsonl
 @pytest.fixture(scope="module")
-def raw_ubx_packets( ubx_packets_data_path: Any) -> None:
+def raw_ubx_packets(ubx_packets_data_path: Any) -> None:
     """Loads the captured raw UBX packet data."""
     packets = []
     try:

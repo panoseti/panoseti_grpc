@@ -183,7 +183,7 @@ class PanoImagePreviewer:
         module_list = sorted(modules)
         n_modules = len(module_list)
         self.fig, axes = plt.subplots(n_modules, 2, figsize=(self.row_height * 2.2, self.row_height * n_modules))
-        
+
         if n_modules == 1:
             axs = np.array([axes])
         else:

@@ -1,4 +1,3 @@
-from typing import Any
 import asyncio
 import copy
 import json
@@ -12,6 +11,7 @@ import time
 import urllib.parse
 import uuid
 from pathlib import Path
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -27,7 +27,7 @@ TEST_CFG_DIR = Path("tests/daq_data/config")
 TEST_CFG_DIR.mkdir(exist_ok=True)
 
 
-def is_utility_available( name: Any) -> None:
+def is_utility_available(name: Any) -> bool:
     """Check if a command-line utility is in the system PATH."""
     return subprocess.run(["which", name], capture_output=True).returncode == 0
 
@@ -195,14 +195,14 @@ def server_config_base() -> None:
 
 
 @pytest.fixture(scope="session")
-def uds_sim_server_config( server_config_base: Any) -> None:
+def uds_sim_server_config(server_config_base: Any) -> None:
     cfg = copy.deepcopy(server_config_base)
     cfg["simulate_daq_cfg"]["simulation_mode"] = "uds"
     dps = ["img8", "img16", "ph256", "ph1024"]
     cfg["acquisition_methods"] = {
         "uds": {"enabled": True, "data_products": dps, "socket_path_template": "/tmp/hashpipe_grpc.dp_{dp_name}.sock"}
     }
-    cfg["simulate_daq_cfg"]["strategies"] = {"uds": {"data_products": dps}}
+    cfg["simulate_daq_cfg"]["strategies"] = {"uds": {"data_products": dps, "sim_module_ids": [224]}}
     return cfg
 
 
@@ -390,7 +390,7 @@ async def async_client(default_server_process):
 
 
 @pytest.fixture
-def sync_client( default_server_process: Any) -> None:
+def sync_client(default_server_process: Any) -> Any:
     """Provides a connected DaqDataClient for API tests."""
     daq_config = {
         "daq_nodes": [{"ip_addr": default_server_process["ip_addr"], "data_dir": default_server_process["data_dir"]}]
@@ -400,7 +400,7 @@ def sync_client( default_server_process: Any) -> None:
 
 
 @pytest.fixture
-def sample_pano_image() -> None:
+def sample_pano_image() -> PanoImage:
     header_dict = {"test_field": "test_value"}
     return PanoImage(
         type=PanoImage.Type.MOVIE,

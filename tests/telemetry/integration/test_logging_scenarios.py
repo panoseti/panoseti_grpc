@@ -1,7 +1,7 @@
-from typing import Any
 import json
 import logging
 import time
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -12,7 +12,7 @@ from panoseti_grpc.telemetry.logger import get_logger
 LOG_KEY = "logs:ingress"
 
 
-def wait_for_service_log( redis_client: Any, service_name: Any, retries: Any = 20) -> None:
+def wait_for_service_log(redis_client: Any, service_name: Any, retries: Any = 20) -> None:
     """
     Polls Redis for the specific service log.
     Now looks at the TAIL of the list (most recent logs).
@@ -33,7 +33,7 @@ def wait_for_service_log( redis_client: Any, service_name: Any, retries: Any = 2
     return None
 
 
-def test_unserializable_payload_handling( redis_client: Any, start_grpc_server: Any) -> None:
+def test_unserializable_payload_handling(redis_client: Any, start_grpc_server: Any) -> None:
     service_name = "BAD_DATA_TEST"
     logger = get_logger(service_name, grpc_enabled=True)
 
@@ -52,7 +52,7 @@ def test_unserializable_payload_handling( redis_client: Any, start_grpc_server: 
     assert "invalid" in data["payload_json"]
 
 
-def test_huge_payload_logging( redis_client: Any) -> None:
+def test_huge_payload_logging(redis_client: Any) -> None:
     service_name = "HUGE_LOG_TEST"
     client = TelemetryClient(host="localhost", port=50051)
 
@@ -70,7 +70,7 @@ def test_huge_payload_logging( redis_client: Any) -> None:
 
     payload = json.loads(data["payload_json"])
     # Handle both wrapped dicts and raw strings
-    content = payload.get("text", payload) if isinstance(payload,dict[Any]) else payload
+    content = payload.get("text", payload) if isinstance(payload, dict) else payload
     assert len(content) == 5000
 
 
@@ -118,7 +118,7 @@ def test_handler_survives_queue_overflow() -> None:
     handler._stop_event.set()
 
 
-def test_metadata_context_propagation( redis_client: Any, start_grpc_server: Any) -> None:
+def test_metadata_context_propagation(redis_client: Any, start_grpc_server: Any) -> None:
     """
     Verifies that rich Python metadata (function name, filename, line number)
     survives the gRPC serialization loop and arrives in Redis.
@@ -152,7 +152,7 @@ def test_metadata_context_propagation( redis_client: Any, start_grpc_server: Any
 
 
 # --- NEW TEST 4: Severity Level Mapping ---
-def test_severity_level_propagation( redis_client: Any, start_grpc_server: Any) -> None:
+def test_severity_level_propagation(redis_client: Any, start_grpc_server: Any) -> None:
     """
     Verifies that Python logging levels (WARNING, ERROR, CRITICAL)
     are correctly mapped to the Telemetry Protocol Enums in Redis.

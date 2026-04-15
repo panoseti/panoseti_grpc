@@ -182,10 +182,10 @@ def load_hp_io_cfg(args: argparse.Namespace) -> tuple[dict[str, Any] | None, boo
         # try to open the config file
         if hp_io_cfg_path is None:
             raise ValueError("Either --init-sim or --init must be specified with a valid config path")
-        
+
         if isinstance(hp_io_cfg_path, (str, Path)) and not os.path.exists(hp_io_cfg_path):
             raise FileNotFoundError(f"Config file not found: '{os.path.abspath(hp_io_cfg_path)}'")
-        
+
         with open(hp_io_cfg_path) as f:
             hp_io_cfg = json.load(f)
     return hp_io_cfg, do_init

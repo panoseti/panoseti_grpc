@@ -2,9 +2,9 @@
 Tests for concurrent and sequential request handling in the DAQ Control service.
 """
 
-from typing import Any
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
 
 START_PARAMS = {
     "data_dir": "/app/data",
@@ -36,7 +36,7 @@ CLEANUP_PARAMS = {
 }
 
 
-def test_concurrent_start_daq_rejected( grpc_client: Any) -> None:
+def test_concurrent_start_daq_rejected(grpc_client: Any) -> None:
     """
     Two simultaneous StartDaq RPCs: the second must fail with success=False
     because hashpipe is already running (already-running guard).
@@ -46,7 +46,7 @@ def test_concurrent_start_daq_rejected( grpc_client: Any) -> None:
 
     try:
 
-        def _start( _: Any) -> None:
+        def _start(_: Any) -> None:
             try:
                 return grpc_client.StartDaq(START_PARAMS)
             except (ValueError, Exception):
@@ -71,7 +71,7 @@ def test_concurrent_start_daq_rejected( grpc_client: Any) -> None:
             pass
 
 
-def test_stop_then_start_idempotent( grpc_client: Any) -> None:
+def test_stop_then_start_idempotent(grpc_client: Any) -> None:
     """
     StopDaq when nothing is running returns success=True.
     A subsequent StartDaq should succeed without error.
@@ -96,7 +96,7 @@ def test_stop_then_start_idempotent( grpc_client: Any) -> None:
         pass
 
 
-def test_cleanup_while_start_in_progress_fails( grpc_client: Any) -> None:
+def test_cleanup_while_start_in_progress_fails(grpc_client: Any) -> None:
     """
     CleanupData while hashpipe is running must return False, indicating cleanup failed.
     This ensures the safety guard preventing data deletion during an active run is exercised.

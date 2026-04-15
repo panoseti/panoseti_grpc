@@ -4,8 +4,8 @@ Unit tests for PanosetiServerConfig — TOML loading, profile switching, and Pyd
 No running server or external services required.
 """
 
-from typing import Any
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -231,14 +231,14 @@ def test_daq_control_config_valid_defaults() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_telemetry_redis_host_from_env( monkeypatch: Any) -> None:
+def test_telemetry_redis_host_from_env(monkeypatch: Any) -> None:
     """TelemetryServerConfig picks up REDIS_HOST env var for redis_host default."""
     monkeypatch.setenv("REDIS_HOST", "my-custom-redis")
     cfg = TelemetryServerConfig()
     assert cfg.redis_host == "my-custom-redis"
 
 
-def test_telemetry_redis_host_fallback( monkeypatch: Any) -> None:
+def test_telemetry_redis_host_fallback(monkeypatch: Any) -> None:
     """Without REDIS_HOST env var, TelemetryServerConfig defaults to 'localhost'."""
     monkeypatch.delenv("REDIS_HOST", raising=False)
     cfg = TelemetryServerConfig()
