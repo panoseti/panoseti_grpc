@@ -32,7 +32,7 @@ class StartDaqModel(BaseModel):
     module_id: list[Uint8] = Field(...)
 
     @model_validator(mode="after")
-    def create_run_dir(self) -> "StartDaqModel":
+    def create_run_dir(self) -> StartDaqModel:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         full_path = self.data_dir / self.run_dir
         full_path.mkdir(parents=True, exist_ok=True)
@@ -44,7 +44,7 @@ class StopDaqModel(BaseModel):
     run_dir: Path = Field(...)
 
     @model_validator(mode="after")
-    def check_run_dir(self) -> "StopDaqModel":
+    def check_run_dir(self) -> StopDaqModel:
         full_path = self.data_dir / self.run_dir
         if not full_path.is_dir():
             raise ValueError("{full_path} not exist.")
@@ -64,7 +64,7 @@ class CleanupDataModel(BaseModel):
     module_id: list[Uint8] = Field(...)
 
     @model_validator(mode="after")
-    def check_run_dir(self) -> "CleanupDataModel":
+    def check_run_dir(self) -> CleanupDataModel:
         full_path = self.data_dir / self.run_dir
         if not full_path.is_dir():
             raise ValueError("{full_path} not exist.")

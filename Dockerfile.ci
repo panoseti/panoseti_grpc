@@ -18,7 +18,7 @@
 # ═══════════════════════════════════════════════════════════════════════════
 # Stage: base
 # Python venv + all panoseti-grpc dev dependencies (includes pytest suite).
-# Inherited by pure-Python test stages.
+# Inherited by test stages.
 # ═══════════════════════════════════════════════════════════════════════════
 FROM python:3.14-slim AS base
 
@@ -43,16 +43,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Dependency Caching Layer
 # If pyproject.toml or uv.lock change, this layer rebuilds.
 # Using BuildKit cache mount for fast re-installs.
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock* ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-install-project --all-extras
-
-# Copy the rest of the source code
-# Move this after dependency installation to prevent cache busting on code changes.
-COPY . .
-
-# Install the project itself (fast since dependencies are already cached)
-RUN uv sync --all-extras
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -111,6 +104,10 @@ RUN make && make install
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS daq-data-test
 
+# Install project source code
+COPY . .
+RUN uv sync --all-extras
+
 CMD ["python", "-m", "pytest", "-v", "tests/daq_data"]
 
 
@@ -118,22 +115,12 @@ CMD ["python", "-m", "pytest", "-v", "tests/daq_data"]
 # Stage: daq-data-hashpipe-test
 # Test runner for daq_data_hashpipe (requires real hashpipe + tcpreplay).
 # ═══════════════════════════════════════════════════════════════════════════
-FROM python:3.14-slim AS daq-data-hashpipe-test
+FROM base AS daq-data-hashpipe-test
 
-ENV DEBIAN_FRONTEND=noninteractive \
-    VENV_PATH=/opt/venv
-ENV PATH="$VENV_PATH/bin:$PATH"
-
-# tcpreplay for packet replay; build-essential for grpcio's C extension.
+# tcpreplay for packet replay.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        tcpreplay build-essential \
+        tcpreplay \
     && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-# Python environment and app source from base stage.
-COPY --from=base /opt/venv /opt/venv
-COPY --from=base /app /app
 
 # Hashpipe binary and shared libraries.
 COPY --from=hashpipe-builder /usr/local/bin/hashpipe /usr/local/bin/
@@ -145,6 +132,10 @@ COPY --from=daq-data-hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so* /u
 
 RUN ldconfig
 
+# Install project source code
+COPY . .
+RUN uv sync --all-extras
+
 # Test data (pcapng capture for tcpreplay-based tests).
 COPY tests/data/TEST_10k-pkts_MM+PH_flasher_20260321.pcapng /app/test_data.pcapng
 
@@ -155,20 +146,11 @@ CMD ["python", "-m", "pytest", "-v", "-s", "--maxfail=2", "tests/daq_data_hashpi
 # Stage: daq-control-test
 # Test runner for the daq_control service (requires hashpipe binary).
 # ═══════════════════════════════════════════════════════════════════════════
-FROM python:3.14-slim AS daq-control-test
-
-ENV DEBIAN_FRONTEND=noninteractive \
-    VENV_PATH=/opt/venv
-ENV PATH="$VENV_PATH/bin:$PATH"
+FROM base AS daq-control-test
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        tcpreplay build-essential \
+        tcpreplay \
     && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-COPY --from=base /opt/venv /opt/venv
-COPY --from=base /app /app
 
 COPY --from=hashpipe-builder /usr/local/bin/hashpipe /usr/local/bin/
 COPY --from=hashpipe-builder /usr/local/lib/libhashpipe.so* /usr/local/lib/
@@ -183,12 +165,22 @@ COPY --from=daq-control-plugin-builder /build/panoseti_daq/hashpipe.so /app/data
 
 ENV GRPC_PORT=50051
 
+# Install project source code
+COPY . .
+RUN uv sync --all-extras
+
+CMD ["python", "-m", "pytest", "-v", "tests/daq_control/"]
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Stage: telemetry-runner
 # Test runner for the telemetry service (requires Redis + InfluxDB sidecars).
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS telemetry-runner
+
+# Install project source code
+COPY . .
+RUN uv sync --all-extras
 
 # Install influxdb (not in pyproject.toml) using uv
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -205,9 +197,11 @@ CMD ["python", "-m", "pytest", "-v", "tests/telemetry"]
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS telemetry-client
 
-COPY tests/telemetry/dummy_worker.py ./dummy_worker.py
+# Install project source code
+COPY . .
+RUN uv sync --all-extras
 
-CMD ["python", "dummy_worker.py"]
+CMD ["python", "tests/telemetry/dummy_worker.py"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -216,7 +210,10 @@ CMD ["python", "dummy_worker.py"]
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS unified-server-test
 
-# redis and grpcio-reflection are already in base stage (installed from pyproject.toml)
+# Install project source code
+COPY . .
+RUN uv sync --all-extras
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
@@ -232,7 +229,9 @@ FROM base AS qa-linter
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# All dev dependencies (ruff, mypy) are already installed in base stage via uv sync --all-extras
+# Install project source code
+COPY . .
+RUN uv sync --all-extras
 
 # Default command: check everything.
 CMD ["sh", "-c", "python -m ruff check src/ tests/ scripts/ && python -m ruff format --check src/ tests/ scripts/ && python -m mypy src/ tests/ scripts/"]

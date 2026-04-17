@@ -411,7 +411,7 @@ def start_daq_node_server(daq_node_server_toml: Any) -> Any:
 
 
 @pytest.fixture(scope="session")
-def redis_client() -> Generator[redis_sync.Redis, None, None]:
+def redis_client() -> Generator[redis_sync.Redis]:
     """Session-scoped Redis client connected to the test DB."""
     r = redis_sync.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_TEST_DB, decode_responses=True)
     try:
