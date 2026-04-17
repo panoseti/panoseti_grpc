@@ -17,7 +17,6 @@ import signal
 import time
 import urllib.parse
 from collections.abc import AsyncIterator
-from typing import Any
 
 # gRPC imports
 import grpc
@@ -259,17 +258,18 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
 
 async def serve(
-    server_cfg: DaqDataServerConfig | dict[str, Any],
+    server_cfg: DaqDataServerConfig,
     shutdown_event: asyncio.Event | None = None,
     in_main_thread: bool = True,
 ) -> None:
     """Create and run the gRPC server."""
     logger = logging.getLogger("daq_data.server")
+    # server_cfg is already a DaqDataServerConfig here due to unified server or pydantic validation in main
     if isinstance(server_cfg, dict):
         server_cfg = DaqDataServerConfig.model_validate(server_cfg)
 
     # Define a signal handler to set the shutdown event
-    def _signal_handler(*_: Any) -> None:
+    def _signal_handler() -> None:
         logger.info("Shutdown signal received, initiating graceful shutdown.")
         if shutdown_event:
             shutdown_event.set()

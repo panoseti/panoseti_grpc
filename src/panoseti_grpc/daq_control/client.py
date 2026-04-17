@@ -12,11 +12,11 @@ class DaqControlClient:
     Supports both Strict (Production) and Flexible (Experimental) logging.
     """
 
-    def __init__(self, host: Any = "localhost", port: Any = 50051) -> None:
+    def __init__(self, host: str = "localhost", port: int = 50051) -> None:
         self.channel = grpc.insecure_channel(f"{host}:{port}")
         self.stub: daq_control_pb2_grpc.DaqControlStub = daq_control_pb2_grpc.DaqControlStub(self.channel)
 
-    def StartDaq(self, parameters: Any) -> bool:
+    def StartDaq(self, parameters: dict[str, Any]) -> bool:
         """
         Docstring for StartDaq
 
@@ -51,7 +51,7 @@ class DaqControlClient:
         except grpc.RpcError as e:
             raise ConnectionError(f"gRPC failed: {e.details()}") from e
 
-    def StopDaq(self, parameters: Any) -> bool:
+    def StopDaq(self, parameters: dict[str, Any]) -> bool:
         """
         Docstring for StopDaq
 
@@ -74,7 +74,7 @@ class DaqControlClient:
         except grpc.RpcError as e:
             raise ConnectionError(f"gRPC failed: {e.details()}") from e
 
-    def StatusDaq(self, parameters: Any) -> tuple[bool, dict[str, Any]]:
+    def StatusDaq(self, parameters: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
         """
         Docstring for StatusDaq
 
@@ -103,7 +103,7 @@ class DaqControlClient:
         except grpc.RpcError as e:
             raise ConnectionError(f"gRPC failed: {e.details()}") from e
 
-    def CleanupData(self, parameters: Any) -> dict[str, Any]:
+    def CleanupData(self, parameters: dict[str, Any]) -> dict[str, Any]:
         """
         Docstring for StatusDaq
 

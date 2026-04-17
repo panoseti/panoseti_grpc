@@ -17,10 +17,14 @@ import os
 import signal
 import time
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    import redis.asyncio as redis
 
 import grpc
 from google.protobuf.json_format import MessageToDict
+from google.protobuf.message import Message
 
 # gRPC Imports
 from panoseti_grpc.generated import telemetry_pb2, telemetry_pb2_grpc
@@ -44,7 +48,7 @@ class RedisBatcher:
     This turns N network calls into 1.
     """
 
-    def __init__(self, redis_client: Any) -> None:
+    def __init__(self, redis_client: redis.Redis) -> None:
         self.redis = redis_client
         self.queue: asyncio.Queue[str] = asyncio.Queue()
         self._shutdown = False
@@ -68,7 +72,7 @@ class RedisBatcher:
 
                 # Bulk Push to Redis (One Network Call)
                 if logs:
-                    await self.redis.rpush(LOG_REDIS_KEY, *logs)
+                    await cast(Any, self.redis.rpush(LOG_REDIS_KEY, *logs))
 
                     # Mark tasks as done for the queue
                     for _ in logs:
@@ -99,7 +103,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
     Handles data validation, flattening, and storage into Redis.
     """
 
-    def __init__(self, config_path: Path, redis_client: Any) -> None:
+    def __init__(self, config_path: Path, redis_client: redis.Redis) -> None:
         self.config_path = config_path
         self.redis = redis_client
         self._load_config()
@@ -122,7 +126,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
         await self.redis.aclose()
         logger.info("Redis connection closed.")
 
-    def _proto_to_dict(self, message: Any) -> dict[str, Any]:
+    def _proto_to_dict(self, message: Message) -> dict[str, Any]:
         """Helper to safely convert Proto to Dict for Pydantic."""
         return MessageToDict(message, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)
 
@@ -318,6 +322,7 @@ async def serve(
             # Force a connection check
             await cast(Any, r.ping())
             logger.info("✅ Redis connection established.")
+
             break
         except redis.ConnectionError as e:
             logger.warning(f"⚠️ Failed to connect to Redis: {e}")
@@ -370,7 +375,7 @@ async def serve(
     # 4. Graceful Shutdown Setup
     shutdown_event = asyncio.Event()
 
-    def _handle_signal(*args: Any) -> None:
+    def _handle_signal() -> None:
         logger.info("Signal received. Initiating shutdown...")
         shutdown_event.set()
 

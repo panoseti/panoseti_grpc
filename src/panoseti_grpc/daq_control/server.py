@@ -17,11 +17,13 @@ import logging
 import os
 import shutil
 import signal
+from collections.abc import Callable
 from glob import glob
 from pathlib import Path
 from typing import Any
 
 import psutil
+from google.protobuf.message import Message
 from google.protobuf.struct_pb2 import Struct
 from pydantic import ValidationError
 
@@ -45,7 +47,7 @@ PROCESS = "hashpipe"
 SERVER_LOG_DIR = "/var/log/panoseti"
 
 
-async def _read_stream(stream: asyncio.StreamReader, log_method: Any) -> None:
+async def _read_stream(stream: asyncio.StreamReader, log_method: Callable[[str], None]) -> None:
     """Read lines from a subprocess stream and forward each line to a logger method."""
     while True:
         line = await stream.readline()
@@ -153,7 +155,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 self.logger.debug("Cleanup failed")
                 return False
 
-    def _request_to_dict(self, request: Any) -> dict[str, Any]:
+    def _request_to_dict(self, request: Message) -> dict[str, Any]:
         request_dict: dict[str, Any] = MessageToDict(
             request, always_print_fields_with_no_presence=True, preserving_proto_field_name=True
         )
@@ -389,7 +391,7 @@ async def serve(grpc_port: int = 50051, level: int = logging.DEBUG) -> None:
     # 4. graceful shutdown setup
     shutdown_event = asyncio.Event()
 
-    def _handle_signal(*args: Any) -> None:
+    def _handle_signal() -> None:
         logger.info("Signal received. Initiating shutdown...")
         shutdown_event.set()
 
