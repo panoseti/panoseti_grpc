@@ -149,7 +149,11 @@ async def test_module_id_filter_with_real_data(default_server_process):
         # First init without filter to discover which module(s) are present
         assert await client.init_hp_io(hosts=None, hp_io_cfg=hp_io_cfg_base) is True
         discovery_stream = await client.stream_images(
-            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout_sec=10.0
+            hosts=None,
+            stream_movie_data=True,
+            stream_pulse_height_data=True,
+            update_interval_seconds=0.1,
+            timeout_sec=10.0,
         )
         first_img = await asyncio.wait_for(discovery_stream.__anext__(), timeout=10.0)
         discovered_module = first_img["module_id"]
@@ -159,7 +163,11 @@ async def test_module_id_filter_with_real_data(default_server_process):
         assert await client.init_hp_io(hosts=None, hp_io_cfg=filtered_cfg) is True
 
         filtered_stream = await client.stream_images(
-            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout_sec=10.0
+            hosts=None,
+            stream_movie_data=True,
+            stream_pulse_height_data=True,
+            update_interval_seconds=0.1,
+            timeout_sec=10.0,
         )
 
         for _ in range(10):
@@ -193,10 +201,18 @@ async def test_concurrent_clients_receive_same_frames(default_server_process):
         assert await client_a.init_hp_io(hosts=None, hp_io_cfg=hp_io_cfg) is True
 
         stream_a = await client_a.stream_images(
-            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout_sec=10.0
+            hosts=None,
+            stream_movie_data=True,
+            stream_pulse_height_data=True,
+            update_interval_seconds=0.1,
+            timeout_sec=10.0,
         )
         stream_b = await client_b.stream_images(
-            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout_sec=10.0
+            hosts=None,
+            stream_movie_data=True,
+            stream_pulse_height_data=True,
+            update_interval_seconds=0.1,
+            timeout_sec=10.0,
         )
 
         SAMPLES = 15

@@ -66,7 +66,11 @@ async def test_server_reinitialization_logic(default_server_process):
         assert await client_a.init_hp_io(hosts=None, hp_io_cfg=hp_io_cfg) is True
 
         image_stream = await client_a.stream_images(
-            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.2, timeout_sec=15
+            hosts=None,
+            stream_movie_data=True,
+            stream_pulse_height_data=True,
+            update_interval_seconds=0.2,
+            timeout_sec=15,
         )
 
         # This task will keep the reader stream active in the background
