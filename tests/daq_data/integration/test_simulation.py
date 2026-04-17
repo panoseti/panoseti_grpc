@@ -15,7 +15,7 @@ async def test_simulation_modes(sim_server_process):
     daq_config = {"daq_nodes": [{"ip_addr": sim_server_process}]}
     async with AioDaqDataClient(daq_config, network_config=None) as client:
         # 1. Initialize the server in simulation mode.
-        success = await client.init_sim(hosts=None, timeout=10.0)
+        success = await client.init_sim(hosts=None, timeout_sec=10.0)
         assert success is True, "init_sim should succeed for all simulation modes"
 
         # 2. Request a data stream to confirm the data path is alive.
@@ -25,7 +25,7 @@ async def test_simulation_modes(sim_server_process):
                 stream_movie_data=True,
                 stream_pulse_height_data=True,
                 update_interval_seconds=0.01,
-                timeout=10.0,
+                timeout_sec=10.0,
             ),
             timeout=10.0,
         )

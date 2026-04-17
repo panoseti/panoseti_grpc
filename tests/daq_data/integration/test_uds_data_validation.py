@@ -74,10 +74,7 @@ async def test_frame_shapes_and_dtypes(default_server_process):
             arr = np.array(f["image_array"]).reshape(f["shape"])
             assert f["shape"] in ([32, 32], [16, 16]), f"Unexpected movie shape: {f['shape']}"
             assert f["bytes_per_pixel"] in (1, 2), f"Unexpected bpp: {f['bytes_per_pixel']}"
-            if f["bytes_per_pixel"] == 2:
-                arr = arr.astype(np.uint16)
-            else:
-                arr = arr.astype(np.uint8)
+            arr = arr.astype(np.uint16) if f["bytes_per_pixel"] == 2 else arr.astype(np.uint8)
             assert arr.shape == tuple(f["shape"])
 
         for f in ph_frames:
@@ -158,7 +155,7 @@ async def test_uds_socket_paths_created_after_init(default_server_process):
 
         for dp in ("img8", "img16", "ph256", "ph1024"):
             sock_path = f"/tmp/hashpipe_grpc.dp_{dp}.sock"
-            assert os.path.exists(sock_path), (
+            assert await asyncio.to_thread(os.path.exists, sock_path), (
                 f"UDS socket for data product '{dp}' not found at {sock_path} after InitHpIo"
             )
 

@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import copy
 import json
 import logging
@@ -55,7 +56,7 @@ async def sim_server_process(request: Any) -> Any:
     # Wait for the server to be fully ready by pinging it
     async with AioDaqDataClient({"daq_nodes": [{"ip_addr": uds_path_str}]}, network_config=None) as client:
         for _ in range(30):
-            if uds_path.exists() and await client.ping(uds_path_str):
+            if await asyncio.to_thread(uds_path.exists) and await client.ping(uds_path_str):
                 break
             await asyncio.sleep(0.1)
         else:
@@ -75,11 +76,9 @@ async def sim_server_process(request: Any) -> Any:
         await asyncio.gather(server_task, return_exceptions=True)
     finally:
         # Ensure the Unix Domain Socket file is always removed.
-        if uds_path.exists():
-            try:
+        if await asyncio.to_thread(uds_path.exists):
+            with contextlib.suppress(OSError):
                 os.unlink(uds_path)
-            except OSError:
-                pass
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -101,7 +100,7 @@ async def default_server_process(uds_sim_server_config: dict[str, Any]) -> Any:
         daq_config = {"daq_nodes": [{"ip_addr": uds_path_str, "data_dir": "daq_data/simulated_data_dir"}]}
         async with AioDaqDataClient(daq_config, network_config=None, stop_event=shutdown_event) as client:
             for _ in range(30):  # 3-second timeout
-                if uds_path.exists() and await client.ping(uds_path_str):
+                if await asyncio.to_thread(uds_path.exists) and await client.ping(uds_path_str):
                     break
                 await asyncio.sleep(0.1)
             else:
@@ -122,11 +121,9 @@ async def default_server_process(uds_sim_server_config: dict[str, Any]) -> Any:
             await asyncio.gather(server_task, return_exceptions=True)
 
         # Ensure the socket file is removed
-        if uds_path.exists():
-            try:
+        if await asyncio.to_thread(uds_path.exists):
+            with contextlib.suppress(OSError):
                 os.unlink(uds_path)
-            except OSError:
-                pass
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -174,7 +171,7 @@ async def n_sim_servers_fixture_factory(server_config_base):
             # Readiness check
             async with AioDaqDataClient({"daq_nodes": [{"ip_addr": uds_path_str}]}, network_config=None) as client:
                 for _ in range(30):  # 3-second timeout
-                    if uds_path.exists() and await client.ping(uds_path_str):
+                    if await asyncio.to_thread(uds_path.exists) and await client.ping(uds_path_str):
                         break
                     await asyncio.sleep(0.1)
                 else:

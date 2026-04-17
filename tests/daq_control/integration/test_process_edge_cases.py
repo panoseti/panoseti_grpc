@@ -4,6 +4,7 @@ crash detection via SIGKILL, stale-PID handling, log-file placement,
 and disk-usage response completeness.
 """
 
+import contextlib
 import os
 import signal
 import time
@@ -50,7 +51,7 @@ def _find_hashpipe_pid() -> None:
         try:
             if proc.info["cmdline"] and any("hashpipe" in c for c in proc.info["cmdline"]):
                 return proc.info["pid"]
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+        except psutil.NoSuchProcess, psutil.AccessDenied:
             pass
     return None
 
@@ -72,10 +73,10 @@ def test_hashpipe_crash_detection(grpc_client: Any) -> None:
         time.sleep(0.1)
     assert pid is not None, "hashpipe process not found after StartDaq"
 
-    try:
+    import contextlib
+
+    with contextlib.suppress(ProcessLookupError):
         os.kill(pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass  # Already gone — that's fine for the test
 
     # Wait for OS to reap the process instead of a fixed sleep
     wait_for_pid_gone(pid, timeout=5.0)
@@ -86,10 +87,8 @@ def test_hashpipe_crash_detection(grpc_client: Any) -> None:
     # Cleanup: StopDaq on a dead process should be idempotent
     grpc_client.StopDaq(STOP_PARAMS)
     time.sleep(0.2)
-    try:
+    with contextlib.suppress(Exception):
         grpc_client.CleanupData(CLEANUP_PARAMS)
-    except Exception:
-        pass
 
 
 def test_stop_daq_with_stale_pid(grpc_client: Any) -> None:
@@ -130,10 +129,8 @@ def test_log_files_written_to_correct_run_dir(grpc_client: Any) -> None:
         pid = _find_hashpipe_pid()
         if pid:
             wait_for_pid_gone(pid, timeout=5.0)
-        try:
+        with contextlib.suppress(Exception):
             grpc_client.CleanupData(CLEANUP_PARAMS)
-        except Exception:
-            pass
 
 
 def test_disk_usage_keys_present(grpc_client: Any) -> None:

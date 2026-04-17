@@ -140,14 +140,14 @@ async def do_reflect_services_fn(addc: AioDaqDataClient, host: str | None) -> No
 
 
 async def do_init_fn(
-    addc: AioDaqDataClient, host: str | None, hp_io_cfg: dict[str, Any], timeout: float = 15.0
+    addc: AioDaqDataClient, host: str | None, hp_io_cfg: dict[str, Any], timeout_sec: float = 15.0
 ) -> None:
     print("-------------- InitHpIo --------------")
     if host is None:
         print("Initializing hp_io thread on all hosts")
     else:
         print(f"Initializing hp_io thread on {host=}")
-    await addc.init_hp_io(host, hp_io_cfg, timeout=timeout)
+    await addc.init_hp_io(host, hp_io_cfg, timeout_sec=timeout_sec)
 
 
 def parse_log_level(log_level: str) -> int:

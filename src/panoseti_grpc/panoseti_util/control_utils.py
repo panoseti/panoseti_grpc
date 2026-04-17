@@ -1,5 +1,6 @@
 # control script utilities
 
+import contextlib
 import datetime
 import json
 import os
@@ -15,10 +16,8 @@ import psutil
 import __main__
 
 # TODO: we need to find a better way to deal with this...
-try:
+with contextlib.suppress(ImportError):
     import quabo_driver
-except ImportError:
-    pass
 import logging
 
 # -------------- DEFAULTS ---------------
@@ -99,9 +98,8 @@ def local_ip() -> list[str]:
     for _interface_name, snics in psutil.net_if_addrs().items():
         for snic in snics:
             # specific check for IPv4 to ensure .address is an IP string
-            if snic.family == socket.AF_INET:
-                if snic.address.startswith("192."):
-                    ips.append(snic.address)
+            if snic.family == socket.AF_INET and snic.address.startswith("192."):
+                ips.append(snic.address)
 
     if not ips:
         raise Exception("can't get local IP")
@@ -249,10 +247,7 @@ def show_redis_daemons() -> None:
 
 
 def are_redis_daemons_running() -> bool:
-    for daemon in redis_daemons:
-        if not is_script_running(daemon):
-            return False
-    return True
+    return all(is_script_running(daemon) for daemon in redis_daemons)
 
 
 def start_hk_recorder(daq_config: Any, run_name: Any) -> None:
@@ -329,24 +324,15 @@ def stop_hashpipe(pid: Any) -> bool:
 
 def is_script_running(script: Any) -> bool:
     s = f"./{script}"
-    for p in psutil.process_iter():
-        if s in p.cmdline():
-            return True
-    return False
+    return any(s in p.cmdline() for p in psutil.process_iter())
 
 
 def is_hashpipe_running() -> bool:
-    for p in psutil.process_iter():
-        if p.name() == hashpipe_name:
-            return True
-    return False
+    return any(p.name() == hashpipe_name for p in psutil.process_iter())
 
 
 def is_hk_recorder_running() -> bool:
-    for p in psutil.process_iter():
-        if hk_recorder_name in p.cmdline():
-            return True
-    return False
+    return any(hk_recorder_name in p.cmdline() for p in psutil.process_iter())
 
 
 def is_hv_updater_running() -> bool:
@@ -387,11 +373,11 @@ def write_log(msg: Any) -> None:
     now = datetime.datetime.now().strftime("%B %d, %Y, %I:%M%p")
     print(f"{__main__.__file__}: {now}: {msg}")
     try:
-        f = open("run/log.txt", "a")
-        f.write(f"{__main__.__file__}: {now}: {msg}")
-        f.close()
+        with open("run/log.txt", "a") as f:
+            f.write(f"{__main__.__file__}: {now}: {msg}")
     except Exception:
-        f = open("log.txt", "a")
+        with open("log.txt", "a") as f:
+            f.write(f"{__main__.__file__}: {now}: {msg}")
 
 
 def disk_usage(dir: Any) -> int:
@@ -402,7 +388,7 @@ def disk_usage(dir: Any) -> int:
 
 
 def free_space(path: Any) -> int:
-    total, used, free = shutil.disk_usage(os.path.realpath(path))
+    _total, _used, free = shutil.disk_usage(os.path.realpath(path))
     return free
 
 
@@ -418,10 +404,7 @@ def daq_bytes_per_sec_per_module(data_config: Any) -> float:
     if "image" in data_config:
         image = data_config["image"]
         fps = 1e6 / image["integration_time_usec"]
-        if image["quabo_sample_size"] == 8:
-            bpf = 1
-        else:
-            bpf = 2
+        bpf = 1 if image["quabo_sample_size"] == 8 else 2
         x += fps * (1024 * bpf + img_json_header_size)
     if "pulse_height" in data_config:
         # assume one PH event per sec per quabo
@@ -460,7 +443,7 @@ def daq_get_run_name() -> str | None:
 
 
 def get_wr_ip_addr(obs_config: Any) -> str:
-    if "wr_ip_addr" in obs_config.keys():
+    if "wr_ip_addr" in obs_config:
         return str(obs_config["wr_ip_addr"])
     else:
         return "192.168.1.254"
@@ -469,7 +452,7 @@ def get_wr_ip_addr(obs_config: Any) -> str:
 # get GPS receiver port (path of the tty)
 #
 def get_gps_port(obs_config: Any) -> str:
-    if "gps_port" in obs_config.keys():
+    if "gps_port" in obs_config:
         return str(obs_config["gps_port"])
     else:
         return "/dev/ttyUSB0"

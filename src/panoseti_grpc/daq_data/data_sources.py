@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import contextlib
 import logging
 import os
 import socket
@@ -94,7 +95,7 @@ class UdsDataSource(BaseDataSource):
 
         try:
             # Remove stale socket files from previous runs.
-            if os.path.exists(self.socket_path):
+            if await asyncio.to_thread(os.path.exists, self.socket_path):
                 s = os.stat(self.socket_path)
                 if stat.S_ISSOCK(s.st_mode):
                     self.logger.warning(f"Removing stale socket file: {self.socket_path}")
@@ -155,11 +156,9 @@ class UdsDataSource(BaseDataSource):
             if server_sock:
                 server_sock.close()
 
-            if os.path.exists(self.socket_path):
-                try:
+            if await asyncio.to_thread(os.path.exists, self.socket_path):
+                with contextlib.suppress(OSError):
                     os.unlink(self.socket_path)
-                except OSError:
-                    pass
             self.ready_event.clear()
 
     async def _read_one_frame(
@@ -228,7 +227,7 @@ class UdsDataSource(BaseDataSource):
                 f"Read timeout on {self.socket_path} (>{self.read_timeout}s idle). "
                 "Closing connection; Hashpipe will reconnect on next frame."
             )
-        except (asyncio.IncompleteReadError, ConnectionResetError):
+        except asyncio.IncompleteReadError, ConnectionResetError:
             self.logger.info(f"Client {client_info} disconnected from {self.socket_path}.")
         except asyncio.CancelledError:
             self.logger.info(f"Client handler for {self.socket_path} was cancelled.")

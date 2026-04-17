@@ -5,6 +5,7 @@ after re-init, and dynamic module discovery.
 """
 
 import asyncio
+import contextlib
 import copy
 import os
 import socket
@@ -50,7 +51,7 @@ async def _start_server(cfg: dict[str, Any]) -> tuple[asyncio.Event, asyncio.Tas
     uds_path = Path(cfg["unix_domain_socket"].replace("unix://", ""))
     async with AioDaqDataClient({"daq_nodes": [{"ip_addr": cfg["unix_domain_socket"]}]}, network_config=None) as c:
         for _ in range(40):
-            if uds_path.exists() and await c.ping(cfg["unix_domain_socket"]):
+            if await asyncio.to_thread(uds_path.exists) and await c.ping(cfg["unix_domain_socket"]):
                 break
             await asyncio.sleep(0.1)
         else:
@@ -65,11 +66,9 @@ async def _stop_server(shutdown: asyncio.Event, task: asyncio.Task[None], uds_pa
     except TimeoutError:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
-    if uds_path.exists():
-        try:
+    if await asyncio.to_thread(uds_path.exists):
+        with contextlib.suppress(OSError):
             os.unlink(uds_path)
-        except OSError:
-            pass
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +150,7 @@ async def test_uds_client_abrupt_disconnect_mid_frame(server_config_base):
                 # Abruptly connect and disconnect a raw UDS client to the data-plane socket
                 # (simulates a badly-behaved producer crashing mid-frame)
                 dp_sock_path = str(socket_dir / "hashpipe_grpc.dp_img16.sock")
-                if os.path.exists(dp_sock_path):
+                if await asyncio.to_thread(os.path.exists, dp_sock_path):
                     raw = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                     try:
                         raw.connect(dp_sock_path)
@@ -169,7 +168,7 @@ async def test_uds_client_abrupt_disconnect_mid_frame(server_config_base):
                         img = await asyncio.wait_for(stream.__anext__(), timeout=5.0)
                         assert img is not None
                         received += 1
-                    except (TimeoutError, StopAsyncIteration):
+                    except TimeoutError, StopAsyncIteration:
                         break
 
                 assert received >= 3, "Server should continue serving after abrupt raw-socket disconnect"

@@ -39,9 +39,8 @@ def poll_redis_field(
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         val = redis_client.hget(key, field)
-        if val is not None:
-            if expected is None or val == str(expected):
-                return True
+        if val is not None and (expected is None or val == str(expected)):
+            return True
         time.sleep(interval)
     return False
 
@@ -122,7 +121,7 @@ def start_grpc_server() -> Any:
             with socket.create_connection(("localhost", SERVER_PORT), timeout=0.1):
                 server_ready = True
                 break
-        except (OSError, ConnectionRefusedError):
+        except OSError, ConnectionRefusedError:
             time.sleep(0.1)
 
     if not server_ready:

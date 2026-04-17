@@ -96,7 +96,9 @@ class ServiceRegistry:
     New services are registered at module import time via :meth:`register`.
     """
 
-    _registry: dict[str, ServiceDescriptor] = {}
+    import typing
+
+    _registry: typing.ClassVar[dict[str, ServiceDescriptor]] = {}
 
     @classmethod
     def register(cls, descriptor: ServiceDescriptor) -> None:

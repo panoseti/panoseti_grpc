@@ -75,7 +75,7 @@ class TestAsyncHandler:
 
         mock_client.send_log_future.assert_called_once()
 
-        args, kwargs = mock_client.send_log_future.call_args
+        _args, kwargs = mock_client.send_log_future.call_args
         assert kwargs["service"] == "TEST_SERVICE"
         assert kwargs["severity"] == 3
 

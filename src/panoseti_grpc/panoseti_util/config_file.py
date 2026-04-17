@@ -60,10 +60,8 @@ def get_boardloc(module_ip_addr: str, quabo_index: int) -> int:
 # and IDs to modules
 #
 def assign_numbers(c: Any) -> None:
-    ndome = 0
-    for dome in c["domes"]:
+    for ndome, dome in enumerate(c["domes"]):
         dome["num"] = ndome
-        ndome += 1
         for module in dome["modules"]:
             module["id"] = ip_addr_to_module_id(module["ip_addr"])
 

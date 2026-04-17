@@ -12,6 +12,7 @@ Features:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import signal
 import time
@@ -88,10 +89,8 @@ class RedisBatcher:
             logger.info(f"Flushing {self.queue.qsize()} remaining logs...")
             await self.queue.join()
         self._worker_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await self._worker_task
-        except asyncio.CancelledError:
-            pass
 
 
 class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
@@ -338,7 +337,7 @@ async def serve(
     # LOGIC CHANGE: specific path takes precedence over internal default
     if config_path:
         final_config_path = Path(config_path)
-        if not final_config_path.exists():
+        if not await asyncio.to_thread(final_config_path.exists):
             logger.warning(f"Provided config {final_config_path} not found. Falling back to default.")
             final_config_path = get_config_path()  # Internal fallback
     else:
@@ -363,7 +362,7 @@ async def serve(
     logger.info(f"gRPC Server listening on TCP port [bold]{port}[/]")
 
     if uds_path:
-        if os.path.exists(uds_path):
+        if await asyncio.to_thread(os.path.exists, uds_path):
             os.unlink(uds_path)
         server.add_insecure_port(f"unix://{uds_path}")
         logger.info(f"gRPC Server listening on UDS [bold]{uds_path}[/]")
@@ -399,10 +398,8 @@ def main() -> None:
     """Console script entry point (``panoseti-telemetry``)."""
     REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
     GRPC_PORT = int(os.getenv("GRPC_PORT", 50051))
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(serve(redis_host=REDIS_HOST, port=GRPC_PORT))
-    except KeyboardInterrupt:
-        pass
 
 
 if __name__ == "__main__":

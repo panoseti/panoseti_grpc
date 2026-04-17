@@ -112,7 +112,9 @@ class PanosetiLogFactory:
     """
 
     # Singleton Registry: Maps (host, port) -> TelemetryClient
-    _grpc_clients: dict[tuple[str, int], TelemetryClient] = {}
+    import typing
+
+    _grpc_clients: typing.ClassVar[dict[tuple[str, int], TelemetryClient]] = {}
     _lock: threading.Lock = threading.Lock()
 
     @classmethod
@@ -165,23 +167,22 @@ class PanosetiLogFactory:
                 logger.addHandler(fh)
 
         # 3. gRPC (SHARED RESOURCE)
-        if cfg.grpc.enabled:
+        if cfg.grpc.enabled and not any(isinstance(h, AsyncGrpcHandler) for h in logger.handlers):
             # We must verify we don't attach multiple AsyncGrpcHandlers to the same logger
             # (e.g. if user called get_logger without reset=True)
-            if not any(isinstance(h, AsyncGrpcHandler) for h in logger.handlers):
-                try:
-                    # RETRIEVE SHARED CLIENT
-                    client = PanosetiLogFactory.get_shared_client(cfg.grpc.host, cfg.grpc.port)
+            try:
+                # RETRIEVE SHARED CLIENT
+                client = PanosetiLogFactory.get_shared_client(cfg.grpc.host, cfg.grpc.port)
 
-                    # Create a Handler unique to this service (preserves 'service_name')
-                    # but backed by the SHARED client.
-                    grpc_handler = AsyncGrpcHandler(client, cfg.service_name)
-                    grpc_handler.setLevel(cfg.level)
-                    logger.addHandler(grpc_handler)
-                except Exception as e:
-                    if cfg.grpc.fail_fast:
-                        raise ConnectionError(f"Failed to init Telemetry: {e}") from e
-                    sys.stderr.write(f"Warning: Telemetry unavailable: {e}\n")
+                # Create a Handler unique to this service (preserves 'service_name')
+                # but backed by the SHARED client.
+                grpc_handler = AsyncGrpcHandler(client, cfg.service_name)
+                grpc_handler.setLevel(cfg.level)
+                logger.addHandler(grpc_handler)
+            except Exception as e:
+                if cfg.grpc.fail_fast:
+                    raise ConnectionError(f"Failed to init Telemetry: {e}") from e
+                sys.stderr.write(f"Warning: Telemetry unavailable: {e}\n")
 
         return logger
 

@@ -16,7 +16,7 @@ command     = "docker build --target qa-linter -f Dockerfile.ci -t panoseti-qa-l
 description = "Ruff lint (Python) with autofix (src, tests, scripts)"
 
 [lint.ruff_format]
-command     = "docker build --target qa-linter -f Dockerfile.ci -t panoseti-qa-linter . && docker run --rm -v $(pwd):/app panoseti-qa-linter python -m ruff format src/ tests/ scripts/ --statistics"
+command     = "docker build --target qa-linter -f Dockerfile.ci -t panoseti-qa-linter . && docker run --rm -v $(pwd):/app panoseti-qa-linter python -m ruff format src/ tests/ scripts/"
 description = "Ruff format (src, tests, scripts)"
 
 [lint.mypy]

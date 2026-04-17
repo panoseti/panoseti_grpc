@@ -68,7 +68,7 @@ async def live_server(server_config):
                     await channel.channel_ready()
                 # Server is up, break the loop
                 break
-            except (grpc.aio.AioRpcError, asyncio.exceptions.TimeoutError):
+            except grpc.aio.AioRpcError, asyncio.exceptions.TimeoutError:
                 await asyncio.sleep(0.1)
         else:
             # If the loop completes without breaking, the server failed to start

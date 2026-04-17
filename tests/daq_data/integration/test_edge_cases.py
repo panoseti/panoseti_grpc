@@ -33,7 +33,7 @@ async def test_max_clients_resource_exhaustion(default_server_process, server_co
                 stream_movie_data=True,
                 stream_pulse_height_data=False,
                 update_interval_seconds=0.75,
-                timeout=120,
+                timeout_sec=120,
             )
             streams.append(stream)
             await stream.__anext__()
@@ -48,7 +48,7 @@ async def test_max_clients_resource_exhaustion(default_server_process, server_co
                     stream_movie_data=True,
                     stream_pulse_height_data=False,
                     update_interval_seconds=0.1,
-                    timeout=5.0,
+                    timeout_sec=5.0,
                 )
                 await stream.__anext__()
 

@@ -98,9 +98,8 @@ def test_redis_connection(
             else:
                 success.append("1")
         # print(f'[{timestamp}]: success = [{" ".join(success)}]')
-        if logger:
-            if all(s == "1" for s in success):
-                logger.debug(f"success = [{' '.join(success)}]")
+        if logger and all(s == "1" for s in success):
+            logger.debug(f"success = [{' '.join(success)}]")
 
     except Exception as e:
         # Fail safely by reporting a failure in case of any exceptions

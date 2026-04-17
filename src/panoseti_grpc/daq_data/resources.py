@@ -53,10 +53,7 @@ def get_dp_name_from_props(pano_type: int | str, shape: list[int] | tuple[int, .
 
     # Normalise pano_type to a PanoImage.Type int value
     pano_type_int: int
-    if isinstance(pano_type, str):
-        pano_type_int = cast(int, PanoImage.Type.Value(pano_type))
-    else:
-        pano_type_int = pano_type
+    pano_type_int = cast(int, PanoImage.Type.Value(pano_type)) if isinstance(pano_type, str) else pano_type
 
     is_ph = pano_type_int == PanoImage.Type.PULSE_HEIGHT
     shape_tuple = tuple(shape)

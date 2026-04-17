@@ -27,7 +27,7 @@ def wait_for_service_log(redis_client: Any, service_name: Any, retries: Any = 20
                 data = json.loads(entry)
                 if data.get("service_name", "").lower() == service_name.lower():
                     return data
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 continue
         time.sleep(0.2)
     return None

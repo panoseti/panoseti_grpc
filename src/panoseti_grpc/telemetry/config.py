@@ -140,9 +140,13 @@ class DeviceConfig(BaseModel):
         # We need access to the 'mode' field to validate this rule.
         # Pydantic v2 validation allows access to other fields via 'info' context if needed.
         # For simple robustness, we enforce the "DEV_" rule if mode is experimental.
-        if hasattr(info, "data") and "mode" in info.data and info.data["mode"] == "experimental":
-            if not v.startswith("DEV_"):
-                raise ValueError(f"Experimental prefix '{v}' must start with 'DEV_'")
+        if (
+            hasattr(info, "data")
+            and "mode" in info.data
+            and info.data["mode"] == "experimental"
+            and not v.startswith("DEV_")
+        ):
+            raise ValueError(f"Experimental prefix '{v}' must start with 'DEV_'")
         return v
 
 

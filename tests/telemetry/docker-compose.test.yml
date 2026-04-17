@@ -90,7 +90,7 @@ services:
     networks:
       - panoseti-net
     # Override the default command to run our loop script
-    command: ["python3", "dummy_worker.py"]
+    command: ["python3", "tests/telemetry/dummy_worker.py"]
     restart: on-failure
 
   worker-2:

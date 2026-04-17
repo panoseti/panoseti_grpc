@@ -27,6 +27,8 @@ from pydantic import ValidationError
 
 # gRPC Imports
 os.environ["GRPC_ENABLE_FORK_SUPPORT"] = "0"
+import contextlib
+
 import grpc
 from google.protobuf.json_format import MessageToDict
 
@@ -233,7 +235,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         )
         self.logger.debug("Subprocess created...")
         # monitor stdout/stderr in background — routes to run_dir log files and gRPC
-        asyncio.create_task(_monitor_hashpipe(proc, hp_stdout_logger, hp_stderr_logger))
+        self._monitor_task = asyncio.create_task(_monitor_hashpipe(proc, hp_stdout_logger, hp_stderr_logger))
         # get the hashpipe pid
         self.hashpipe_pid = proc.pid
 
@@ -246,10 +248,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 break
             await asyncio.sleep(POLL_INTERVAL)
         self.logger.info(f"HASHPIPE instance status: {success}; PID: {self.hashpipe_pid}")
-        if not success:
-            msg = f"HASHPIPE start failed. \n{vreq_dict=} \n{cmd=}"
-        else:
-            msg = ""
+        msg = f"HASHPIPE start failed. \n{vreq_dict=} \n{cmd=}" if not success else ""
         return daq_control_pb2.StartDaqResponse(success=success, message=msg)
 
     @grpc_error_handler
@@ -292,10 +291,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         # check hashpipe status
         if vreq.check_hashpipe_running:
             self.logger.debug("Checking HASHPIPE status...")
-            if self.hashpipe_pid == -1:
-                hashpipe_running = False
-            else:
-                hashpipe_running = is_hashpipe_running(self.hashpipe_pid)
+            hashpipe_running = False if self.hashpipe_pid == -1 else is_hashpipe_running(self.hashpipe_pid)
         else:
             hashpipe_running = False
         # check free space
@@ -418,10 +414,8 @@ async def serve(grpc_port: int = 50051, level: int = logging.DEBUG) -> None:
 def main() -> None:
     """Console script entry point (``panoseti-daq-control``)."""
     GRPC_PORT = int(os.getenv("GRPC_PORT", 50051))
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(serve(GRPC_PORT, logging.DEBUG))
-    except KeyboardInterrupt:
-        pass
 
 
 if __name__ == "__main__":

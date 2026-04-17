@@ -186,10 +186,7 @@ def run_sender(args: argparse.Namespace) -> None:
     console.print(f"[bold green]Connected to Telemetry Server at {args.host}:{args.port}[/]")
 
     types_to_send = []
-    if args.type == "mixed":
-        types_to_send = ["test", "gnss", "dew", "flex"]
-    else:
-        types_to_send = [args.type]
+    types_to_send = ["test", "gnss", "dew", "flex"] if args.type == "mixed" else [args.type]
 
     # Metrics
     success_count = 0

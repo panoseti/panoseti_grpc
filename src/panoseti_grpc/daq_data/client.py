@@ -164,10 +164,7 @@ class DaqDataClient:
             DaqDataClient: The instance of the client.
         """
         for daq_host, daq_node in self.daq_nodes.items():
-            if daq_host.startswith("unix:"):
-                grpc_connection_target = f"{daq_host}"
-            else:
-                grpc_connection_target = f"{daq_host}:{self.GRPC_PORT}"
+            grpc_connection_target = f"{daq_host}" if daq_host.startswith("unix:") else f"{daq_host}:{self.GRPC_PORT}"
             daq_node["connection_target"] = grpc_connection_target
             try:
                 channel = grpc.insecure_channel(grpc_connection_target)
@@ -321,7 +318,7 @@ class DaqDataClient:
         module_ids: tuple[int, ...] | tuple[()] = (),
         wait_for_ready: bool = False,
         parse_pano_images: bool = True,
-        timeout: float = 36_000.0,
+        timeout_sec: float = 36_000.0,
     ) -> Generator[dict[str, Any] | StreamImagesResponse, Any, Any]:
         """Establishes a real-time stream of PANOSETI image data.
 
@@ -366,7 +363,7 @@ class DaqDataClient:
             daq_node = self.daq_nodes[host]
             stub = daq_node["stub"]
             stream_images_responses = stub.StreamImages(
-                stream_images_request, wait_for_ready=wait_for_ready, timeout=timeout
+                stream_images_request, wait_for_ready=wait_for_ready, timeout=timeout_sec
             )
             streams.append(stream_images_responses)
             self.logger.info(f"Created StreamImages RPC to {host=}")
@@ -389,7 +386,7 @@ class DaqDataClient:
         return response_generator()
 
     def init_sim(
-        self, hosts: list[str] | str | None, hp_io_cfg: dict[str, Any] | None = None, timeout: float = 10.0
+        self, hosts: list[str] | str | None, hp_io_cfg: dict[str, Any] | None = None, timeout_sec: float = 10.0
     ) -> bool:
         """
         A convenience method for initializing a simulated run using a JSON config file.
@@ -412,9 +409,9 @@ class DaqDataClient:
         else:
             config_to_send = hp_io_cfg
         assert config_to_send["simulate_daq"] is True, f"{hp_io_cfg} for init_sim must have simulate_daq=True"
-        return self.init_hp_io(hosts, config_to_send, timeout)
+        return self.init_hp_io(hosts, config_to_send, timeout_sec)
 
-    def init_hp_io(self, hosts: list[str] | str | None, hp_io_cfg: dict[str, Any], timeout: float = 10.0) -> bool:
+    def init_hp_io(self, hosts: list[str] | str | None, hp_io_cfg: dict[str, Any], timeout_sec: float = 10.0) -> bool:
         """Initializes or reconfigures the HpIoManager task on the server.
 
         This is a prerequisite for streaming data. It tells the server which
@@ -446,7 +443,7 @@ class DaqDataClient:
             )
             self.logger.info(f"Initializing hp_io on '{daq_node['connection_target']}'...")
             try:
-                init_hp_io_response = stub.InitHpIo(init_hp_io_request, timeout=timeout)
+                init_hp_io_response = stub.InitHpIo(init_hp_io_request, timeout=timeout_sec)
             except grpc.RpcError as e:
                 self.logger.error(f"Failed to init {host}: {e}")
                 return False
@@ -454,7 +451,7 @@ class DaqDataClient:
             init_successes.append(init_hp_io_response.success)
         return all(init_successes)
 
-    def ping(self, host: str, timeout: float = 0.3) -> bool:
+    def ping(self, host: str, timeout_sec: float = 0.3) -> bool:
         """
         Pings a DAQ host to check if its DaqData gRPC server is active and responsive.
 
@@ -470,7 +467,7 @@ class DaqDataClient:
             return False
         stub = self.daq_nodes[host]["stub"]
         try:
-            stub.Ping(Empty(), timeout=timeout, wait_for_ready=True)
+            stub.Ping(Empty(), timeout=timeout_sec, wait_for_ready=True)
             return True
         except grpc.RpcError:
             return False
@@ -590,10 +587,7 @@ class AioDaqDataClient:
     async def __aenter__(self) -> AioDaqDataClient:
         """Establishes async gRPC channels to all configured DAQ nodes."""
         for daq_host, daq_node in self.daq_nodes.items():
-            if daq_host.startswith("unix:"):
-                grpc_connection_target = f"{daq_host}"
-            else:
-                grpc_connection_target = f"{daq_host}:{self.GRPC_PORT}"
+            grpc_connection_target = f"{daq_host}" if daq_host.startswith("unix:") else f"{daq_host}:{self.GRPC_PORT}"
             daq_node["connection_target"] = grpc_connection_target
             try:
                 channel = grpc.aio.insecure_channel(grpc_connection_target)  # Use async channel
@@ -760,7 +754,7 @@ class AioDaqDataClient:
         module_ids: tuple[int, ...] | tuple[()] = (),
         wait_for_ready: bool = False,
         parse_pano_images: bool = True,
-        timeout: float = 36_000.0,
+        timeout_sec: float = 36_000.0,
     ) -> AsyncIterator[dict[str, Any] | StreamImagesResponse]:
         """Establishes an asynchronous, real-time stream of PANOSETI image data.
 
@@ -796,7 +790,7 @@ class AioDaqDataClient:
 
         streams = [
             self.daq_nodes[host]["stub"].StreamImages(
-                stream_images_request, wait_for_ready=wait_for_ready, timeout=timeout
+                stream_images_request, wait_for_ready=wait_for_ready, timeout=timeout_sec
             )
             for host in valid_hosts
         ]
@@ -855,7 +849,7 @@ class AioDaqDataClient:
         return response_generator()
 
     async def init_sim(
-        self, hosts: list[str] | str | None, hp_io_cfg: dict[str, Any] | None = None, timeout: float = 5.0
+        self, hosts: list[str] | str | None, hp_io_cfg: dict[str, Any] | None = None, timeout_sec: float = 5.0
     ) -> bool:
         """
         Asynchronously initializes a simulated run using a JSON config file.
@@ -880,9 +874,11 @@ class AioDaqDataClient:
         else:
             config_to_send = hp_io_cfg
         assert config_to_send["simulate_daq"] is True, f"{hp_io_cfg} for init_sim must have simulate_daq=True"
-        return await self.init_hp_io(hosts, config_to_send, timeout)
+        return await self.init_hp_io(hosts, config_to_send, timeout_sec)
 
-    async def init_hp_io(self, hosts: list[str] | str | None, hp_io_cfg: dict[str, Any], timeout: float = 10.0) -> bool:
+    async def init_hp_io(
+        self, hosts: list[str] | str | None, hp_io_cfg: dict[str, Any], timeout_sec: float = 10.0
+    ) -> bool:
         """Asynchronously initializes or reconfigures the HpIoManager on the server.
 
         This coroutine sends concurrent InitHpIo requests to all specified hosts
@@ -912,7 +908,7 @@ class AioDaqDataClient:
 
             self.logger.info(f"Initializing hp_io on {host}...")
             try:
-                init_hp_io_response = await stub.InitHpIo(init_hp_io_request, timeout=timeout)
+                init_hp_io_response = await stub.InitHpIo(init_hp_io_request, timeout=timeout_sec)
                 self.logger.info(f"{host=}: {init_hp_io_response.success=}")
                 return bool(init_hp_io_response.success)
             except grpc.aio.AioRpcError as e:
@@ -923,14 +919,14 @@ class AioDaqDataClient:
         results = await asyncio.gather(*[_init_single_host(host) for host in valid_hosts])
         return all(results)
 
-    async def ping(self, host: str, timeout: float = 0.3) -> bool:
+    async def ping(self, host: str, timeout_sec: float = 0.3) -> bool:
         """Pings a DAQ host asynchronously to check if its server is responsive."""
         if host not in self.daq_nodes:
             self.logger.debug(f"host={host} not found in daq_nodes. Valid hosts: {self.daq_nodes.keys()}")
             return False
         stub = self.daq_nodes[host]["stub"]
         try:
-            await stub.Ping(Empty(), timeout=timeout, wait_for_ready=True)
+            await stub.Ping(Empty(), timeout=timeout_sec, wait_for_ready=True)
             return True
         except grpc.aio.AioRpcError:
             return False

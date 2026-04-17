@@ -25,7 +25,7 @@ async def test_async_stream_images(async_client):
     """Test the full data streaming workflow: init -> stream -> receive."""
     assert await async_client.init_sim(hosts=None) is True
     stream = await async_client.stream_images(
-        hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout=5.0
+        hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout_sec=5.0
     )
     received_images = 0
     async for image in stream:
@@ -44,7 +44,7 @@ async def test_async_stream_stops_with_event(default_server_process):
     async with AioDaqDataClient(daq_config, network_config=None, stop_event=stop_event) as client:
         assert await client.init_sim(hosts=None)
         stream = await client.stream_images(
-            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.05, timeout=5.0
+            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.05, timeout_sec=5.0
         )
 
         async def stop_streamer():

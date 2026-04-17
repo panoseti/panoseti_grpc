@@ -4,6 +4,7 @@ backpressure, and DEADLINE_EXCEEDED when the data source goes idle.
 """
 
 import asyncio
+import contextlib
 import copy
 import os
 import tempfile
@@ -50,7 +51,7 @@ async def _start_server(cfg: dict[Any]) -> tuple[asyncio.Event, asyncio.Task]:
     uds_path = Path(cfg["unix_domain_socket"].replace("unix://", ""))
     async with AioDaqDataClient({"daq_nodes": [{"ip_addr": cfg["unix_domain_socket"]}]}, network_config=None) as c:
         for _ in range(40):
-            if uds_path.exists() and await c.ping(cfg["unix_domain_socket"]):
+            if await asyncio.to_thread(uds_path.exists) and await c.ping(cfg["unix_domain_socket"]):
                 break
             await asyncio.sleep(0.1)
         else:
@@ -65,11 +66,9 @@ async def _stop_server(shutdown: asyncio.Event, task: asyncio.Task, uds_path: Pa
     except TimeoutError:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
-    if uds_path.exists():
-        try:
+    if await asyncio.to_thread(uds_path.exists):
+        with contextlib.suppress(OSError):
             os.unlink(uds_path)
-        except OSError:
-            pass
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +206,7 @@ async def test_stream_deadline_exceeded_on_idle_source(server_config_base):
                             img = await asyncio.wait_for(stream.__anext__(), timeout=3.0)
                             if img is not None:
                                 count += 1
-                        except (TimeoutError, StopAsyncIteration):
+                        except TimeoutError, StopAsyncIteration:
                             break
                         except grpc.aio.AioRpcError as e:
                             if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:

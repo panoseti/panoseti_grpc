@@ -12,20 +12,20 @@ pytestmark = pytest.mark.asyncio
 
 
 # Utilities
-async def _await_stream_next_or_stop(stream, timeout=5.0):
+async def _await_stream_next_or_stop(stream, timeout_sec=5.0):
     try:
         # We wait for the next item.
         # If the stream is closed, stream.__anext__() raises StopAsyncIteration immediately.
-        item = await asyncio.wait_for(stream.__anext__(), timeout=timeout)
+        item = await asyncio.wait_for(stream.__anext__(), timeout=timeout_sec)
         return item
     except StopAsyncIteration:
         # This is the "Success" case for checking if a stream has ended.
         return None
     except TimeoutError:
         # This means the stream is still open and "hanging" (waiting for data).
-        raise TimeoutError(f"Stream did not end within {timeout} seconds.") from None
+        raise TimeoutError(f"Stream did not end within {timeout_sec} seconds.") from None
     except grpc.aio.AioRpcError as e:
-        raise grpc.aio.AioRpcError(f"Stream had an unexpected gRPC error {e=} within {timeout} seconds.") from e
+        raise grpc.aio.AioRpcError(f"Stream had an unexpected gRPC error {e=} within {timeout_sec} seconds.") from e
 
 
 # 1) gRPC server is re-initialized (InitHpIo) during DAQ: DAQ keeps running; clients see clean cancellation and can reconnect.
@@ -54,11 +54,11 @@ async def test_server_reinit_during_real_daq(default_server_process):
                 stream_movie_data=True,
                 stream_pulse_height_data=True,
                 update_interval_seconds=0.1,
-                timeout=10.0,
+                timeout_sec=10.0,
             )
 
             # 3. Prove we are receiving frames
-            first = await _await_stream_next_or_stop(stream_a, timeout=10.0)
+            first = await _await_stream_next_or_stop(stream_a, timeout_sec=10.0)
             assert first is not None, "Should receive data before re-init"
 
             # 4. Re-initialize with force=True while a stream is active
@@ -70,7 +70,7 @@ async def test_server_reinit_during_real_daq(default_server_process):
             # We allow up to 5 "ghost" frames before failing.
             stream_closed = False
             for _ in range(5):
-                post = await _await_stream_next_or_stop(stream_a, timeout=2.0)
+                post = await _await_stream_next_or_stop(stream_a, timeout_sec=2.0)
                 if post is None:
                     stream_closed = True
                     break
@@ -95,7 +95,9 @@ async def test_init_waits_for_uds_ready(default_server_process):
         # Check that the UDS sockets exist (server creates them as listeners for hashpipe)
         for dp in ("img8", "img16", "ph256", "ph1024"):
             path = f"/tmp/hashpipe_grpc.dp_{dp}.sock"
-            assert os.path.exists(path), f"UDS socket for data product '{dp}' was not created at {path}"
+            assert await asyncio.to_thread(os.path.exists, path), (
+                f"UDS socket for data product '{dp}' was not created at {path}"
+            )
 
 
 @pytest.mark.usefixtures("hashpipe_pcap_runner")
@@ -147,7 +149,7 @@ async def test_module_id_filter_with_real_data(default_server_process):
         # First init without filter to discover which module(s) are present
         assert await client.init_hp_io(hosts=None, hp_io_cfg=hp_io_cfg_base) is True
         discovery_stream = await client.stream_images(
-            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout=10.0
+            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout_sec=10.0
         )
         first_img = await asyncio.wait_for(discovery_stream.__anext__(), timeout=10.0)
         discovered_module = first_img["module_id"]
@@ -157,7 +159,7 @@ async def test_module_id_filter_with_real_data(default_server_process):
         assert await client.init_hp_io(hosts=None, hp_io_cfg=filtered_cfg) is True
 
         filtered_stream = await client.stream_images(
-            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout=10.0
+            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout_sec=10.0
         )
 
         for _ in range(10):
@@ -191,10 +193,10 @@ async def test_concurrent_clients_receive_same_frames(default_server_process):
         assert await client_a.init_hp_io(hosts=None, hp_io_cfg=hp_io_cfg) is True
 
         stream_a = await client_a.stream_images(
-            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout=10.0
+            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout_sec=10.0
         )
         stream_b = await client_b.stream_images(
-            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout=10.0
+            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1, timeout_sec=10.0
         )
 
         SAMPLES = 15

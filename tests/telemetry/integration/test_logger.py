@@ -269,7 +269,7 @@ async def test_logger_triple_dispatch(tmp_path, capsys):
     await proc.wait()
 
     # Allow a brief moment for asynchronous/threaded handlers (like File/gRPC queues) to flush
-    time.sleep(0.5)
+    await asyncio.sleep(0.5)
 
     # --- VERIFICATION PHASE ---
 

@@ -29,7 +29,6 @@ dependencies = [
     "grpcio==1.78.0",
     "grpcio-tools==1.78.0",
     "grpcio-reflection==1.78.0",
-
     "protobuf>=6.31.1,<7.0.0",
     "coverage>=7.10.7",
     "cython",
@@ -40,13 +39,10 @@ dependencies = [
     "json5",
     "pyserial",
     "pyubx2",
-    # "seaborn",
-    # "matplotlib",
     "pandas",
     "numpy",
     "psutil",
     "aiofiles",
-#    "pygnssutils",
     "pydantic>=2.12",
     "requests",
     "GitPython"
@@ -57,12 +53,11 @@ dev = [
     "pytest",
     "pytest-asyncio>=0.23",
     "pytest-timeout",
-    "black",
-    "flake8",
     "ruff>=0.15",
     "mypy>=1.20.0",
     "mypy-protobuf",
     "types-protobuf",
+    "types-aiofiles",
     "ipython",
 ]
 docs = [
@@ -86,12 +81,6 @@ Issues = "https://github.com/panoseti/panoseti_grpc/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-#include = [
-#    "panoseti_grpc/daq_data/*",
-#    "ublox_control/*",
-#    "generated/*",
-#    "panoseti_util/*",
-#]
 exclude = ["*logs*", "*.pcapng", "*.png"]
 
 # Include non-python data files:
@@ -101,14 +90,6 @@ exclude = ["*logs*", "*.pcapng", "*.png"]
 
 [tool.setuptools]
 include-package-data = true
-
-[tool.black]
-line-length = 120
-target-version = ["py39"]
-
-[tool.flake8]
-max-line-length = 120
-extend-ignore = ["E203", "W503"]
 
 [tool.ruff]
 line-length = 120
@@ -121,7 +102,6 @@ exclude = [
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC", "RUF", "SIM"]
-ignore = ["E203"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/migrations/*" = ["E501"]
@@ -158,4 +138,3 @@ timeout = 120
 testpaths = [
     "tests",
 ]
-

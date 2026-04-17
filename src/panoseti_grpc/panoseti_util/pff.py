@@ -80,11 +80,10 @@ def write_image_1D(f: Any, img: Any, img_size: Any, bytes_per_pixel: Any) -> Non
 # same, image is NxN array
 def write_image_2D(f: Any, img: Any, img_size: Any, bytes_per_pixel: Any) -> None:
     f.write(b"*")
-    if img_size == 32:
-        if bytes_per_pixel == 2:
-            for i in range(32):
-                f.write(struct.pack("32H", *img[i]))
-            return
+    if img_size == 32 and bytes_per_pixel == 2:
+        for i in range(32):
+            f.write(struct.pack("32H", *img[i]))
+        return
     raise Exception("bad params")
 
 
@@ -128,7 +127,7 @@ def pff_file_type(name: Any) -> str | None:
     if name == "hk.pff":
         return "hk"
     n = parse_name(name)
-    if n is None or "dp" not in n.keys():
+    if n is None or "dp" not in n:
         return None
     return n["dp"]
 

@@ -30,7 +30,7 @@ async def test_multiple_clients_streaming_concurrently(default_server_process):
                 stream_movie_data=stream_movie,
                 stream_pulse_height_data=stream_ph,
                 update_interval_seconds=0.1,
-                timeout=15,
+                timeout_sec=15,
             )
 
             images_received = 0
@@ -66,7 +66,7 @@ async def test_server_reinitialization_logic(default_server_process):
         assert await client_a.init_hp_io(hosts=None, hp_io_cfg=hp_io_cfg) is True
 
         image_stream = await client_a.stream_images(
-            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.2, timeout=15
+            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.2, timeout_sec=15
         )
 
         # This task will keep the reader stream active in the background

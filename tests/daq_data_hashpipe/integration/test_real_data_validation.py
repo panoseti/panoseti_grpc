@@ -37,7 +37,7 @@ async def _init_and_collect(server_ip: str, n: int, **stream_kwargs) -> list[dic
         stream = await client.stream_images(
             hosts=None,
             update_interval_seconds=0.1,
-            timeout=30.0,
+            timeout_sec=30.0,
             **stream_kwargs,
         )
         frames: list[dict[Any]] = []
@@ -129,7 +129,7 @@ async def test_frame_arrival_rate_is_reasonable(default_server_process):
             stream_movie_data=True,
             stream_pulse_height_data=True,
             update_interval_seconds=0.1,
-            timeout=15.0,
+            timeout_sec=15.0,
         )
 
         arrival_times: list[float] = []

@@ -9,10 +9,7 @@ def is_hashpipe_running(pid: int) -> bool:
         # then check if the process is a hashpipe process
         try:
             p = psutil.Process(pid)
-            if hashpipe_name in p.cmdline():
-                return True
-            else:
-                return False
+            return hashpipe_name in p.cmdline()
         except Exception:
             return False
     return False

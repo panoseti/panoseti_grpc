@@ -49,10 +49,7 @@ class PulseHeightDistribution:
         height = max(2.9 * self.n_durations, 6)
         plt.ion()
         fig, axes = plt.subplots(self.n_durations, 1, figsize=(6, height))
-        if self.n_durations == 1:
-            axes_list = [cast(Axes, axes)]
-        else:
-            axes_list = list(cast(Iterable[Axes], axes))
+        axes_list = [cast(Axes, axes)] if self.n_durations == 1 else list(cast(Iterable[Axes], axes))
         return fig, axes_list
 
     def _add_new_module(self, module_id: int) -> None:
@@ -184,10 +181,7 @@ class PanoImagePreviewer:
         n_modules = len(module_list)
         self.fig, axes = plt.subplots(n_modules, 2, figsize=(self.row_height * 2.2, self.row_height * n_modules))
 
-        if n_modules == 1:
-            axs = np.array([axes])
-        else:
-            axs = cast(np.ndarray, axes)
+        axs = np.array([axes]) if n_modules == 1 else cast(np.ndarray, axes)
 
         self.axes_map.clear()
         self.cbar_map.clear()

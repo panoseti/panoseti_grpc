@@ -33,7 +33,7 @@ async def test_daq_grpc_stream_stress(default_server_process):
             stream_movie_data=True,
             stream_pulse_height_data=True,
             update_interval_seconds=0.1,
-            timeout=30.0,
+            timeout_sec=30.0,
         )
 
         received = 0
@@ -85,7 +85,7 @@ async def test_daq_grpc_concurrent_clients_snapshot_robustness(default_server_pr
                 stream_movie_data=("MOVIE" in data_types),
                 stream_pulse_height_data=("PULSE_HEIGHT" in data_types),
                 update_interval_seconds=-1,
-                timeout=60.0,
+                timeout_sec=60.0,
             )
             received = 0
 

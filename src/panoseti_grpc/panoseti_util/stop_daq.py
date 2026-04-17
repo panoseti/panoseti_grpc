@@ -13,12 +13,15 @@ import os
 import sys
 
 sys.path.append("/app/")
+import contextlib
+
 from panoseti_util import control_utils as util
 
 
 def main() -> None:
     try:
-        f = open(util.daq_hashpipe_pid_filename)
+        with open(util.daq_hashpipe_pid_filename) as f:
+            pass
     except Exception:
         f = None
     if f:
@@ -34,10 +37,8 @@ def main() -> None:
     # But it shouldn't be there, so kill it
     util.kill_hk_recorder()
 
-    try:
+    with contextlib.suppress(Exception):
         os.unlink(util.daq_run_name_filename)
-    except Exception:
-        pass
 
     print("stop_daq.py: OK")
 

@@ -109,7 +109,7 @@ async def test_client_reconnection_after_server_restart(n_sim_servers_fixture_fa
         # Stop the server
         server_details[0]["stop_event"].set()
         await asyncio.wait_for(server_details[0]["task"], timeout=5.0)
-        assert not Path(uds_path.replace("unix://", "")).exists()
+        assert not await asyncio.to_thread(Path(uds_path.replace("unix://", "")).exists)
 
         # FIX: Expect StopAsyncIteration now that the client handles this gracefully.
         with pytest.raises(StopAsyncIteration):

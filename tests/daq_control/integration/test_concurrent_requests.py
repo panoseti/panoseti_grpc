@@ -2,6 +2,7 @@
 Tests for concurrent and sequential request handling in the DAQ Control service.
 """
 
+import contextlib
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
@@ -49,7 +50,7 @@ def test_concurrent_start_daq_rejected(grpc_client: Any) -> None:
         def _start(_: Any) -> None:
             try:
                 return grpc_client.StartDaq(START_PARAMS)
-            except (ValueError, Exception):
+            except ValueError, Exception:
                 return False
 
         with ThreadPoolExecutor(max_workers=3) as pool:
@@ -65,10 +66,8 @@ def test_concurrent_start_daq_rejected(grpc_client: Any) -> None:
         grpc_client.StopDaq(STOP_PARAMS)
         # Brief wait for process to fully terminate
         time.sleep(0.5)
-        try:
+        with contextlib.suppress(Exception):
             grpc_client.CleanupData(CLEANUP_PARAMS)
-        except Exception:
-            pass
 
 
 def test_stop_then_start_idempotent(grpc_client: Any) -> None:
@@ -90,10 +89,8 @@ def test_stop_then_start_idempotent(grpc_client: Any) -> None:
     # Clean up
     assert grpc_client.StopDaq(STOP_PARAMS) is True
     time.sleep(0.5)
-    try:
+    with contextlib.suppress(Exception):
         grpc_client.CleanupData(CLEANUP_PARAMS)
-    except Exception:
-        pass
 
 
 def test_cleanup_while_start_in_progress_fails(grpc_client: Any) -> None:
@@ -110,7 +107,5 @@ def test_cleanup_while_start_in_progress_fails(grpc_client: Any) -> None:
     finally:
         grpc_client.StopDaq(STOP_PARAMS)
         time.sleep(0.5)
-        try:
+        with contextlib.suppress(Exception):
             grpc_client.CleanupData(CLEANUP_PARAMS)
-        except Exception:
-            pass

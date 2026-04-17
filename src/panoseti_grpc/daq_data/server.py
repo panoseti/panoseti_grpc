@@ -64,8 +64,10 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         if self.server_cfg.init_from_default:
             self.logger.info("Creating initial hp_io task from default config.")
             try:
-                with open(CFG_DIR / self.server_cfg.default_hp_io_config_file) as f:
-                    hp_io_cfg = json.load(f)
+                import aiofiles
+
+                async with aiofiles.open(CFG_DIR / self.server_cfg.default_hp_io_config_file) as f:
+                    hp_io_cfg = json.loads(await f.read())
                 await self.task_manager.start(hp_io_cfg)
             except Exception as e:
                 self.logger.error(f"Failed to start initial hp_io task: {e}", exc_info=True)
@@ -203,7 +205,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
         # Request validation
         if not request.simulate_daq:
-            if not os.path.exists(request.data_dir):
+            if not await asyncio.to_thread(os.path.exists, request.data_dir):
                 await context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"data_dir '{request.data_dir}' does not exist.")
             if not await is_daq_active(simulate_daq=False):
                 await context.abort(grpc.StatusCode.FAILED_PRECONDITION, "Real DAQ software is not active.")
@@ -331,7 +333,7 @@ def main() -> None:
         raw_cfg = load_package_json(daq_data_anchor_package, CFG_DIR / "daq_data_server_config.json")
         server_config = DaqDataServerConfig.model_validate(raw_cfg)
         asyncio.run(serve(server_config))
-    except (KeyboardInterrupt, asyncio.CancelledError):
+    except KeyboardInterrupt, asyncio.CancelledError:
         print("\nServer startup interrupted.")
     finally:
         print("Exiting server process.")

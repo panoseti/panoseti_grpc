@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import logging
 from pathlib import Path
 
@@ -88,10 +89,8 @@ def main() -> None:
         datefmt="%Y-%m-%dT%H:%M:%S",
     )
 
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(PanosetiServer.run(cfg))
-    except KeyboardInterrupt:
-        pass
 
 
 if __name__ == "__main__":

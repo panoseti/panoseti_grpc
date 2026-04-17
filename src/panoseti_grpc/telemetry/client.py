@@ -296,14 +296,10 @@ class AsyncGrpcHandler(logging.Handler):
         """
         Called by gRPC background thread when the request finishes (or times out).
         """
-        try:
+        import contextlib
+
+        with contextlib.suppress(grpc.RpcError):
             future.result()  # Will raise exception if RPC failed
-        except grpc.RpcError:
-            # Handle specific errors if needed, or just suppress typical "server down" noise
-            # status_code = e.code()
-            # if status_code != grpc.StatusCode.CANCELLED:
-            #     print(f"{status_code}: {e.details()}")
-            pass
 
     def close(self) -> None:
         """
@@ -375,10 +371,9 @@ def make_grpc_logger(
         target_logger.addHandler(grpc_handler)
 
     # 4. Attach Console Handler (ONLY if requested)
-    if add_console_handler:
+    if add_console_handler and not any(isinstance(h, RichHandler) for h in target_logger.handlers):
         # Check for existing RichHandler to avoid duplicates
-        if not any(isinstance(h, RichHandler) for h in target_logger.handlers):
-            console = RichHandler(rich_tracebacks=True, markup=True)
-            target_logger.addHandler(console)
+        console = RichHandler(rich_tracebacks=True, markup=True)
+        target_logger.addHandler(console)
 
     return logging.getLogger(service_name)

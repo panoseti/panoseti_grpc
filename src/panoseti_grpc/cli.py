@@ -59,7 +59,7 @@ def _make_channel(host: str, port: int) -> grpc.Channel:
 # ---------------------------------------------------------------------------
 
 
-def get_reflected_services(host: str, port: int, timeout: float = 5.0) -> set[str]:
+def get_reflected_services(host: str, port: int, timeout_sec: float = 5.0) -> set[str]:
     """Query gRPC reflection and return the set of advertised service names.
 
     Args:
@@ -185,7 +185,7 @@ def cmd_reflect(args: argparse.Namespace) -> int:
 
     Returns 0 on success, 1 if reflection fails.
     """
-    services = get_reflected_services(args.host, args.port, timeout=args.timeout)
+    services = get_reflected_services(args.host, args.port, timeout_sec=args.timeout)
     if not services:
         console.print(f"[red]No services returned from {args.host}:{args.port}.[/red]")
         console.print("Is the server running and reflection enabled?")
@@ -323,7 +323,7 @@ def cmd_daq_data_init_sim(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
-async def _stream_images(host: str, port: int, seconds: float, timeout: float) -> int:
+async def _stream_images(host: str, port: int, seconds: float, timeout_sec: float) -> int:
     """Stream images from the DaqData service and print a one-line summary per frame.
 
     Args:
