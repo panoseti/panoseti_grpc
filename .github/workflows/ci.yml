@@ -2,7 +2,7 @@ name: PANOSETI gRPC CI
 
 on:
   push:
-    branches: [main, dev, feature/test-suite-hardening]
+    branches: [main, dev, feature/test-suite-hardening, add-linting]
   pull_request:
     branches: [main, dev]
 
