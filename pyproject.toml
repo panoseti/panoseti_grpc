@@ -112,7 +112,7 @@ extend-ignore = ["E203", "W503"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py312"
+target-version = "py314"
 exclude = [
     "src/panoseti_grpc/generated",
     "src/panoseti_grpc/ublox_control",
@@ -120,7 +120,7 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "RUF", "SIM"]
 ignore = ["E203"]
 
 [tool.ruff.lint.per-file-ignores]

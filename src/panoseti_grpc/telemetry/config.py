@@ -220,7 +220,7 @@ class TelemetryConfig:
             raise ValueError(f"No schema defined for production type '{device_type}'")
 
         # 3. Flatten (Handling nested 'extra_data')
-        if "extra_data" in clean_data and clean_data["extra_data"]:
+        if clean_data.get("extra_data"):
             extras = clean_data.pop("extra_data")
             if isinstance(extras, dict):
                 for k, v in extras.items():

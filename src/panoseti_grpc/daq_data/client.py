@@ -176,7 +176,7 @@ class DaqDataClient:
                 if self.ping(daq_host):
                     self.valid_daq_hosts.add(daq_host)
             except grpc.RpcError as rpc_error:
-                self.logger.error(f"{type(rpc_error)}\n{repr(rpc_error)}")
+                self.logger.error(f"{type(rpc_error)}\n{rpc_error!r}")
                 continue
         return self
 
@@ -254,21 +254,16 @@ class DaqDataClient:
         host_set: set[str] = set()
         if isinstance(hosts, str) and len(hosts) > 0:
             host_set = {hosts}
-        elif isinstance(hosts, list) and len(hosts) > 0:
-            host_set = set(hosts)
-        elif isinstance(hosts, set) and len(hosts) > 0:
+        elif (isinstance(hosts, list) and len(hosts) > 0) or (isinstance(hosts, set) and len(hosts) > 0):
             host_set = set(hosts)
         elif hosts is None or len(hosts) == 0:
             host_set = set(self.get_valid_daq_hosts())
         else:
-            raise ValueError(
-                f"hosts={repr(hosts)} must be a non-empty str,list[Any] of str, or None, got {type(hosts)}"
-            )
+            raise ValueError(f"hosts={hosts!r} must be a non-empty str,list[Any] of str, or None, got {type(hosts)}")
         for host in host_set:
             if not self.is_daq_host_valid(host):
                 raise ConnectionError(
-                    f"host={repr(host)} does not have a valid gRPC server channel. "
-                    f"Valid daq_hosts: {self.valid_daq_hosts}"
+                    f"host={host!r} does not have a valid gRPC server channel. Valid daq_hosts: {self.valid_daq_hosts}"
                 )
         valid_hosts = self.get_valid_daq_hosts()
         if len(valid_hosts) == 0:
@@ -698,21 +693,16 @@ class AioDaqDataClient:
         host_set: set[str] = set()
         if isinstance(hosts, str) and len(hosts) > 0:
             host_set = {hosts}
-        elif isinstance(hosts, list) and len(hosts) > 0:
-            host_set = set(hosts)
-        elif isinstance(hosts, set) and len(hosts) > 0:
+        elif (isinstance(hosts, list) and len(hosts) > 0) or (isinstance(hosts, set) and len(hosts) > 0):
             host_set = set(hosts)
         elif hosts is None or len(hosts) == 0:
             host_set = set(await self.get_valid_daq_hosts())
         else:
-            raise ValueError(
-                f"hosts={repr(hosts)} must be a non-empty str,list[Any] of str, or None, got {type(hosts)}"
-            )
+            raise ValueError(f"hosts={hosts!r} must be a non-empty str,list[Any] of str, or None, got {type(hosts)}")
         for host in host_set:
             if not await self.is_daq_host_valid(host):
                 raise ConnectionError(
-                    f"host={repr(host)} does not have a valid gRPC server channel. "
-                    f"Valid daq_hosts: {self.valid_daq_hosts}"
+                    f"host={host!r} does not have a valid gRPC server channel. Valid daq_hosts: {self.valid_daq_hosts}"
                 )
         valid_hosts = await self.get_valid_daq_hosts()
         if len(valid_hosts) == 0:

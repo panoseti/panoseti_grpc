@@ -83,7 +83,7 @@ PALETTE = [
 class Result:
     """Outcome of a single QA task."""
 
-    __slots__ = ("name", "code", "elapsed")
+    __slots__ = ("code", "elapsed", "name")
 
     def __init__(self, name: str, code: int, elapsed: float) -> None:
         self.name = name

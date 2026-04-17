@@ -6,9 +6,14 @@ on:
   pull_request:
     branches: [main, dev]
 
+# Concurrency group ensures that only the latest commit on a branch is tested.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # All test stages inherit from the shared `base` stage in Dockerfile.ci.
 # BuildKit caches the base layer across jobs via GitHub Actions cache,
-# so the pip install only runs once per commit tree.
+# so the dependencies and environment are only built once per commit tree.
 
 jobs:
 
@@ -41,7 +46,6 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────────
   # DAQ Data — pure Python tests, no external services required.
-  # Runs all of tests/daq_data/ inside the daq-data-test Dockerfile.ci stage.
   # ─────────────────────────────────────────────────────────────────────────
   daq-data-test:
     name: DAQ Data Tests
@@ -69,7 +73,6 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────────
   # DAQ Data Hashpipe — integration tests against a compiled hashpipe binary.
-  # Requires --shm-size=2g for shared memory segments.
   # ─────────────────────────────────────────────────────────────────────────
   daq-data-hashpipe-test:
     name: DAQ Data Hashpipe Tests
@@ -100,12 +103,10 @@ jobs:
             --shm-size=2g \
             --env RUN_REAL_DATA_TESTS=${RUN_REAL_DATA_TESTS} \
             panoseti-daq-data-hashpipe-test:ci \
-            python3 -m pytest -s -v --maxfail=2 tests/daq_data_hashpipe/
+            python -m pytest -s -v --maxfail=2 tests/daq_data_hashpipe/
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Telemetry — requires Redis + InfluxDB sidecars (provided by docker-compose).
-  # Uses tests/telemetry/docker-compose.test.yml which also spins up
-  # multiple worker containers to test distributed log ingestion.
+  # Telemetry — requires Redis + InfluxDB sidecars.
   # ─────────────────────────────────────────────────────────────────────────
   telemetry-test:
     name: Telemetry Service Tests
@@ -114,10 +115,34 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build telemetry-runner image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.ci
+          target: telemetry-runner
+          load: true
+          tags: panoseti-telemetry-runner:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build telemetry-client image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.ci
+          target: telemetry-client
+          load: true
+          tags: panoseti-telemetry-client:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Run Telemetry tests (Docker Compose)
         run: |
           docker compose -f tests/telemetry/docker-compose.test.yml up \
-            --build \
             --abort-on-container-exit \
             --exit-code-from test_runner
 
@@ -129,7 +154,6 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────────
   # DAQ Control — integration tests against a compiled hashpipe binary.
-  # Uses tests/daq_control/docker-compose.test.yml.
   # ─────────────────────────────────────────────────────────────────────────
   daq-control-test:
     name: DAQ Control Service Tests
@@ -138,10 +162,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build daq-control-test image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.ci
+          target: daq-control-test
+          load: true
+          tags: panoseti-daq-control-test:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Run DAQ Control tests (Docker Compose)
         run: |
           docker compose -f tests/daq_control/docker-compose.test.yml up \
-            --build \
             --abort-on-container-exit \
             --exit-code-from test_runner
 
@@ -153,9 +190,6 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────────────
   # Unified Server — all three services on one port.
-  # Requires Redis (for the Telemetry service). The docker-compose provides
-  # a Redis sidecar so all integration tests run without skipping.
-  # DAQ Data runs in UDS simulation mode — no hashpipe binary needed.
   # ─────────────────────────────────────────────────────────────────────────
   unified-server-test:
     name: Unified Server Tests
@@ -164,10 +198,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build unified-server-test image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.ci
+          target: unified-server-test
+          load: true
+          tags: panoseti-unified-server-test:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Run Unified Server tests (Docker Compose with Redis)
         run: |
           docker compose -f tests/unified_server/docker-compose.test.yml up \
-            --build \
             --abort-on-container-exit \
             --exit-code-from test_runner
 

@@ -24,7 +24,7 @@ def grpc_error_handler[F: Callable[..., Any]](func: F) -> F:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            logging.exception(f"Error in {func.__name__}: {str(e)}")
-            await context.abort(grpc.StatusCode.INTERNAL, f"Internal server error: {str(e)}")
+            logging.exception(f"Error in {func.__name__}: {e!s}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Internal server error: {e!s}")
 
     return cast(F, wrapper)

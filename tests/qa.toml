@@ -8,24 +8,26 @@ ignore = [
 
 # ── Lint tasks ───────────────────────────────────────────────────────────────
 # All lint tasks run concurrently. Output lines are prefixed with the task name.
+# Using 'docker build' in every command ensures the image is ready even if run
+# individually; BuildKit caches the shared layers efficiently.
 
 [lint.ruff]
-command     = "docker build --target qa-linter -f Dockerfile.ci -t panoseti-qa-linter . && docker run --rm -v $(pwd):/app panoseti-qa-linter python -m ruff check src/ tests/ --fix"
-description = "Ruff lint (Python) with autofix (src and tests)"
+command     = "docker build --target qa-linter -f Dockerfile.ci -t panoseti-qa-linter . && docker run --rm -v $(pwd):/app panoseti-qa-linter python -m ruff check src/ tests/ scripts/ --fix"
+description = "Ruff lint (Python) with autofix (src, tests, scripts)"
 
 [lint.ruff_format]
-command     = "docker run --rm -v $(pwd):/app panoseti-qa-linter python -m ruff format src/ tests/"
-description = "Ruff format (src and tests)"
+command     = "docker build --target qa-linter -f Dockerfile.ci -t panoseti-qa-linter . && docker run --rm -v $(pwd):/app panoseti-qa-linter python -m ruff format src/ tests/ scripts/ --statistics"
+description = "Ruff format (src, tests, scripts)"
 
 [lint.mypy]
-command     = "docker run --rm -v $(pwd):/app panoseti-qa-linter python -m mypy src/ tests/ --exclude src/panoseti_grpc/ublox_control/"
-description = "MyPy static type check (src and tests, excluding ublox_control)"
+command     = "docker build --target qa-linter -f Dockerfile.ci -t panoseti-qa-linter . && docker run --rm -v $(pwd):/app panoseti-qa-linter python -m mypy src/ tests/ scripts/"
+description = "MyPy static type check (src, tests, scripts)"
 
 # ── Test tasks ────────────────────────────────────────────────────────────────
 # Sequential execution.
 
 [test.daq_data]
-command     = "docker build -t panoseti-daq-data-ci --target daq-data-test -f Dockerfile.ci . && docker run --rm panoseti-daq-data-ci python3 -m pytest -v -s --maxfail=2 tests/daq_data/"
+command     = "docker build --target daq-data-test -f Dockerfile.ci -t panoseti-daq-data-test . && docker run --rm panoseti-daq-data-test python -m pytest -v -s --maxfail=2 tests/daq_data/"
 description = "DAQ Data service integration tests"
 
 [test.daq_control]
@@ -41,5 +43,5 @@ command     = "docker compose -f tests/unified_server/docker-compose.test.yml up
 description = "Unified server integration tests"
 
 [test.hashpipe_daq_data]
-command     = "docker build -t panoseti-hashpipe-daq-data-ci --target daq-data-hashpipe-test -f Dockerfile.ci . && docker run --rm --shm-size=2g -e RUN_REAL_DATA_TESTS=1 panoseti-hashpipe-daq-data-ci python3 -m pytest -v -s --maxfail=2 tests/daq_data_hashpipe/"
+command     = "docker build --target daq-data-hashpipe-test -f Dockerfile.ci -t panoseti-hashpipe-daq-data-test . && docker run --rm --shm-size=2g -e RUN_REAL_DATA_TESTS=1 panoseti-hashpipe-daq-data-test python -m pytest -v -s --maxfail=2 tests/daq_data_hashpipe/"
 description = "Hashpipe DAQ Data integration tests (requires real/simulated hardware)"
