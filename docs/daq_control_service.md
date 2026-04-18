@@ -111,6 +111,7 @@ Deletes run data directories. **Blocked while Hashpipe is running.**
 | `data_dir` | `string` | Root data directory |
 | `run_dir` | `string` | Run subdirectory to delete |
 | `module_id` | `repeated uint32` | Module IDs whose per-module run dirs to delete |
+| `force`   | `bool` | Forces cleanup but requires hashpipe to have been stopped first |
 
 **Response fields**
 
