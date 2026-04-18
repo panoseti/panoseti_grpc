@@ -66,7 +66,7 @@ class DaqControlClient:
         request.data_dir = parameters["data_dir"]
         request.run_dir = parameters["run_dir"]
         try:
-            resp: daq_control_pb2.StopDaqResponse = self.stub.StopDaq(request)
+            resp: daq_control_pb2.StopDaqResponse = self.stub.StopDaq(request, timeout=30.0)
             if not resp.success:
                 raise ValueError(f"Server rejected data: {resp.message}")
             # this return may not be necessary

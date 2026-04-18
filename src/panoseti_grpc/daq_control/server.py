@@ -69,6 +69,7 @@ async def _monitor_hashpipe(
         tg.create_task(_read_stream(proc.stderr, stderr_logger.error))
 
 
+
 class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     """
     Implements the Daq Control gRPC service.
@@ -339,14 +340,28 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         force = vreq.force
 
         if self.hashpipe_pid > 0:
-            msg = f"HASHPIPE is running, pid[{self.hashpipe_pid}]. "
-            if not force:
-                msg += "Cleaning up data dir is not allowed."
+            process_alive = is_hashpipe_running(self.hashpipe_pid)
+            if process_alive:
+                # Process is genuinely running — refuse even with force=True.
+                # force is only an escape hatch for the orphaned-PID path.
+                # is_hashpipe_running() also guards against PID reuse: it
+                # verifies the cmdline still contains "hashpipe".
+                msg = f"HASHPIPE is still alive, pid[{self.hashpipe_pid}]. Cleanup refused."
+                self.logger.warning(msg)
+                return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
+            elif not force:
+                # Process is dead (orphaned) but caller did not pass force=True.
+                msg = (
+                    f"Orphaned HASHPIPE pid[{self.hashpipe_pid}] (process dead). "
+                    "Use force=True to override and clean up."
+                )
                 self.logger.warning(msg)
                 return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
             else:
-                msg += f" {force=}: Forcing cleanup..."
+                # Process is dead and force=True — allowed; reset tracked PID.
+                msg = f"Orphaned HASHPIPE pid[{self.hashpipe_pid}] (dead). Force cleanup in progress."
                 self.logger.warning(msg)
+                self.hashpipe_pid = -1
 
         # clean up the run dir in data dir
         run_dir_path = f"{datadir}/{rundir}"
