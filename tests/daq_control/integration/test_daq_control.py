@@ -101,3 +101,8 @@ def test_status_daq_run_dirs(grpc_client: Any) -> None:
 def test_cleanup_data(grpc_client: Any) -> None:
     """CleanupData removes the run directory after hashpipe is stopped."""
     assert grpc_client.CleanupData(CLEANUP_PARAMS)["success"] is True
+
+
+def test_cleanup_data_again(grpc_client: Any) -> None:
+    """CleanupData returns False because the data directory has already been cleaned."""
+    assert grpc_client.CleanupData(CLEANUP_PARAMS)["success"] is False

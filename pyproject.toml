@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "panoseti-grpc"
-version = "0.4.6"
+version = "0.4.7"
 description = "gRPC for the PANOSETI project."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -41,7 +41,7 @@ dependencies = [
     "pandas",
     "numpy",
     "psutil",
-    "aiofiles",
+    "anyio",
     "pydantic>=2.12",
     "requests",
     "GitPython"
@@ -56,7 +56,6 @@ dev = [
     "mypy>=1.20.0",
     "mypy-protobuf",
     "types-protobuf",
-    "types-aiofiles",
     "ipython",
 ]
 docs = [

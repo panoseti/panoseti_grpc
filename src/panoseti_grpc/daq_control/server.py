@@ -325,30 +325,45 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         self, request: daq_control_pb2.CleanupDataRequest, context: grpc.ServicerContext
     ) -> daq_control_pb2.CleanupDataResponse:
         self.logger.info("Cleanning up Data...")
-        if self.hashpipe_pid > 0:
-            self.logger.warning("Cleaning up data dir is not allowed")
-            msg = f"HASHPIPE is running, pid[{self.hashpipe_pid}]"
-            self.logger.warning(msg)
-            return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
         creq = self._request_to_dict(request)
         try:
             vreq = CleanupDataModel(**creq)
         except ValidationError as e:
             msg = f"Validation Error: {e}"
+            self.logger.error(msg)
             return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
 
         datadir = vreq.data_dir
         rundir = vreq.run_dir
         module_id = vreq.module_id
-        # clean up the run dir in data dir
-        self._cleanup_dir(f"{datadir}/{rundir}")
-        # clean up the run dir in module_x dir
-        for id in module_id:
-            cleanupdir = f"{datadir}/module_{id}/{rundir}"
-            if not self._cleanup_dir(cleanupdir):
-                msg = f"Fail to cleanup {cleanupdir}"
+        force = vreq.force
+
+        if self.hashpipe_pid > 0:
+            msg = f"HASHPIPE is running, pid[{self.hashpipe_pid}]. "
+            if not force:
+                msg += "Cleaning up data dir is not allowed."
+                self.logger.warning(msg)
                 return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
-        return daq_control_pb2.CleanupDataResponse(success=True)
+            else:
+                msg += f" {force=}: Forcing cleanup..."
+                self.logger.warning(msg)
+
+        # clean up the run dir in data dir
+        run_dir_path = f"{datadir}/{rundir}"
+        module_dir_paths = [f"{datadir}/module_{id}/{rundir}" for id in module_id]
+        cleanup_paths = [run_dir_path, *module_dir_paths]
+
+        # clean up the run dir in module_x dir
+        msg = ""
+        all_cleaned = True
+        for cleanup_path in cleanup_paths:
+            if not self._cleanup_dir(cleanup_path):
+                msg += f"_cleanup_dir failed for {cleanup_path}"
+            all_cleaned &= not os.path.exists(cleanup_path)  # noqa: ASYNC240
+        if msg:
+            self.logger.warning(msg)
+
+        return daq_control_pb2.CleanupDataResponse(success=all_cleaned, message=msg)
 
 
 async def serve(grpc_port: int = 50051, level: int = logging.DEBUG) -> None:

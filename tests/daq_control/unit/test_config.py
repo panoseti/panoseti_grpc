@@ -222,8 +222,12 @@ class TestCleanupDataModel:
     def test_valid(self, tmp_path: Any) -> None:
         run_dir = tmp_path / "run.pffd"
         run_dir.mkdir()
-        m = CleanupDataModel(data_dir=str(tmp_path), run_dir="run.pffd", module_id=[10, 20])
-        assert m.module_id == [10, 20]
+        MODULE_IDS = [10, 20, 40, 70]
+        module_dirs = [tmp_path / f"module_{mid}" for mid in MODULE_IDS]
+        for module_dir in module_dirs:
+            module_dir.mkdir(parents=True, exist_ok=True)
+        m = CleanupDataModel(data_dir=str(tmp_path), run_dir="run.pffd", module_id=MODULE_IDS)
+        assert m.module_id == MODULE_IDS
 
     def test_data_dir_not_exist(self, tmp_path: Any) -> None:
         with pytest.raises(ValidationError):

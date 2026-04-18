@@ -27,9 +27,10 @@ class StartDaqModel(BaseModel):
     bindhost: str = Field(..., min_length=1, max_length=16)
     max_file_size_mb: float = Field(ge=1, le=99999)
     group_ph_frames: bool
-    run_dir: Path = Field(...)
+    run_dir: str = Field(..., min_length=1)
     obs: str = Field(..., min_length=1, max_length=16)
     module_id: list[Uint8] = Field(...)
+    force: bool = False
 
     @model_validator(mode="after")
     def create_run_dir(self) -> StartDaqModel:
@@ -41,7 +42,7 @@ class StartDaqModel(BaseModel):
 
 class StopDaqModel(BaseModel):
     data_dir: DirectoryPath = Field(...)
-    run_dir: Path = Field(...)
+    run_dir: str = Field(..., min_length=1)
 
     @model_validator(mode="after")
     def check_run_dir(self) -> StopDaqModel:
@@ -60,12 +61,21 @@ class StatusDaqModel(BaseModel):
 
 class CleanupDataModel(BaseModel):
     data_dir: DirectoryPath = Field(...)
-    run_dir: Path = Field(...)
+    run_dir: str = Field(..., min_length=1)
     module_id: list[Uint8] = Field(...)
+    force: bool = False
 
     @model_validator(mode="after")
     def check_run_dir(self) -> CleanupDataModel:
         full_path = self.data_dir / self.run_dir
         if not full_path.is_dir():
-            raise ValueError("{full_path} not exist.")
+            raise ValueError(f"'{full_path}' not exist.")
+        return self
+
+    @model_validator(mode="after")
+    def check_module_id(self) -> CleanupDataModel:
+        for mid in self.module_id:
+            full_path = self.data_dir / f"module_{mid}"
+            if not full_path.is_dir():
+                raise ValueError(f"'{full_path}' not exist.")
         return self

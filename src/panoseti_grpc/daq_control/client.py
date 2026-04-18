@@ -112,11 +112,19 @@ class DaqControlClient:
                     * run_dir(str) - the new directory for this run,
                                     which should be under data_dir
                     * module_ids (list) - modules for this daq node
+                    * force (bool) - force cleanup
         """
         request = daq_control_pb2.CleanupDataRequest()
-        request.data_dir = parameters["data_dir"]
-        request.run_dir = parameters["run_dir"]
-        request.module_id.extend(parameters["module_id"])
+        required_params = {"data_dir", "run_dir", "module_id"}
+        if required_params.issubset(set(parameters)):
+            request.data_dir = parameters["data_dir"]
+            request.run_dir = parameters["run_dir"]
+            request.module_id.extend(parameters["module_id"])
+        else:
+            missing_params = required_params.difference(set(parameters))
+            raise ValueError(f"Missing required parameter(s): {missing_params}")
+        if "force" in parameters:
+            request.force = parameters["force"]
         try:
             resp: daq_control_pb2.CleanupDataResponse = self.stub.CleanupData(request)
             resp_dict: dict[str, Any] = MessageToDict(

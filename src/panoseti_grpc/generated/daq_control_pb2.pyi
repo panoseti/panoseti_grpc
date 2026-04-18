@@ -195,8 +195,10 @@ class CleanupDataRequest(_message.Message):
     DATA_DIR_FIELD_NUMBER: _builtins.int
     RUN_DIR_FIELD_NUMBER: _builtins.int
     MODULE_ID_FIELD_NUMBER: _builtins.int
+    FORCE_FIELD_NUMBER: _builtins.int
     data_dir: _builtins.str
     run_dir: _builtins.str
+    force: _builtins.bool
     @_builtins.property
     def module_id(self) -> _containers.RepeatedScalarFieldContainer[_builtins.int]: ...
     def __init__(
@@ -205,8 +207,9 @@ class CleanupDataRequest(_message.Message):
         data_dir: _builtins.str = ...,
         run_dir: _builtins.str = ...,
         module_id: _abc.Iterable[_builtins.int] | None = ...,
+        force: _builtins.bool = ...,
     ) -> None: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["data_dir", b"data_dir", "module_id", b"module_id", "run_dir", b"run_dir"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["data_dir", b"data_dir", "force", b"force", "module_id", b"module_id", "run_dir", b"run_dir"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
 
 Global___CleanupDataRequest: _TypeAlias = CleanupDataRequest  # noqa: Y015

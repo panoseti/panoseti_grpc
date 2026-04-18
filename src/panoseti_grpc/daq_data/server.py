@@ -63,9 +63,9 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         if self.server_cfg.init_from_default:
             self.logger.info("Creating initial hp_io task from default config.")
             try:
-                import aiofiles
+                import anyio
 
-                async with aiofiles.open(CFG_DIR / self.server_cfg.default_hp_io_config_file) as f:
+                async with await anyio.open_file(CFG_DIR / self.server_cfg.default_hp_io_config_file) as f:
                     hp_io_cfg = json.loads(await f.read())
                 await self.task_manager.start(hp_io_cfg)
             except Exception as e:
