@@ -69,7 +69,6 @@ async def _monitor_hashpipe(
         tg.create_task(_read_stream(proc.stderr, stderr_logger.error))
 
 
-
 class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     """
     Implements the Daq Control gRPC service.
