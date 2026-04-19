@@ -72,11 +72,23 @@ class RedisBatcher:
 
                 # Bulk Push to Redis (One Network Call)
                 if logs:
-                    await cast(Any, self.redis.rpush(LOG_REDIS_KEY, *logs))
-
-                    # Mark tasks as done for the queue
-                    for _ in logs:
-                        self.queue.task_done()
+                    try:
+                        import redis
+                        await cast(Any, self.redis.rpush(LOG_REDIS_KEY, *logs))
+                    except (redis.exceptions.RedisError, Exception) as e:
+                        logger.critical(f"Redis Batcher Failure (OOM or Connection): {e}. Falling back to local log.")
+                        # SC-057: Fallback to local files if Redis is full/down
+                        try:
+                            os.makedirs("logs", exist_ok=True)
+                            with open("logs/telemetry_fallback.log", "a") as f:
+                                for log in logs:
+                                    f.write(log + "\n")
+                        except Exception as fe:
+                            logger.error(f"Fallback logging failed: {fe}")
+                    finally:
+                        # Mark tasks as done for the queue so we don't block shutdown
+                        for _ in logs:
+                            self.queue.task_done()
 
             except asyncio.CancelledError:
                 break
