@@ -449,6 +449,11 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     ) -> daq_control_pb2.GenerateManifestResponse:
         self.logger.info("GenerateManifest called...")
         dreq = self._request_to_dict(request)
+        # Proto string fields default to "" when not set; strip it so the
+        # Pydantic Literal default ("blake3") takes effect instead of
+        # failing validation with an empty string.
+        if not dreq.get("algorithm"):
+            dreq.pop("algorithm", None)
         try:
             vreq = GenerateManifestModel(**dreq)
         except Exception as e:
