@@ -9,11 +9,14 @@ from __future__ import annotations
 import asyncio
 import fnmatch
 import hashlib
+import logging
 import os
 import time
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+
+_manifest_logger = logging.getLogger(__name__)
 
 # Try fast hash libraries, fall back to hashlib.sha256
 try:
@@ -48,12 +51,17 @@ except ImportError:
 
 def _effective_algo(algo: str) -> str:
     """Return the actual algorithm used (may differ from requested if library unavailable)."""
-    if algo == "blake3" and not _HAS_BLAKE3:
-        if _HAS_XXHASH:
-            return "xxh3_128"
-        return "sha256"
-    if algo == "xxh3_128" and not _HAS_XXHASH:
-        return "sha256"
+    if algo == "blake3":
+        if not _HAS_BLAKE3:
+            _manifest_logger.warning("blake3 not available, falling back to xxh3_128")
+            algo = "xxh3_128"
+        else:
+            return "blake3"
+    if algo == "xxh3_128":
+        if not _HAS_XXHASH:
+            _manifest_logger.warning("xxhash not available, falling back to sha256")
+            return "sha256"
+        return "xxh3_128"
     return algo
 
 
@@ -112,7 +120,7 @@ def _compute_manifest_sync(
     try:
         with os.fdopen(fd, "w") as f:
             for entry in entries:
-                f.write(f"{entry.digest_hex}  {entry.size_bytes}  {entry.relative_path}\n")
+                f.write(f"{entry.digest_hex}  {entry.size_bytes}  {entry.mtime_ns}  {entry.relative_path}\n")
         os.replace(tmp_path, manifest_path)
     except Exception:
         try:

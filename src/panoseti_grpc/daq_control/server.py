@@ -181,15 +181,18 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 filepath = Path(dirpath) / filename
                 matches_delete = any(fnmatch.fnmatch(filename, pat) for pat in delete_patterns)
                 matches_preserve = any(fnmatch.fnmatch(filename, pat) for pat in preserve_patterns)
-                if matches_delete and not matches_preserve:
-                    size = filepath.stat().st_size
-                    filepath.unlink()
-                    deleted_count += 1
-                    freed_bytes += size
-                    self.logger.debug(f"Deleted: {filepath} ({size} bytes)")
-                else:
-                    preserved_paths.append(str(filepath))
-                    self.logger.debug(f"Preserved: {filepath}")
+                if matches_delete and matches_preserve:
+                    preserved_paths.append(str(filepath.relative_to(run_dir)))
+                    self.logger.debug(f"Preserved (matches preserve pattern): {filepath}")
+                elif matches_delete and not matches_preserve:
+                    try:
+                        size = filepath.stat().st_size
+                        filepath.unlink()
+                        deleted_count += 1
+                        freed_bytes += size
+                        self.logger.debug(f"Deleted: {filepath} ({size} bytes)")
+                    except FileNotFoundError:
+                        self.logger.debug(f"File already gone (concurrent deletion): {filepath}")
 
         return deleted_count, freed_bytes, preserved_paths
 
@@ -453,20 +456,35 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             self.logger.error(msg)
             return daq_control_pb2.GenerateManifestResponse(success=False, message=msg)
 
-        run_dir = vreq.data_dir / vreq.run_dir
-        result = await compute_manifest(run_dir, vreq.include_patterns, vreq.algorithm)
+        all_entries = []
+        manifest_path = ""
+        algorithm = vreq.algorithm
+        t0 = asyncio.get_event_loop().time()
+        module_run_dir = vreq.data_dir / f"module_{vreq.module_id}" / vreq.run_dir
+        if not module_run_dir.is_dir():
+            self.logger.warning(f"Module dir not found: {module_run_dir}")
+            return daq_control_pb2.GenerateManifestResponse(
+                success=False,
+                message=f"Module dir not found: {module_run_dir}",
+            )
+        result = await compute_manifest(module_run_dir, vreq.include_patterns, vreq.algorithm)
+        all_entries.extend(result.entries)
+        manifest_path = str(result.manifest_path)
+        algorithm = result.algorithm
+        elapsed = asyncio.get_event_loop().time() - t0
+        total_bytes = sum(e.size_bytes for e in all_entries)
         self.logger.info(
-            f"Manifest generated: {result.file_count} files, {result.total_bytes} bytes, "
-            f"algo={result.algorithm}, path={result.manifest_path}"
+            f"Manifest generated: {len(all_entries)} files, {total_bytes} bytes, "
+            f"algo={algorithm}, path={manifest_path}"
         )
         return daq_control_pb2.GenerateManifestResponse(
             success=True,
             message="",
-            manifest_path=str(result.manifest_path),
-            file_count=result.file_count,
-            total_bytes=result.total_bytes,
-            elapsed_seconds=result.elapsed_seconds,
-            algorithm=result.algorithm,
+            manifest_path=manifest_path,
+            file_count=len(all_entries),
+            total_bytes=total_bytes,
+            elapsed_seconds=elapsed,
+            algorithm=algorithm,
         )
 
     @grpc_error_handler
@@ -475,18 +493,21 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     ) -> AsyncGenerator[daq_control_pb2.ManifestEntry, None]:
         self.logger.info("GetManifest called...")
         data_dir = Path(request.data_dir)
-        run_dir = data_dir / request.run_dir
+        run_dir_path = (data_dir / f"module_{request.module_id}" / request.run_dir).resolve()
+        if not run_dir_path.is_relative_to(data_dir.resolve()):
+            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "run_dir escapes data_dir")
+            return
 
         # Auto-detect manifest file by trying known algorithm suffixes
         manifest_path: Path | None = None
         for suffix in ("blake3", "xxh3_128", "sha256"):
-            candidate = run_dir / f"manifest.{suffix}"
+            candidate = run_dir_path / f"manifest.{suffix}"
             if candidate.is_file():
                 manifest_path = candidate
                 break
 
         if manifest_path is None:
-            await context.abort(grpc.StatusCode.NOT_FOUND, f"No manifest file found in {run_dir}")
+            await context.abort(grpc.StatusCode.NOT_FOUND, f"No manifest file found in {run_dir_path}")
             return
 
         def _read_manifest(path: Path) -> list[daq_control_pb2.ManifestEntry]:
@@ -496,16 +517,23 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                     line = line.rstrip("\n")
                     if not line:
                         continue
-                    parts = line.split("  ", 2)
-                    if len(parts) != 3:
+                    # Parse: digest  size  mtime_ns  relpath (4 columns)
+                    # Backward compat: digest  size  relpath (3 columns, mtime_ns=0)
+                    parts = line.split("  ", 3)
+                    if len(parts) == 4:
+                        digest_hex, size_str, mtime_str, rel_path = parts
+                        mtime_ns = int(mtime_str)
+                    elif len(parts) == 3:
+                        digest_hex, size_str, rel_path = parts
+                        mtime_ns = 0
+                    else:
                         continue
-                    digest_hex, size_bytes_str, rel_path = parts
                     entries.append(
                         daq_control_pb2.ManifestEntry(
                             relative_path=rel_path,
                             digest_hex=digest_hex,
-                            size_bytes=int(size_bytes_str),
-                            mtime_ns=0,
+                            size_bytes=int(size_str),
+                            mtime_ns=mtime_ns,
                         )
                     )
             return entries

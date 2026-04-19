@@ -110,8 +110,3 @@ class GenerateManifestModel(BaseModel):
             raise ValueError(f"'{full_path}' does not exist")
         return self
 
-    @model_validator(mode="after")
-    def check_include_patterns(self) -> GenerateManifestModel:
-        if not self.include_patterns:
-            raise ValueError("include_patterns must not be empty")
-        return self
