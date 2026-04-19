@@ -169,8 +169,14 @@ No changes to `PanosetiServer` itself are needed.
 Manages the Hashpipe process lifecycle on each DAQ node. `DaqControlServicer` tracks the hashpipe PID (`self.hashpipe_pid`). Key behaviors:
 - `StartDaq` fails immediately if a Hashpipe process is already running (guards against double-start).
 - `StopDaq` sends `SIGINT` and blocks until the process exits; returns `success=True` if already stopped.
-- `CleanupData` is blocked while `hashpipe_pid > 0`.
+- `CleanupData` is blocked while `hashpipe_pid > 0`. Supports two modes via `CleanupMode` enum:
+  - `CLEANUP_FULL` (0, default) — legacy `rmtree` behavior; wire-compatible with old clients
+  - `CLEANUP_SELECTIVE` (1) — deletes only files matching `delete_patterns` not covered by `preserve_patterns`; used by the Transfer Daemon to remove `.pff` files while preserving `.json`/`.log` metadata
+- `GenerateManifest` — computes blake3/xxhash/sha256 checksums for run files; writes a 4-column manifest atomically (`{digest}  {size}  {mtime_ns}  {relpath}`); implemented in `manifest.py` using `asyncio.to_thread` for blocking I/O.
+- `GetManifest` — server-streaming RPC that yields `ManifestEntry` per line of the manifest file; path-traversal guarded.
 - Hashpipe stdout/stderr are streamed to per-run log files under `{data_dir}/{run_dir}/hp_stdout.log` and `hp_stderr.log`.
+
+New files added in Phase 1: `manifest.py` (compute + write manifests). New Pydantic models in `config.py`: `GenerateManifestModel`, `CleanupMode` enum; extended `CleanupDataModel` with `mode`, `delete_patterns`, `preserve_patterns`.
 
 ## Testing Infrastructure
 - `pytest-asyncio` with `asyncio_mode = "auto"` (set in `pyproject.toml`) — all async tests run without explicit markers.
@@ -185,3 +191,5 @@ Manages the Hashpipe process lifecycle on each DAQ node. `DaqControlServicer` tr
 - **UDS simulation ordering**: `SimulationManager.setup_environment()` must be called *after* `HpIoManager` is valid because it connects to the UDS sockets that `HpIoManager` creates.
 - **Non-breaking space in README files**: Some older README sections contain `\xa0` (non-breaking space) characters from copy-paste. The `Edit` tool will fail to match these — use a Python `str.replace` via `Bash` instead.
 - **Proto changes require recompilation**: After editing any `.proto` file, run `python scripts/compile_protos.py` before testing.
+- **`grpc_error_handler` and async generators**: The decorator in `util/error_handling.py` uses `inspect.isasyncgenfunction` to detect server-streaming handlers (like `GetManifest`). For such functions it wraps them in an `agen_wrapper` that yields items. If you add a new server-streaming RPC and the decorator is not working, verify `inspect.isasyncgenfunction(your_handler)` returns `True`. Plain `async def` handlers (unary RPCs) are handled by the standard `async_wrapper` branch.
+- **Submodule divergence resolution**: When the grpc submodule and main grpc branch diverge, use `git fetch <worktree-path>/grpc HEAD` from the main grpc directory to fetch objects from the worktree, then rebase. Conflicts are typically limited to overlapping edits in `client.py` — check `git diff <base>..<branch1>` and `git diff <base>..<branch2>` side-by-side before rebasing.

@@ -1,6 +1,6 @@
 # DAQ Control Service
 
-The DAQ Control Service manages the lifecycle of the Hashpipe data-acquisition process on each DAQ node. It exposes a gRPC interface for starting, stopping, and monitoring Hashpipe instances, and for cleaning up run data directories.
+The DAQ Control Service manages the lifecycle of the Hashpipe data-acquisition process on each DAQ node. It exposes a gRPC interface for starting, stopping, and monitoring Hashpipe instances, generating data integrity manifests, and cleaning up run data directories selectively or in full.
 
 ---
 
@@ -13,6 +13,7 @@ Observatory Control ──gRPC──► DaqControlServicer
                                     │
                                     ├── asyncio.create_subprocess_exec("hashpipe …")
                                     ├── psutil  (PID tracking, process signals)
+                                    ├── manifest.py  (blake3/xxhash checksums)
                                     └── get_logger  (stdout/stderr piped to log files + Loki)
 ```
 
@@ -102,29 +103,118 @@ Queries the state of this DAQ node. All checks are opt-in via boolean flags.
 
 ### `CleanupData`
 
-Deletes run data directories. **Blocked while Hashpipe is running.**
+Deletes run data from DAQ node directories. **Blocked while Hashpipe is running.**
+
+Supports two cleanup modes controlled by the `mode` field:
+
+#### `CLEANUP_FULL` (default, legacy-compatible)
+
+Removes the entire run directory tree via `rmtree`. Wire-compatible with pre-Phase-1 clients (the `mode` field defaults to `CLEANUP_FULL` when absent).
+
+#### `CLEANUP_SELECTIVE`
+
+Walks the run directory and deletes only files matching any `delete_patterns` glob that are **not** also matched by `preserve_patterns`. Empty subdirectories are left in place. Used by the Transfer Daemon to remove science PFF files while keeping metadata (`.json`, `.log`, manifests) as a permanent on-DAQ catalog.
 
 **Request fields**
 
 | Field | Type | Description |
 |---|---|---|
 | `data_dir` | `string` | Root data directory |
-| `run_dir` | `string` | Run subdirectory to delete |
-| `module_id` | `repeated uint32` | Module IDs whose per-module run dirs to delete |
-| `force`   | `bool` | Forces cleanup but requires hashpipe to have been stopped first |
+| `run_dir` | `string` | Run subdirectory to clean |
+| `module_id` | `repeated uint32` | Module IDs whose per-module run dirs to process |
+| `force` | `bool` | Bypass the "hashpipe running" guard (use with caution) |
+| `mode` | `CleanupMode` | `CLEANUP_FULL` (0, default) or `CLEANUP_SELECTIVE` (1) |
+| `delete_patterns` | `repeated string` | Glob patterns to delete in selective mode (e.g. `["*.pff"]`) |
+| `preserve_patterns` | `repeated string` | Glob patterns that take precedence over delete (e.g. `["*.json", "*.log"]`) |
 
 **Response fields**
 
 | Field | Type | Description |
 |---|---|---|
-| `success` | `bool` | `true` if all directories were removed |
+| `success` | `bool` | `true` if cleanup completed without errors |
 | `message` | `string` | Error description on failure |
+| `deleted_count` | `uint32` | Number of files deleted (selective mode) |
+| `freed_bytes` | `uint64` | Bytes freed (selective mode) |
+| `preserved_paths` | `repeated string` | Relative paths of files that were preserved (audit trail) |
 
-Deletes: `{data_dir}/{run_dir}/` and `{data_dir}/module_{id}/{run_dir}/` for each ID.
+**Typical Transfer Daemon usage:**
+```python
+client.CleanupData({
+    "data_dir": "/app/data",
+    "run_dir": "start_2026-01-01T120000Z.pffd",
+    "module_id": [224, 225],
+    "mode": "CLEANUP_SELECTIVE",
+    "delete_patterns": ["*.pff"],
+    "preserve_patterns": ["*.json", "*.log", "*.toml"],
+})
+```
+
+---
+
+### `GenerateManifest`
+
+Computes a cryptographic checksum manifest for files in a module's run directory. Manifests are written atomically to the DAQ node and can be streamed back via `GetManifest`.
+
+**Request fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `data_dir` | `string` | Root data directory |
+| `run_dir` | `string` | Run subdirectory |
+| `module_id` | `repeated uint32` | Module ID(s) to generate manifests for |
+| `algorithm` | `string` | Hash algorithm: `"blake3"` (default) → `"xxh3_128"` → `"sha256"` fallback chain |
+| `include_patterns` | `repeated string` | Glob patterns for files to include (default: `["*.pff"]`) |
+
+**Response fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `success` | `bool` | `true` if manifest was written successfully |
+| `message` | `string` | Error description on failure |
+| `manifest_path` | `string` | Absolute path to the written manifest file |
+| `file_count` | `uint32` | Number of files hashed |
+| `total_bytes` | `uint64` | Total bytes of hashed files |
+| `elapsed_seconds` | `double` | Wall-clock time for hashing |
+| `algorithm` | `string` | Algorithm actually used (may differ from request if fallback triggered) |
+
+**Manifest file format** (4-column, newline-delimited):
+```
+{digest_hex}  {size_bytes}  {mtime_ns}  {relative_path}
+```
+Written atomically via `tempfile.mkstemp` + `os.replace`. Compatible with `b3sum --check` when using blake3.
+
+**Implementation:** `manifest.py` — `async def compute_manifest(run_dir, patterns, algo)`. Uses `asyncio.to_thread` for blocking I/O. Algorithm fallback chain: blake3 → xxhash → sha256.
+
+---
+
+### `GetManifest`
+
+Server-streaming RPC. Reads a previously generated manifest and yields one `ManifestEntry` per file.
+
+**Request fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `data_dir` | `string` | Root data directory |
+| `run_dir` | `string` | Run subdirectory |
+| `module_id` | `uint32` | Module ID whose manifest to stream |
+
+**Streamed `ManifestEntry` fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `relative_path` | `string` | Path relative to the module run directory |
+| `digest_hex` | `string` | Hex-encoded checksum |
+| `size_bytes` | `uint64` | File size in bytes |
+| `mtime_ns` | `int64` | Modification time in nanoseconds since epoch |
+
+The server guards against path traversal: any entry with `..` in its path is skipped and logged as a warning.
 
 ---
 
 ## Typical Workflow
+
+### Legacy (full cleanup)
 
 ```python
 from panoseti_grpc.daq_control.client import DaqControlClient
@@ -138,32 +228,52 @@ client.StartDaq({
     "bindhost": "eth0",
     "max_file_size_mb": 1024,
     "group_ph_frames": True,
-    "run_dir": "run_20260101_120000",
+    "run_dir": "start_2026-01-01T120000Z.pffd",
     "obs": "gj1132",
     "module_id": [224, 225],
 })
 
-# 2. Check status
-ok, status = client.StatusDaq({
-    "data_dir": "/data/panoseti",
-    "check_hashpipe_running": True,
-    "check_disk_usage": True,
-    "check_run_dirs": False,
-})
-print(status["hashpipe_running"])   # True
-print(status["disk_usage"])         # {'total_disk_space': ..., ...}
-
-# 3. Stop the run
+# 2. Stop the run
 client.StopDaq({
     "data_dir": "/data/panoseti",
-    "run_dir": "run_20260101_120000",
+    "run_dir": "start_2026-01-01T120000Z.pffd",
 })
 
-# 4. (Optional) Clean up data
+# 3. Full cleanup (legacy)
 client.CleanupData({
     "data_dir": "/data/panoseti",
-    "run_dir": "run_20260101_120000",
+    "run_dir": "start_2026-01-01T120000Z.pffd",
     "module_id": [224, 225],
+})
+```
+
+### Transfer Daemon workflow (selective cleanup + manifest)
+
+```python
+# After StopDaq — generate manifests before rsync
+client.GenerateManifest({
+    "data_dir": "/data/panoseti",
+    "run_dir": "start_2026-01-01T120000Z.pffd",
+    "module_id": [224],
+    "algorithm": "blake3",
+    "include_patterns": ["*.pff"],
+})
+
+# Stream manifest back to verify after rsync
+entries = client.GetManifest({
+    "data_dir": "/data/panoseti",
+    "run_dir": "start_2026-01-01T120000Z.pffd",
+    "module_id": 224,
+})
+
+# Selective cleanup — keep metadata, remove science files
+client.CleanupData({
+    "data_dir": "/data/panoseti",
+    "run_dir": "start_2026-01-01T120000Z.pffd",
+    "module_id": [224, 225],
+    "mode": "CLEANUP_SELECTIVE",
+    "delete_patterns": ["*.pff"],
+    "preserve_patterns": ["*.json", "*.log", "*.toml"],
 })
 ```
 
@@ -178,7 +288,8 @@ Request parameters are validated server-side via [Pydantic v2](https://docs.pyda
 | `StartDaqModel` | `StartDaq` | `data_dir` auto-created; `module_id` values in 0–255; `obs`/`bindhost` 1–16 chars |
 | `StopDaqModel` | `StopDaq` | `run_dir` must already exist under `data_dir` |
 | `StatusDaqModel` | `StatusDaq` | `data_dir` must exist |
-| `CleanupDataModel` | `CleanupData` | `run_dir` must exist under `data_dir` |
+| `CleanupDataModel` | `CleanupData` | `run_dir` must exist; `CLEANUP_SELECTIVE` requires non-empty `delete_patterns` |
+| `GenerateManifestModel` | `GenerateManifest` | `algorithm` must be `"blake3"`, `"xxh3_128"`, or `"sha256"`; `include_patterns` non-empty |
 
 ---
 
@@ -189,6 +300,7 @@ Request parameters are validated server-side via [Pydantic v2](https://docs.pyda
 | Server log | `/var/log/panoseti/daq_control_server.log` | Service lifecycle events, RPC results |
 | Hashpipe stdout | `{data_dir}/{run_dir}/hp_stdout.log` | Per-run Hashpipe standard output |
 | Hashpipe stderr | `{data_dir}/{run_dir}/hp_stderr.log` | Per-run Hashpipe standard error |
+| Manifest | `{data_dir}/module_{id}/{run_dir}/manifest.{algo}` | Per-module checksum manifest |
 
 All logs are also forwarded to Loki via the Telemetry gRPC logger when the Telemetry service is reachable.
 
@@ -217,8 +329,21 @@ docker compose -f docker/daq_control/docker-compose.yml up
 ```bash
 # Run the full DAQ Control CI test suite
 ./scripts/run-ci-tests/run-daq-control-test.sh
+
+# Or via unified QA runner
+python tests/qa.py daq_control
 ```
 
 Tests are under `tests/daq_control/` and cover:
-- Unit tests: config validation, process helpers
-- Integration tests: full start/stop/status/cleanup lifecycle, concurrent request handling, process edge cases (crash detection, stale PID recovery, log file placement, disk usage reporting)
+
+**Unit tests** (`tests/daq_control/unit/`):
+- `test_proto_schema.py` — proto field/enum existence for all new fields (CleanupMode, delete_patterns, GenerateManifest, ManifestEntry, etc.)
+- `test_cleanup_model.py` — Pydantic rejects `CLEANUP_SELECTIVE` with empty `delete_patterns`; accepts `CLEANUP_FULL` without patterns
+- `test_manifest_model.py` — algorithm enum guard; default include_patterns; invalid algorithm rejected
+
+**Integration tests** (`tests/daq_control/integration/`):
+- `test_cleanup_selective.py` — populate fake run dir with `.pff` + `.json` + `.log`; call `CLEANUP_SELECTIVE`; assert only `.pff` removed; `preserved_paths` echoes metadata files
+- `test_manifest_roundtrip.py` — generate manifest via `GenerateManifest`; stream back via `GetManifest`; verify digest count and sizes match `hashlib` reference; 4-column format verified
+- Existing lifecycle tests: start/stop/status/cleanup, concurrent request handling, process edge cases (crash detection, stale PID recovery, log file placement, disk usage reporting)
+
+**Wire compatibility:** All new proto fields use new tag numbers. `CleanupMode` defaults to `CLEANUP_FULL` (value 0). Old clients that omit `mode` continue to get legacy `rmtree` behavior.
