@@ -249,7 +249,7 @@ def test_get_manifest_digest_hex_is_hex(manifest_server):
 
     for entry in entries:
         digest = entry["digest_hex"]
-        assert len(digest) > 0, f"Empty digest for {entry['relative_path']}"
+        assert len(digest) >= 32, f"digest_hex too short ({len(digest)}) for {entry['relative_path']}"
         # Must be valid hex
         try:
             int(digest, 16)
@@ -337,3 +337,38 @@ def test_roundtrip_full(manifest_server):
     # All expected filenames must appear in the manifest
     expected_names = set(_PFF_FILES.keys())
     assert seen_paths == expected_names, f"Missing files in manifest: {expected_names - seen_paths}"
+
+
+def test_manifest_file_format_four_columns(manifest_server):
+    """The manifest file on disk uses 4-column two-space-delimited format."""
+    from pathlib import Path
+
+    client, tmp_path = manifest_server
+    run_dir = "manifest_format.pffd"
+    _make_manifest_run_dir(tmp_path, run_dir)
+
+    resp = client.GenerateManifest(
+        {
+            "data_dir": str(tmp_path),
+            "run_dir": run_dir,
+            "module_id": MODULE_ID,
+            "include_patterns": ["*.pff"],
+        }
+    )
+    assert resp["success"] is True
+
+    manifest_path = Path(resp["manifest_path"])
+    assert manifest_path.is_file(), f"Manifest file not found: {manifest_path}"
+
+    lines = manifest_path.read_text().strip().splitlines()
+    assert len(lines) == len(_PFF_FILES)
+    for line in lines:
+        parts = line.split("  ")  # exactly two spaces
+        assert len(parts) == 4, f"Expected 4 columns, got {len(parts)}: {line!r}"
+        digest_hex, size_str, mtime_str, relpath = parts
+        assert int(size_str) > 0, f"size must be positive: {size_str!r}"
+        assert int(mtime_str) > 0, f"mtime must be positive: {mtime_str!r}"
+        assert relpath.endswith(".pff"), f"relpath must end with .pff: {relpath!r}"
+        # digest must be valid hex of reasonable length
+        assert len(digest_hex) >= 32, f"digest_hex too short: {digest_hex!r}"
+        int(digest_hex, 16)  # raises ValueError if not valid hex

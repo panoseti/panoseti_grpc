@@ -68,10 +68,9 @@ def _make_run_dir(tmp_path, run_dir_name: str = "test_run.pffd"):
     module_run_dir = tmp_path / f"module_{MODULE_ID}" / run_dir_name
     module_run_dir.mkdir(parents=True)
 
-    # Create some .pff files
-    (module_run_dir / "data1.pff").write_bytes(b"fake pff data 1" * 100)
-    (module_run_dir / "data2.pff").write_bytes(b"fake pff data 2" * 200)
-    (module_run_dir / "data3.pff").write_bytes(b"fake pff data 3" * 50)
+    # Create exactly 2 .pff files with known sizes (total = 4000 bytes)
+    (module_run_dir / "data1.pff").write_bytes(b"x" * 1500)
+    (module_run_dir / "data2.pff").write_bytes(b"x" * 2500)
 
     # Create some non-pff files that should survive selective cleanup
     (module_run_dir / "config.json").write_text('{"run": "test"}')
@@ -104,13 +103,12 @@ def test_selective_deletes_pff_keeps_others(cleanup_server):
 
     assert resp["success"] is True
     # freed_bytes is a uint64 — MessageToDict serialises it as a string in JSON
-    assert int(resp["deleted_count"]) > 0
-    assert int(resp["freed_bytes"]) > 0
+    assert int(resp["deleted_count"]) == 2
+    assert int(resp["freed_bytes"]) == 4000
 
     # pff files should be gone
     assert not (module_run_dir / "data1.pff").exists()
     assert not (module_run_dir / "data2.pff").exists()
-    assert not (module_run_dir / "data3.pff").exists()
 
     # non-pff files should still be present
     assert (module_run_dir / "config.json").exists()
@@ -149,7 +147,11 @@ def test_selective_preserve_overrides_delete(cleanup_server):
     # All pff files should still be there
     assert (module_run_dir / "data1.pff").exists()
     assert (module_run_dir / "data2.pff").exists()
-    assert (module_run_dir / "data3.pff").exists()
+
+    # preserved_paths are relative to the module run dir
+    preserved = resp["preserved_paths"]
+    assert any("data1.pff" in p or "data1.pff" == p for p in preserved)
+    assert any("data2.pff" in p or "data2.pff" == p for p in preserved)
 
 
 def test_selective_no_matching_files(cleanup_server):
@@ -194,6 +196,9 @@ def test_full_cleanup_default_backward_compat(cleanup_server):
     assert resp["success"] is True
     # The entire module run directory should be gone
     assert not module_run_dir.exists()
+    # The config-level run dir should also be removed
+    assert not (tmp_path / "test_full.pffd").exists()
+    assert not (tmp_path / f"module_{MODULE_ID}" / "test_full.pffd").exists()
 
 
 def test_full_cleanup_already_gone(cleanup_server):
