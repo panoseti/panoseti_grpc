@@ -163,9 +163,30 @@ class TestManifestEntry:
         assert entry.mtime_ns == 1_700_000_000_000_000_000
 
 
+class _FakeChannel:
+    """Minimal fake channel for stub instantiation in unit tests."""
+
+    def unary_unary(self, *a: object, **kw: object) -> object:
+        return None
+
+    def unary_stream(self, *a: object, **kw: object) -> object:
+        return None
+
+    def stream_unary(self, *a: object, **kw: object) -> object:
+        return None
+
+    def stream_stream(self, *a: object, **kw: object) -> object:
+        return None
+
+
 class TestDaqControlStubNewMethods:
+    """gRPC stub methods are instance attributes set in __init__, not class attributes.
+    Instantiate with a fake channel to verify they exist."""
+
     def test_generate_manifest_method_exists(self) -> None:
-        assert hasattr(daq_control_pb2_grpc.DaqControlStub, "GenerateManifest")
+        stub = daq_control_pb2_grpc.DaqControlStub(_FakeChannel())
+        assert hasattr(stub, "GenerateManifest")
 
     def test_get_manifest_method_exists(self) -> None:
-        assert hasattr(daq_control_pb2_grpc.DaqControlStub, "GetManifest")
+        stub = daq_control_pb2_grpc.DaqControlStub(_FakeChannel())
+        assert hasattr(stub, "GetManifest")

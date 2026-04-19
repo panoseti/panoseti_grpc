@@ -12,6 +12,10 @@ service DaqControl {
     rpc StatusDaq (DaqStatusRequest) returns (DaqStatusResponse) {}
     /* CleanupData: Clean up data for the specific run */
     rpc CleanupData (CleanupDataRequest) returns (CleanupDataResponse) {}
+    /* GenerateManifest: Generate a checksum manifest for run data */
+    rpc GenerateManifest (GenerateManifestRequest) returns (GenerateManifestResponse) {}
+    /* GetManifest: Stream manifest entries for a module's run data */
+    rpc GetManifest (GetManifestRequest) returns (stream ManifestEntry) {}
 }
 
 /* start daq request and response */
@@ -64,15 +68,57 @@ message DaqStatusResponse {
     string  message = 5;
 }
 
+enum CleanupMode {
+    CLEANUP_FULL      = 0;
+    CLEANUP_SELECTIVE = 1;
+}
+
 /* collect data request and response */
 message CleanupDataRequest {
     string  data_dir = 1;
     string  run_dir = 2;
     repeated uint32  module_id = 3 [packed=true];
-    bool force = 4;
+    bool    force = 4;
+    CleanupMode mode = 5;
+    repeated string delete_patterns  = 6;
+    repeated string preserve_patterns = 7;
 }
 
 message CleanupDataResponse {
     bool    success = 1;
     string  message = 2;
+    uint32  deleted_count = 3;
+    uint64  freed_bytes   = 4;
+    repeated string preserved_paths = 5;
+}
+
+message GenerateManifestRequest {
+    string  data_dir = 1;
+    string  run_dir  = 2;
+    uint32  module_id = 3;
+    string  algorithm = 4;
+    repeated string include_patterns = 5;
+}
+
+message GenerateManifestResponse {
+    bool    success = 1;
+    string  message = 2;
+    string  manifest_path = 3;
+    uint32  file_count = 4;
+    uint64  total_bytes = 5;
+    double  elapsed_seconds = 6;
+    string  algorithm = 7;
+}
+
+message GetManifestRequest {
+    string  data_dir = 1;
+    string  run_dir  = 2;
+    uint32  module_id = 3;
+}
+
+message ManifestEntry {
+    string  relative_path = 1;
+    string  digest_hex    = 2;
+    uint64  size_bytes    = 3;
+    int64   mtime_ns      = 4;
 }

@@ -108,7 +108,7 @@ class DaqControlClient:
 
     def CleanupData(self, parameters: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
         """
-        Docstring for StatusDaq
+        Clean up run data on the DAQ node.
 
         :param parameters: A dict contains all necessary parameters
                     * data_dir(str) - root dir for PANOSETI data
@@ -116,6 +116,9 @@ class DaqControlClient:
                                     which should be under data_dir
                     * module_id (list) - modules for this daq node
                     * force (bool) - force cleanup
+                    * mode (str) - "CLEANUP_FULL" or "CLEANUP_SELECTIVE"
+                    * delete_patterns (list[str]) - glob patterns to delete (selective mode)
+                    * preserve_patterns (list[str]) - glob patterns to preserve (selective mode)
         :param timeout: Optional gRPC timeout in seconds.
         """
         request = daq_control_pb2.CleanupDataRequest()
@@ -129,11 +132,71 @@ class DaqControlClient:
             raise ValueError(f"Missing required parameter(s): {missing_params}")
         if "force" in parameters:
             request.force = parameters["force"]
+        if "mode" in parameters:
+            request.mode = daq_control_pb2.CleanupMode.Value(parameters["mode"])
+        if "delete_patterns" in parameters:
+            request.delete_patterns.extend(parameters["delete_patterns"])
+        if "preserve_patterns" in parameters:
+            request.preserve_patterns.extend(parameters["preserve_patterns"])
         try:
             resp: daq_control_pb2.CleanupDataResponse = self.stub.CleanupData(request, timeout=timeout)
             resp_dict: dict[str, Any] = MessageToDict(
                 resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True
             )
             return resp_dict
+        except grpc.RpcError as e:
+            raise ConnectionError(f"gRPC failed: {e.details()}") from e
+
+    def GenerateManifest(self, parameters: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
+        """
+        Generate a checksum manifest for run data on the DAQ node.
+
+        :param parameters: A dict contains all necessary parameters
+                    * data_dir(str) - root dir for PANOSETI data
+                    * run_dir(str) - the run directory
+                    * module_id (int) - module ID
+                    * algorithm (str) - "blake3" or "xxh3_128"
+                    * include_patterns (list[str]) - glob patterns to include
+        :param timeout: Optional gRPC timeout in seconds.
+        """
+        request = daq_control_pb2.GenerateManifestRequest()
+        request.data_dir = parameters["data_dir"]
+        request.run_dir = parameters["run_dir"]
+        request.module_id = parameters["module_id"]
+        if "algorithm" in parameters:
+            request.algorithm = parameters["algorithm"]
+        if "include_patterns" in parameters:
+            request.include_patterns.extend(parameters["include_patterns"])
+        try:
+            resp: daq_control_pb2.GenerateManifestResponse = self.stub.GenerateManifest(request, timeout=timeout)
+            resp_dict: dict[str, Any] = MessageToDict(
+                resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True
+            )
+            return resp_dict
+        except grpc.RpcError as e:
+            raise ConnectionError(f"gRPC failed: {e.details()}") from e
+
+    def GetManifest(self, parameters: dict[str, Any], timeout: float | None = None) -> list[dict[str, Any]]:
+        """
+        Stream manifest entries for a module's run data.
+
+        :param parameters: A dict contains all necessary parameters
+                    * data_dir(str) - root dir for PANOSETI data
+                    * run_dir(str) - the run directory
+                    * module_id (int) - module ID
+        :param timeout: Optional gRPC timeout in seconds.
+        """
+        request = daq_control_pb2.GetManifestRequest()
+        request.data_dir = parameters["data_dir"]
+        request.run_dir = parameters["run_dir"]
+        request.module_id = parameters["module_id"]
+        try:
+            entries: list[dict[str, Any]] = []
+            for entry in self.stub.GetManifest(request, timeout=timeout):
+                entry_dict: dict[str, Any] = MessageToDict(
+                    entry, always_print_fields_with_no_presence=True, preserving_proto_field_name=True
+                )
+                entries.append(entry_dict)
+            return entries
         except grpc.RpcError as e:
             raise ConnectionError(f"gRPC failed: {e.details()}") from e

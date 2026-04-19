@@ -13,11 +13,12 @@ Features:
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import logging
 import os
 import shutil
 import signal
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable
 from glob import glob
 from pathlib import Path
 from typing import Any
@@ -38,7 +39,8 @@ from panoseti_grpc.generated import daq_control_pb2, daq_control_pb2_grpc
 from panoseti_grpc.telemetry.logger import get_logger
 from panoseti_grpc.util.error_handling import grpc_error_handler
 
-from .config import CleanupDataModel, StartDaqModel, StatusDaqModel
+from .config import CleanupDataModel, CleanupMode, GenerateManifestModel, StartDaqModel, StatusDaqModel
+from .manifest import compute_manifest
 
 # Local Imports
 from .util import is_hashpipe_running
@@ -154,6 +156,42 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             else:
                 self.logger.debug("Cleanup failed")
                 return False
+
+    def _cleanup_dir_selective(
+        self,
+        run_dir: Path,
+        delete_patterns: list[str],
+        preserve_patterns: list[str],
+    ) -> tuple[int, int, list[str]]:
+        """Selective cleanup: delete files matching delete_patterns unless preserved.
+
+        Returns (deleted_count, freed_bytes, preserved_paths).
+        Empty directories are left in place.
+        """
+        deleted_count = 0
+        freed_bytes = 0
+        preserved_paths: list[str] = []
+
+        if not run_dir.is_dir():
+            self.logger.warning(f"Directory does not exist for selective cleanup: {run_dir}")
+            return deleted_count, freed_bytes, preserved_paths
+
+        for dirpath, _dirnames, filenames in os.walk(run_dir):
+            for filename in filenames:
+                filepath = Path(dirpath) / filename
+                matches_delete = any(fnmatch.fnmatch(filename, pat) for pat in delete_patterns)
+                matches_preserve = any(fnmatch.fnmatch(filename, pat) for pat in preserve_patterns)
+                if matches_delete and not matches_preserve:
+                    size = filepath.stat().st_size
+                    filepath.unlink()
+                    deleted_count += 1
+                    freed_bytes += size
+                    self.logger.debug(f"Deleted: {filepath} ({size} bytes)")
+                else:
+                    preserved_paths.append(str(filepath))
+                    self.logger.debug(f"Preserved: {filepath}")
+
+        return deleted_count, freed_bytes, preserved_paths
 
     def _request_to_dict(self, request: Message) -> dict[str, Any]:
         request_dict: dict[str, Any] = MessageToDict(
@@ -367,7 +405,29 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         module_dir_paths = [f"{datadir}/module_{id}/{rundir}" for id in module_id]
         cleanup_paths = [run_dir_path, *module_dir_paths]
 
-        # clean up the run dir in module_x dir
+        if vreq.mode == CleanupMode.CLEANUP_SELECTIVE:
+            total_deleted = 0
+            total_freed = 0
+            all_preserved: list[str] = []
+            msg = ""
+            for cleanup_path in cleanup_paths:
+                deleted, freed, preserved = self._cleanup_dir_selective(
+                    Path(cleanup_path),
+                    vreq.delete_patterns,
+                    vreq.preserve_patterns,
+                )
+                total_deleted += deleted
+                total_freed += freed
+                all_preserved.extend(preserved)
+            return daq_control_pb2.CleanupDataResponse(
+                success=True,
+                message=msg,
+                deleted_count=total_deleted,
+                freed_bytes=total_freed,
+                preserved_paths=all_preserved,
+            )
+
+        # CLEANUP_FULL: existing rmtree logic
         msg = ""
         all_cleaned = True
         for cleanup_path in cleanup_paths:
@@ -378,6 +438,81 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             self.logger.warning(msg)
 
         return daq_control_pb2.CleanupDataResponse(success=all_cleaned, message=msg)
+
+
+    @grpc_error_handler
+    async def GenerateManifest(
+        self, request: daq_control_pb2.GenerateManifestRequest, context: grpc.ServicerContext
+    ) -> daq_control_pb2.GenerateManifestResponse:
+        self.logger.info("GenerateManifest called...")
+        dreq = self._request_to_dict(request)
+        try:
+            vreq = GenerateManifestModel(**dreq)
+        except Exception as e:
+            msg = f"Validation Error: {e}"
+            self.logger.error(msg)
+            return daq_control_pb2.GenerateManifestResponse(success=False, message=msg)
+
+        run_dir = vreq.data_dir / vreq.run_dir
+        result = await compute_manifest(run_dir, vreq.include_patterns, vreq.algorithm)
+        self.logger.info(
+            f"Manifest generated: {result.file_count} files, {result.total_bytes} bytes, "
+            f"algo={result.algorithm}, path={result.manifest_path}"
+        )
+        return daq_control_pb2.GenerateManifestResponse(
+            success=True,
+            message="",
+            manifest_path=str(result.manifest_path),
+            file_count=result.file_count,
+            total_bytes=result.total_bytes,
+            elapsed_seconds=result.elapsed_seconds,
+            algorithm=result.algorithm,
+        )
+
+    @grpc_error_handler
+    async def GetManifest(
+        self, request: daq_control_pb2.GetManifestRequest, context: grpc.ServicerContext
+    ) -> AsyncGenerator[daq_control_pb2.ManifestEntry, None]:
+        self.logger.info("GetManifest called...")
+        data_dir = Path(request.data_dir)
+        run_dir = data_dir / request.run_dir
+
+        # Auto-detect manifest file by trying known algorithm suffixes
+        manifest_path: Path | None = None
+        for suffix in ("blake3", "xxh3_128", "sha256"):
+            candidate = run_dir / f"manifest.{suffix}"
+            if candidate.is_file():
+                manifest_path = candidate
+                break
+
+        if manifest_path is None:
+            await context.abort(grpc.StatusCode.NOT_FOUND, f"No manifest file found in {run_dir}")
+            return
+
+        def _read_manifest(path: Path) -> list[daq_control_pb2.ManifestEntry]:
+            entries = []
+            with open(path) as f:
+                for line in f:
+                    line = line.rstrip("\n")
+                    if not line:
+                        continue
+                    parts = line.split("  ", 2)
+                    if len(parts) != 3:
+                        continue
+                    digest_hex, size_bytes_str, rel_path = parts
+                    entries.append(
+                        daq_control_pb2.ManifestEntry(
+                            relative_path=rel_path,
+                            digest_hex=digest_hex,
+                            size_bytes=int(size_bytes_str),
+                            mtime_ns=0,
+                        )
+                    )
+            return entries
+
+        entries = await asyncio.to_thread(_read_manifest, manifest_path)
+        for entry in entries:
+            yield entry
 
 
 async def serve(grpc_port: int = 50051, level: int = logging.DEBUG) -> None:

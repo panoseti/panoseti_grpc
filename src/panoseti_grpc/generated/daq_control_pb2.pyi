@@ -8,6 +8,7 @@ from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from google.protobuf import struct_pb2 as _struct_pb2
 from google.protobuf.internal import containers as _containers
+from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 import builtins as _builtins
 import sys
 import typing as _typing
@@ -18,6 +19,21 @@ else:
     from typing_extensions import TypeAlias as _TypeAlias
 
 DESCRIPTOR: _descriptor.FileDescriptor
+
+class _CleanupMode:
+    ValueType = _typing.NewType("ValueType", _builtins.int)
+    V: _TypeAlias = ValueType  # noqa: Y015
+
+class _CleanupModeEnumTypeWrapper(_enum_type_wrapper._EnumTypeWrapper[_CleanupMode.ValueType], _builtins.type):
+    DESCRIPTOR: _descriptor.EnumDescriptor
+    CLEANUP_FULL: _CleanupMode.ValueType  # 0
+    CLEANUP_SELECTIVE: _CleanupMode.ValueType  # 1
+
+class CleanupMode(_CleanupMode, metaclass=_CleanupModeEnumTypeWrapper): ...
+
+CLEANUP_FULL: CleanupMode.ValueType  # 0
+CLEANUP_SELECTIVE: CleanupMode.ValueType  # 1
+Global___CleanupMode: _TypeAlias = CleanupMode  # noqa: Y015
 
 @_typing.final
 class StartDaqRequest(_message.Message):
@@ -196,11 +212,19 @@ class CleanupDataRequest(_message.Message):
     RUN_DIR_FIELD_NUMBER: _builtins.int
     MODULE_ID_FIELD_NUMBER: _builtins.int
     FORCE_FIELD_NUMBER: _builtins.int
+    MODE_FIELD_NUMBER: _builtins.int
+    DELETE_PATTERNS_FIELD_NUMBER: _builtins.int
+    PRESERVE_PATTERNS_FIELD_NUMBER: _builtins.int
     data_dir: _builtins.str
     run_dir: _builtins.str
     force: _builtins.bool
+    mode: Global___CleanupMode.ValueType
     @_builtins.property
     def module_id(self) -> _containers.RepeatedScalarFieldContainer[_builtins.int]: ...
+    @_builtins.property
+    def delete_patterns(self) -> _containers.RepeatedScalarFieldContainer[_builtins.str]: ...
+    @_builtins.property
+    def preserve_patterns(self) -> _containers.RepeatedScalarFieldContainer[_builtins.str]: ...
     def __init__(
         self,
         *,
@@ -208,8 +232,11 @@ class CleanupDataRequest(_message.Message):
         run_dir: _builtins.str = ...,
         module_id: _abc.Iterable[_builtins.int] | None = ...,
         force: _builtins.bool = ...,
+        mode: Global___CleanupMode.ValueType = ...,
+        delete_patterns: _abc.Iterable[_builtins.str] | None = ...,
+        preserve_patterns: _abc.Iterable[_builtins.str] | None = ...,
     ) -> None: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["data_dir", b"data_dir", "force", b"force", "module_id", b"module_id", "run_dir", b"run_dir"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["data_dir", b"data_dir", "delete_patterns", b"delete_patterns", "force", b"force", "mode", b"mode", "module_id", b"module_id", "preserve_patterns", b"preserve_patterns", "run_dir", b"run_dir"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
 
 Global___CleanupDataRequest: _TypeAlias = CleanupDataRequest  # noqa: Y015
@@ -220,15 +247,135 @@ class CleanupDataResponse(_message.Message):
 
     SUCCESS_FIELD_NUMBER: _builtins.int
     MESSAGE_FIELD_NUMBER: _builtins.int
+    DELETED_COUNT_FIELD_NUMBER: _builtins.int
+    FREED_BYTES_FIELD_NUMBER: _builtins.int
+    PRESERVED_PATHS_FIELD_NUMBER: _builtins.int
     success: _builtins.bool
     message: _builtins.str
+    deleted_count: _builtins.int
+    freed_bytes: _builtins.int
+    @_builtins.property
+    def preserved_paths(self) -> _containers.RepeatedScalarFieldContainer[_builtins.str]: ...
     def __init__(
         self,
         *,
         success: _builtins.bool = ...,
         message: _builtins.str = ...,
+        deleted_count: _builtins.int = ...,
+        freed_bytes: _builtins.int = ...,
+        preserved_paths: _abc.Iterable[_builtins.str] | None = ...,
     ) -> None: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["message", b"message", "success", b"success"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["deleted_count", b"deleted_count", "freed_bytes", b"freed_bytes", "message", b"message", "preserved_paths", b"preserved_paths", "success", b"success"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
 
 Global___CleanupDataResponse: _TypeAlias = CleanupDataResponse  # noqa: Y015
+
+@_typing.final
+class GenerateManifestRequest(_message.Message):
+    DESCRIPTOR: _descriptor.Descriptor
+
+    DATA_DIR_FIELD_NUMBER: _builtins.int
+    RUN_DIR_FIELD_NUMBER: _builtins.int
+    MODULE_ID_FIELD_NUMBER: _builtins.int
+    ALGORITHM_FIELD_NUMBER: _builtins.int
+    INCLUDE_PATTERNS_FIELD_NUMBER: _builtins.int
+    data_dir: _builtins.str
+    run_dir: _builtins.str
+    module_id: _builtins.int
+    algorithm: _builtins.str
+    @_builtins.property
+    def include_patterns(self) -> _containers.RepeatedScalarFieldContainer[_builtins.str]: ...
+    def __init__(
+        self,
+        *,
+        data_dir: _builtins.str = ...,
+        run_dir: _builtins.str = ...,
+        module_id: _builtins.int = ...,
+        algorithm: _builtins.str = ...,
+        include_patterns: _abc.Iterable[_builtins.str] | None = ...,
+    ) -> None: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["algorithm", b"algorithm", "data_dir", b"data_dir", "include_patterns", b"include_patterns", "module_id", b"module_id", "run_dir", b"run_dir"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+
+Global___GenerateManifestRequest: _TypeAlias = GenerateManifestRequest  # noqa: Y015
+
+@_typing.final
+class GenerateManifestResponse(_message.Message):
+    DESCRIPTOR: _descriptor.Descriptor
+
+    SUCCESS_FIELD_NUMBER: _builtins.int
+    MESSAGE_FIELD_NUMBER: _builtins.int
+    MANIFEST_PATH_FIELD_NUMBER: _builtins.int
+    FILE_COUNT_FIELD_NUMBER: _builtins.int
+    TOTAL_BYTES_FIELD_NUMBER: _builtins.int
+    ELAPSED_SECONDS_FIELD_NUMBER: _builtins.int
+    ALGORITHM_FIELD_NUMBER: _builtins.int
+    success: _builtins.bool
+    message: _builtins.str
+    manifest_path: _builtins.str
+    file_count: _builtins.int
+    total_bytes: _builtins.int
+    elapsed_seconds: _builtins.float
+    algorithm: _builtins.str
+    def __init__(
+        self,
+        *,
+        success: _builtins.bool = ...,
+        message: _builtins.str = ...,
+        manifest_path: _builtins.str = ...,
+        file_count: _builtins.int = ...,
+        total_bytes: _builtins.int = ...,
+        elapsed_seconds: _builtins.float = ...,
+        algorithm: _builtins.str = ...,
+    ) -> None: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["algorithm", b"algorithm", "elapsed_seconds", b"elapsed_seconds", "file_count", b"file_count", "manifest_path", b"manifest_path", "message", b"message", "success", b"success", "total_bytes", b"total_bytes"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+
+Global___GenerateManifestResponse: _TypeAlias = GenerateManifestResponse  # noqa: Y015
+
+@_typing.final
+class GetManifestRequest(_message.Message):
+    DESCRIPTOR: _descriptor.Descriptor
+
+    DATA_DIR_FIELD_NUMBER: _builtins.int
+    RUN_DIR_FIELD_NUMBER: _builtins.int
+    MODULE_ID_FIELD_NUMBER: _builtins.int
+    data_dir: _builtins.str
+    run_dir: _builtins.str
+    module_id: _builtins.int
+    def __init__(
+        self,
+        *,
+        data_dir: _builtins.str = ...,
+        run_dir: _builtins.str = ...,
+        module_id: _builtins.int = ...,
+    ) -> None: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["data_dir", b"data_dir", "module_id", b"module_id", "run_dir", b"run_dir"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+
+Global___GetManifestRequest: _TypeAlias = GetManifestRequest  # noqa: Y015
+
+@_typing.final
+class ManifestEntry(_message.Message):
+    DESCRIPTOR: _descriptor.Descriptor
+
+    RELATIVE_PATH_FIELD_NUMBER: _builtins.int
+    DIGEST_HEX_FIELD_NUMBER: _builtins.int
+    SIZE_BYTES_FIELD_NUMBER: _builtins.int
+    MTIME_NS_FIELD_NUMBER: _builtins.int
+    relative_path: _builtins.str
+    digest_hex: _builtins.str
+    size_bytes: _builtins.int
+    mtime_ns: _builtins.int
+    def __init__(
+        self,
+        *,
+        relative_path: _builtins.str = ...,
+        digest_hex: _builtins.str = ...,
+        size_bytes: _builtins.int = ...,
+        mtime_ns: _builtins.int = ...,
+    ) -> None: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["digest_hex", b"digest_hex", "mtime_ns", b"mtime_ns", "relative_path", b"relative_path", "size_bytes", b"size_bytes"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+
+Global___ManifestEntry: _TypeAlias = ManifestEntry  # noqa: Y015

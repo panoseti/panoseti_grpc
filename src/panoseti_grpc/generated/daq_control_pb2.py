@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x11\x64\x61q_control.proto\x12\x14panoseti.daq_control\x1a\x1cgoogle/protobuf/struct.proto\"\xb2\x01\n\x0fStartDaqRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x61q_ip_addr\x18\x02 \x01(\t\x12\x10\n\x08\x62indhost\x18\x03 \x01(\t\x12\x18\n\x10max_file_size_mb\x18\x04 \x01(\r\x12\x17\n\x0fgroup_ph_frames\x18\x05 \x01(\x08\x12\x0f\n\x07run_dir\x18\x06 \x01(\t\x12\x0b\n\x03obs\x18\x07 \x01(\t\x12\x15\n\tmodule_id\x18\x08 \x03(\rB\x02\x10\x01\"4\n\x10StartDaqResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"3\n\x0eStopDaqRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\"3\n\x0fStopDaqResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"v\n\x10\x44\x61qStatusRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x1e\n\x16\x63heck_hashpipe_running\x18\x02 \x01(\x08\x12\x18\n\x10\x63heck_disk_usage\x18\x03 \x01(\x08\x12\x16\n\x0e\x63heck_run_dirs\x18\x04 \x01(\x08\"\x8e\x01\n\x11\x44\x61qStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x18\n\x10hashpipe_running\x18\x02 \x01(\x08\x12+\n\ndisk_usage\x18\x03 \x01(\x0b\x32\x17.google.protobuf.Struct\x12\x10\n\x08run_dirs\x18\x04 \x03(\t\x12\x0f\n\x07message\x18\x05 \x01(\t\"]\n\x12\x43leanupDataRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\x12\x15\n\tmodule_id\x18\x03 \x03(\rB\x02\x10\x01\x12\r\n\x05\x66orce\x18\x04 \x01(\x08\"7\n\x13\x43leanupDataResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t2\x89\x03\n\nDaqControl\x12[\n\x08StartDaq\x12%.panoseti.daq_control.StartDaqRequest\x1a&.panoseti.daq_control.StartDaqResponse\"\x00\x12X\n\x07StopDaq\x12$.panoseti.daq_control.StopDaqRequest\x1a%.panoseti.daq_control.StopDaqResponse\"\x00\x12^\n\tStatusDaq\x12&.panoseti.daq_control.DaqStatusRequest\x1a\'.panoseti.daq_control.DaqStatusResponse\"\x00\x12\x64\n\x0b\x43leanupData\x12(.panoseti.daq_control.CleanupDataRequest\x1a).panoseti.daq_control.CleanupDataResponse\"\x00\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x11\x64\x61q_control.proto\x12\x14panoseti.daq_control\x1a\x1cgoogle/protobuf/struct.proto\"\xb2\x01\n\x0fStartDaqRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x61q_ip_addr\x18\x02 \x01(\t\x12\x10\n\x08\x62indhost\x18\x03 \x01(\t\x12\x18\n\x10max_file_size_mb\x18\x04 \x01(\r\x12\x17\n\x0fgroup_ph_frames\x18\x05 \x01(\x08\x12\x0f\n\x07run_dir\x18\x06 \x01(\t\x12\x0b\n\x03obs\x18\x07 \x01(\t\x12\x15\n\tmodule_id\x18\x08 \x03(\rB\x02\x10\x01\"4\n\x10StartDaqResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"3\n\x0eStopDaqRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\"3\n\x0fStopDaqResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"v\n\x10\x44\x61qStatusRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x1e\n\x16\x63heck_hashpipe_running\x18\x02 \x01(\x08\x12\x18\n\x10\x63heck_disk_usage\x18\x03 \x01(\x08\x12\x16\n\x0e\x63heck_run_dirs\x18\x04 \x01(\x08\"\x8e\x01\n\x11\x44\x61qStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x18\n\x10hashpipe_running\x18\x02 \x01(\x08\x12+\n\ndisk_usage\x18\x03 \x01(\x0b\x32\x17.google.protobuf.Struct\x12\x10\n\x08run_dirs\x18\x04 \x03(\t\x12\x0f\n\x07message\x18\x05 \x01(\t\"\xc2\x01\n\x12\x43leanupDataRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\x12\x15\n\tmodule_id\x18\x03 \x03(\rB\x02\x10\x01\x12\r\n\x05\x66orce\x18\x04 \x01(\x08\x12/\n\x04mode\x18\x05 \x01(\x0e\x32!.panoseti.daq_control.CleanupMode\x12\x17\n\x0f\x64\x65lete_patterns\x18\x06 \x03(\t\x12\x19\n\x11preserve_patterns\x18\x07 \x03(\t\"|\n\x13\x43leanupDataResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x15\n\rdeleted_count\x18\x03 \x01(\r\x12\x13\n\x0b\x66reed_bytes\x18\x04 \x01(\x04\x12\x17\n\x0fpreserved_paths\x18\x05 \x03(\t\"|\n\x17GenerateManifestRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\x12\x11\n\tmodule_id\x18\x03 \x01(\r\x12\x11\n\talgorithm\x18\x04 \x01(\t\x12\x18\n\x10include_patterns\x18\x05 \x03(\t\"\xa8\x01\n\x18GenerateManifestResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x15\n\rmanifest_path\x18\x03 \x01(\t\x12\x12\n\nfile_count\x18\x04 \x01(\r\x12\x13\n\x0btotal_bytes\x18\x05 \x01(\x04\x12\x17\n\x0f\x65lapsed_seconds\x18\x06 \x01(\x01\x12\x11\n\talgorithm\x18\x07 \x01(\t\"J\n\x12GetManifestRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\x12\x11\n\tmodule_id\x18\x03 \x01(\r\"`\n\rManifestEntry\x12\x15\n\rrelative_path\x18\x01 \x01(\t\x12\x12\n\ndigest_hex\x18\x02 \x01(\t\x12\x12\n\nsize_bytes\x18\x03 \x01(\x04\x12\x10\n\x08mtime_ns\x18\x04 \x01(\x03*6\n\x0b\x43leanupMode\x12\x10\n\x0c\x43LEANUP_FULL\x10\x00\x12\x15\n\x11\x43LEANUP_SELECTIVE\x10\x01\x32\xe0\x04\n\nDaqControl\x12[\n\x08StartDaq\x12%.panoseti.daq_control.StartDaqRequest\x1a&.panoseti.daq_control.StartDaqResponse\"\x00\x12X\n\x07StopDaq\x12$.panoseti.daq_control.StopDaqRequest\x1a%.panoseti.daq_control.StopDaqResponse\"\x00\x12^\n\tStatusDaq\x12&.panoseti.daq_control.DaqStatusRequest\x1a\'.panoseti.daq_control.DaqStatusResponse\"\x00\x12\x64\n\x0b\x43leanupData\x12(.panoseti.daq_control.CleanupDataRequest\x1a).panoseti.daq_control.CleanupDataResponse\"\x00\x12s\n\x10GenerateManifest\x12-.panoseti.daq_control.GenerateManifestRequest\x1a..panoseti.daq_control.GenerateManifestResponse\"\x00\x12`\n\x0bGetManifest\x12(.panoseti.daq_control.GetManifestRequest\x1a#.panoseti.daq_control.ManifestEntry\"\x00\x30\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -36,6 +36,8 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_STARTDAQREQUEST'].fields_by_name['module_id']._serialized_options = b'\020\001'
   _globals['_CLEANUPDATAREQUEST'].fields_by_name['module_id']._loaded_options = None
   _globals['_CLEANUPDATAREQUEST'].fields_by_name['module_id']._serialized_options = b'\020\001'
+  _globals['_CLEANUPMODE']._serialized_start=1473
+  _globals['_CLEANUPMODE']._serialized_end=1527
   _globals['_STARTDAQREQUEST']._serialized_start=74
   _globals['_STARTDAQREQUEST']._serialized_end=252
   _globals['_STARTDAQRESPONSE']._serialized_start=254
@@ -48,10 +50,18 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_DAQSTATUSREQUEST']._serialized_end=532
   _globals['_DAQSTATUSRESPONSE']._serialized_start=535
   _globals['_DAQSTATUSRESPONSE']._serialized_end=677
-  _globals['_CLEANUPDATAREQUEST']._serialized_start=679
-  _globals['_CLEANUPDATAREQUEST']._serialized_end=772
-  _globals['_CLEANUPDATARESPONSE']._serialized_start=774
-  _globals['_CLEANUPDATARESPONSE']._serialized_end=829
-  _globals['_DAQCONTROL']._serialized_start=832
-  _globals['_DAQCONTROL']._serialized_end=1225
+  _globals['_CLEANUPDATAREQUEST']._serialized_start=680
+  _globals['_CLEANUPDATAREQUEST']._serialized_end=874
+  _globals['_CLEANUPDATARESPONSE']._serialized_start=876
+  _globals['_CLEANUPDATARESPONSE']._serialized_end=1000
+  _globals['_GENERATEMANIFESTREQUEST']._serialized_start=1002
+  _globals['_GENERATEMANIFESTREQUEST']._serialized_end=1126
+  _globals['_GENERATEMANIFESTRESPONSE']._serialized_start=1129
+  _globals['_GENERATEMANIFESTRESPONSE']._serialized_end=1297
+  _globals['_GETMANIFESTREQUEST']._serialized_start=1299
+  _globals['_GETMANIFESTREQUEST']._serialized_end=1373
+  _globals['_MANIFESTENTRY']._serialized_start=1375
+  _globals['_MANIFESTENTRY']._serialized_end=1471
+  _globals['_DAQCONTROL']._serialized_start=1530
+  _globals['_DAQCONTROL']._serialized_end=2138
 # @@protoc_insertion_point(module_scope)

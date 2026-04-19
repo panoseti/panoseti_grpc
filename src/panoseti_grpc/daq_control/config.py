@@ -2,8 +2,9 @@
 Daq Control Service configuration classes for validation
 """
 
+from enum import Enum
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, DirectoryPath, Field, IPvAnyAddress, model_validator
 
@@ -59,11 +60,19 @@ class StatusDaqModel(BaseModel):
     check_run_dirs: bool = Field(...)
 
 
+class CleanupMode(str, Enum):
+    CLEANUP_FULL = "CLEANUP_FULL"
+    CLEANUP_SELECTIVE = "CLEANUP_SELECTIVE"
+
+
 class CleanupDataModel(BaseModel):
     data_dir: DirectoryPath = Field(...)
     run_dir: str = Field(..., min_length=1)
     module_id: list[Uint8] = Field(...)
     force: bool = False
+    mode: CleanupMode = CleanupMode.CLEANUP_FULL
+    delete_patterns: list[str] = []
+    preserve_patterns: list[str] = []
 
     @model_validator(mode="after")
     def check_run_dir(self) -> CleanupDataModel:
@@ -78,4 +87,31 @@ class CleanupDataModel(BaseModel):
             full_path = self.data_dir / f"module_{mid}"
             if not full_path.is_dir():
                 raise ValueError(f"'{full_path}' not exist.")
+        return self
+
+    @model_validator(mode="after")
+    def check_selective_requires_patterns(self) -> CleanupDataModel:
+        if self.mode == CleanupMode.CLEANUP_SELECTIVE and not self.delete_patterns:
+            raise ValueError("CLEANUP_SELECTIVE requires at least one delete_pattern")
+        return self
+
+
+class GenerateManifestModel(BaseModel):
+    data_dir: DirectoryPath
+    run_dir: str = Field(..., min_length=1)
+    module_id: Uint8
+    algorithm: Literal["blake3", "xxh3_128"] = "blake3"
+    include_patterns: list[str] = Field(default=["*.pff"], min_length=1)
+
+    @model_validator(mode="after")
+    def check_run_dir(self) -> GenerateManifestModel:
+        full_path = self.data_dir / self.run_dir
+        if not full_path.is_dir():
+            raise ValueError(f"'{full_path}' does not exist")
+        return self
+
+    @model_validator(mode="after")
+    def check_include_patterns(self) -> GenerateManifestModel:
+        if not self.include_patterns:
+            raise ValueError("include_patterns must not be empty")
         return self

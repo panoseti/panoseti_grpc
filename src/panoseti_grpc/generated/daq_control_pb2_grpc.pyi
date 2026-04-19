@@ -39,6 +39,10 @@ class DaqControlStub:
     """status daq: get status data from daq nodes"""
     CleanupData: _grpc.UnaryUnaryMultiCallable[_daq_control_pb2.CleanupDataRequest, _daq_control_pb2.CleanupDataResponse]
     """CleanupData: Clean up data for the specific run"""
+    GenerateManifest: _grpc.UnaryUnaryMultiCallable[_daq_control_pb2.GenerateManifestRequest, _daq_control_pb2.GenerateManifestResponse]
+    """GenerateManifest: Generate a checksum manifest for run data"""
+    GetManifest: _grpc.UnaryStreamMultiCallable[_daq_control_pb2.GetManifestRequest, _daq_control_pb2.ManifestEntry]
+    """GetManifest: Stream manifest entries for a module's run data"""
 
 @_typing.type_check_only
 class DaqControlAsyncStub(DaqControlStub):
@@ -51,6 +55,10 @@ class DaqControlAsyncStub(DaqControlStub):
     """status daq: get status data from daq nodes"""
     CleanupData: _aio.UnaryUnaryMultiCallable[_daq_control_pb2.CleanupDataRequest, _daq_control_pb2.CleanupDataResponse]  # type: ignore[assignment]
     """CleanupData: Clean up data for the specific run"""
+    GenerateManifest: _aio.UnaryUnaryMultiCallable[_daq_control_pb2.GenerateManifestRequest, _daq_control_pb2.GenerateManifestResponse]  # type: ignore[assignment]
+    """GenerateManifest: Generate a checksum manifest for run data"""
+    GetManifest: _aio.UnaryStreamMultiCallable[_daq_control_pb2.GetManifestRequest, _daq_control_pb2.ManifestEntry]  # type: ignore[assignment]
+    """GetManifest: Stream manifest entries for a module's run data"""
 
 class DaqControlServicer(metaclass=_abc_1.ABCMeta):
     @_abc_1.abstractmethod
@@ -84,5 +92,21 @@ class DaqControlServicer(metaclass=_abc_1.ABCMeta):
         context: _ServicerContext,
     ) -> _typing.Union[_daq_control_pb2.CleanupDataResponse, _abc.Awaitable[_daq_control_pb2.CleanupDataResponse]]:
         """CleanupData: Clean up data for the specific run"""
+
+    @_abc_1.abstractmethod
+    def GenerateManifest(
+        self,
+        request: _daq_control_pb2.GenerateManifestRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_daq_control_pb2.GenerateManifestResponse, _abc.Awaitable[_daq_control_pb2.GenerateManifestResponse]]:
+        """GenerateManifest: Generate a checksum manifest for run data"""
+
+    @_abc_1.abstractmethod
+    def GetManifest(
+        self,
+        request: _daq_control_pb2.GetManifestRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_abc.Iterator[_daq_control_pb2.ManifestEntry], _abc.AsyncIterator[_daq_control_pb2.ManifestEntry]]:
+        """GetManifest: Stream manifest entries for a module's run data"""
 
 def add_DaqControlServicer_to_server(servicer: DaqControlServicer, server: _typing.Union[_grpc.Server, _aio.Server]) -> None: ...
