@@ -10,22 +10,12 @@ from pydantic import ValidationError
 
 try:
     from panoseti_grpc.daq_control.config import GenerateManifestModel
-
-    _MODEL_MISSING = False
 except ImportError:
-    GenerateManifestModel = None  # type: ignore[assignment,misc]
-    _MODEL_MISSING = True
-
-
-def _require_model() -> None:
-    """Fail the calling test if GenerateManifestModel doesn't exist yet."""
-    if _MODEL_MISSING:
-        pytest.fail("GenerateManifestModel not yet implemented in daq_control/config.py")
+    pytest.fail("GenerateManifestModel not yet implemented in daq_control/config.py — run Phase 1 implementation first")
 
 
 class TestGenerateManifestModelDefaults:
     def test_default_algorithm_is_blake3(self, tmp_path: Any) -> None:
-        _require_model()
         run_dir = tmp_path / "run.pffd"
         run_dir.mkdir()
         m = GenerateManifestModel(
@@ -36,7 +26,6 @@ class TestGenerateManifestModelDefaults:
         assert m.algorithm == "blake3"
 
     def test_default_include_patterns_is_pff_glob(self, tmp_path: Any) -> None:
-        _require_model()
         run_dir = tmp_path / "run.pffd"
         run_dir.mkdir()
         m = GenerateManifestModel(
@@ -49,7 +38,6 @@ class TestGenerateManifestModelDefaults:
 
 class TestGenerateManifestModelValid:
     def test_explicit_blake3(self, tmp_path: Any) -> None:
-        _require_model()
         run_dir = tmp_path / "run.pffd"
         run_dir.mkdir()
         m = GenerateManifestModel(
@@ -63,7 +51,6 @@ class TestGenerateManifestModelValid:
         assert m.include_patterns == ["*.pff"]
 
     def test_explicit_xxh3_128(self, tmp_path: Any) -> None:
-        _require_model()
         run_dir = tmp_path / "run.pffd"
         run_dir.mkdir()
         m = GenerateManifestModel(
@@ -76,7 +63,6 @@ class TestGenerateManifestModelValid:
         assert m.algorithm == "xxh3_128"
 
     def test_multiple_include_patterns(self, tmp_path: Any) -> None:
-        _require_model()
         run_dir = tmp_path / "run.pffd"
         run_dir.mkdir()
         m = GenerateManifestModel(
@@ -90,7 +76,6 @@ class TestGenerateManifestModelValid:
 
 class TestGenerateManifestModelInvalid:
     def test_invalid_algorithm_raises(self, tmp_path: Any) -> None:
-        _require_model()
         run_dir = tmp_path / "run.pffd"
         run_dir.mkdir()
         with pytest.raises(ValidationError):
@@ -102,7 +87,6 @@ class TestGenerateManifestModelInvalid:
             )
 
     def test_sha256_algorithm_raises(self, tmp_path: Any) -> None:
-        _require_model()
         run_dir = tmp_path / "run.pffd"
         run_dir.mkdir()
         with pytest.raises(ValidationError):
@@ -114,7 +98,6 @@ class TestGenerateManifestModelInvalid:
             )
 
     def test_empty_include_patterns_raises(self, tmp_path: Any) -> None:
-        _require_model()
         run_dir = tmp_path / "run.pffd"
         run_dir.mkdir()
         with pytest.raises(ValidationError):
@@ -126,7 +109,6 @@ class TestGenerateManifestModelInvalid:
             )
 
     def test_run_dir_not_exist_raises(self, tmp_path: Any) -> None:
-        _require_model()
         with pytest.raises(ValidationError):
             GenerateManifestModel(
                 data_dir=str(tmp_path),

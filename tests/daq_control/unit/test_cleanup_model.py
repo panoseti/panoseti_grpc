@@ -85,3 +85,15 @@ class TestCleanupDataModelSelective:
             preserve_patterns=["manifest.json"],
         )
         assert m.preserve_patterns == ["manifest.json"]
+
+    def test_invalid_mode_raises(self, tmp_path: Any) -> None:
+        run_dir = tmp_path / "run.pffd"
+        run_dir.mkdir()
+        (tmp_path / "module_10").mkdir()
+        with pytest.raises(ValidationError):
+            CleanupDataModel(
+                data_dir=str(tmp_path),
+                run_dir="run.pffd",
+                module_id=[10],
+                mode="CLEANUP_NUKE",  # invalid mode string
+            )
