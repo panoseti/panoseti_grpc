@@ -26,9 +26,10 @@ def _run_server(port: int) -> None:
     asyncio.run(serve(grpc_port=port))
 
 
-@pytest.fixture
-def cleanup_server(tmp_path):
-    """Start a fresh in-process server per test; yield (client, tmp_path)."""
+@pytest.fixture(scope="module")
+def cleanup_server(tmp_path_factory):
+    """Start a single in-process server for the module; yield (client, data_root)."""
+    data_root = tmp_path_factory.mktemp("cleanup")
     proc = multiprocessing.Process(target=_run_server, args=[TEST_PORT], daemon=True)
     proc.start()
 
@@ -44,7 +45,7 @@ def cleanup_server(tmp_path):
         raise TimeoutError(f"Server did not bind on port {TEST_PORT} within 10 s")
 
     client = DaqControlClient(host="localhost", port=TEST_PORT)
-    yield client, tmp_path
+    yield client, data_root
     proc.terminate()
     proc.join(timeout=2)
     if proc.is_alive():
@@ -87,13 +88,13 @@ def _make_run_dir(tmp_path, run_dir_name: str = "test_run.pffd"):
 
 def test_selective_deletes_pff_keeps_others(cleanup_server):
     """CLEANUP_SELECTIVE with delete_patterns=['*.pff'] removes pff files only."""
-    client, tmp_path = cleanup_server
+    client, data_root = cleanup_server
     run_dir = "test_run.pffd"
-    module_run_dir = _make_run_dir(tmp_path, run_dir)
+    module_run_dir = _make_run_dir(data_root, run_dir)
 
     resp = client.CleanupData(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": [MODULE_ID],
             "mode": "CLEANUP_SELECTIVE",
@@ -118,9 +119,9 @@ def test_selective_deletes_pff_keeps_others(cleanup_server):
 
 def test_selective_preserve_overrides_delete(cleanup_server):
     """When a file matches both delete_patterns and preserve_patterns, it is kept."""
-    client, tmp_path = cleanup_server
+    client, data_root = cleanup_server
     run_dir = "test_preserve.pffd"
-    module_run_dir = _make_run_dir(tmp_path, run_dir)
+    module_run_dir = _make_run_dir(data_root, run_dir)
 
     pff_size_before = sum(
         f.stat().st_size for f in module_run_dir.glob("*.pff")
@@ -129,7 +130,7 @@ def test_selective_preserve_overrides_delete(cleanup_server):
 
     resp = client.CleanupData(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": [MODULE_ID],
             "mode": "CLEANUP_SELECTIVE",
@@ -156,13 +157,13 @@ def test_selective_preserve_overrides_delete(cleanup_server):
 
 def test_selective_no_matching_files(cleanup_server):
     """CLEANUP_SELECTIVE with a pattern that matches nothing returns deleted_count=0, success=True."""
-    client, tmp_path = cleanup_server
+    client, data_root = cleanup_server
     run_dir = "test_nomatch.pffd"
-    _make_run_dir(tmp_path, run_dir)
+    _make_run_dir(data_root, run_dir)
 
     resp = client.CleanupData(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": [MODULE_ID],
             "mode": "CLEANUP_SELECTIVE",
@@ -178,16 +179,16 @@ def test_selective_no_matching_files(cleanup_server):
 
 def test_full_cleanup_default_backward_compat(cleanup_server):
     """CleanupData with NO mode field defaults to CLEANUP_FULL and rmtrees the run dir."""
-    client, tmp_path = cleanup_server
+    client, data_root = cleanup_server
     run_dir = "test_full.pffd"
-    module_run_dir = _make_run_dir(tmp_path, run_dir)
+    module_run_dir = _make_run_dir(data_root, run_dir)
 
     assert module_run_dir.is_dir()
 
     # Call with NO mode field — should default to CLEANUP_FULL
     resp = client.CleanupData(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": [MODULE_ID],
         }
@@ -197,20 +198,20 @@ def test_full_cleanup_default_backward_compat(cleanup_server):
     # The entire module run directory should be gone
     assert not module_run_dir.exists()
     # The config-level run dir should also be removed
-    assert not (tmp_path / "test_full.pffd").exists()
-    assert not (tmp_path / f"module_{MODULE_ID}" / "test_full.pffd").exists()
+    assert not (data_root / "test_full.pffd").exists()
+    assert not (data_root / f"module_{MODULE_ID}" / "test_full.pffd").exists()
 
 
 def test_full_cleanup_already_gone(cleanup_server):
     """CLEANUP_FULL on a directory that was already removed returns success=False."""
-    client, tmp_path = cleanup_server
+    client, data_root = cleanup_server
     run_dir = "test_gone.pffd"
-    module_run_dir = _make_run_dir(tmp_path, run_dir)
+    module_run_dir = _make_run_dir(data_root, run_dir)
 
     # First cleanup
     resp = client.CleanupData(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": [MODULE_ID],
         }
@@ -220,7 +221,7 @@ def test_full_cleanup_already_gone(cleanup_server):
     # Second cleanup — directories no longer exist, validation should fail
     resp2 = client.CleanupData(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": [MODULE_ID],
         }

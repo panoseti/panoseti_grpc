@@ -12,6 +12,7 @@ import hashlib
 import multiprocessing
 import socket
 import time
+from pathlib import Path
 
 import pytest
 
@@ -26,9 +27,10 @@ def _run_server(port: int) -> None:
     asyncio.run(serve(grpc_port=port))
 
 
-@pytest.fixture
-def manifest_server(tmp_path):
-    """Start a fresh in-process server per test; yield (client, tmp_path)."""
+@pytest.fixture(scope="module")
+def manifest_server(tmp_path_factory):
+    """Start a single in-process server for the module; yield (client, data_root)."""
+    data_root = tmp_path_factory.mktemp("manifest")
     proc = multiprocessing.Process(target=_run_server, args=[TEST_PORT], daemon=True)
     proc.start()
 
@@ -44,7 +46,7 @@ def manifest_server(tmp_path):
         raise TimeoutError(f"Server did not bind on port {TEST_PORT} within 10 s")
 
     client = DaqControlClient(host="localhost", port=TEST_PORT)
-    yield client, tmp_path
+    yield client, data_root
     proc.terminate()
     proc.join(timeout=2)
     if proc.is_alive():
@@ -86,9 +88,9 @@ def _make_manifest_run_dir(tmp_path, run_dir_name: str = "manifest_test.pffd"):
 
 def test_generate_manifest_success(manifest_server):
     """GenerateManifest returns success=True, correct file_count and total_bytes."""
-    client, tmp_path = manifest_server
+    client, data_root = manifest_server
     run_dir = "manifest_test.pffd"
-    module_run_dir = _make_manifest_run_dir(tmp_path, run_dir)
+    module_run_dir = _make_manifest_run_dir(data_root, run_dir)
 
     expected_total_bytes = sum(len(c) for c in _PFF_FILES.values())
 
@@ -96,7 +98,7 @@ def test_generate_manifest_success(manifest_server):
     # The server falls back to sha256 when blake3/xxhash are unavailable.
     resp = client.GenerateManifest(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": MODULE_ID,
             "algorithm": "blake3",
@@ -114,13 +116,13 @@ def test_generate_manifest_success(manifest_server):
 
 def test_generate_manifest_file_exists(manifest_server):
     """The manifest file reported by GenerateManifest actually exists on disk."""
-    client, tmp_path = manifest_server
+    client, data_root = manifest_server
     run_dir = "manifest_file_exists.pffd"
-    _make_manifest_run_dir(tmp_path, run_dir)
+    _make_manifest_run_dir(data_root, run_dir)
 
     resp = client.GenerateManifest(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": MODULE_ID,
             "include_patterns": ["*.pff"],
@@ -128,8 +130,6 @@ def test_generate_manifest_file_exists(manifest_server):
     )
 
     assert resp["success"] is True
-    from pathlib import Path
-
     manifest_path = Path(resp["manifest_path"])
     assert manifest_path.is_file(), f"Manifest file not found: {manifest_path}"
     assert manifest_path.stat().st_size > 0
@@ -137,14 +137,14 @@ def test_generate_manifest_file_exists(manifest_server):
 
 def test_get_manifest_entry_count(manifest_server):
     """GetManifest streams exactly as many entries as files included in the manifest."""
-    client, tmp_path = manifest_server
+    client, data_root = manifest_server
     run_dir = "manifest_count.pffd"
-    _make_manifest_run_dir(tmp_path, run_dir)
+    _make_manifest_run_dir(data_root, run_dir)
 
     # Generate first
     gen_resp = client.GenerateManifest(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": MODULE_ID,
             "include_patterns": ["*.pff"],
@@ -155,7 +155,7 @@ def test_get_manifest_entry_count(manifest_server):
     # Stream entries
     entries = client.GetManifest(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": MODULE_ID,
         }
@@ -166,13 +166,13 @@ def test_get_manifest_entry_count(manifest_server):
 
 def test_get_manifest_sizes_match(manifest_server):
     """Each streamed ManifestEntry has size_bytes matching the actual file size."""
-    client, tmp_path = manifest_server
+    client, data_root = manifest_server
     run_dir = "manifest_sizes.pffd"
-    module_run_dir = _make_manifest_run_dir(tmp_path, run_dir)
+    module_run_dir = _make_manifest_run_dir(data_root, run_dir)
 
     client.GenerateManifest(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": MODULE_ID,
             "include_patterns": ["*.pff"],
@@ -181,7 +181,7 @@ def test_get_manifest_sizes_match(manifest_server):
 
     entries = client.GetManifest(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": MODULE_ID,
         }
@@ -198,13 +198,13 @@ def test_get_manifest_sizes_match(manifest_server):
 
 def test_get_manifest_mtime_ns_positive(manifest_server):
     """Each streamed ManifestEntry has a positive mtime_ns."""
-    client, tmp_path = manifest_server
+    client, data_root = manifest_server
     run_dir = "manifest_mtime.pffd"
-    _make_manifest_run_dir(tmp_path, run_dir)
+    _make_manifest_run_dir(data_root, run_dir)
 
     client.GenerateManifest(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": MODULE_ID,
             "include_patterns": ["*.pff"],
@@ -213,7 +213,7 @@ def test_get_manifest_mtime_ns_positive(manifest_server):
 
     entries = client.GetManifest(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": MODULE_ID,
         }
@@ -226,13 +226,13 @@ def test_get_manifest_mtime_ns_positive(manifest_server):
 
 def test_get_manifest_digest_hex_is_hex(manifest_server):
     """Each digest_hex field is a valid lowercase hexadecimal string."""
-    client, tmp_path = manifest_server
+    client, data_root = manifest_server
     run_dir = "manifest_digest_hex.pffd"
-    _make_manifest_run_dir(tmp_path, run_dir)
+    _make_manifest_run_dir(data_root, run_dir)
 
     client.GenerateManifest(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": MODULE_ID,
             "include_patterns": ["*.pff"],
@@ -241,7 +241,7 @@ def test_get_manifest_digest_hex_is_hex(manifest_server):
 
     entries = client.GetManifest(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": MODULE_ID,
         }
@@ -259,13 +259,13 @@ def test_get_manifest_digest_hex_is_hex(manifest_server):
 
 def test_get_manifest_digest_matches_sha256_when_algorithm_is_sha256(manifest_server):
     """If the server used sha256, locally recomputed digests must match streamed ones."""
-    client, tmp_path = manifest_server
+    client, data_root = manifest_server
     run_dir = "manifest_digest_verify.pffd"
-    module_run_dir = _make_manifest_run_dir(tmp_path, run_dir)
+    module_run_dir = _make_manifest_run_dir(data_root, run_dir)
 
     gen_resp = client.GenerateManifest(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": MODULE_ID,
             "include_patterns": ["*.pff"],
@@ -279,7 +279,7 @@ def test_get_manifest_digest_matches_sha256_when_algorithm_is_sha256(manifest_se
 
     entries = client.GetManifest(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": MODULE_ID,
         }
@@ -296,13 +296,13 @@ def test_get_manifest_digest_matches_sha256_when_algorithm_is_sha256(manifest_se
 
 def test_roundtrip_full(manifest_server):
     """Full round-trip: GenerateManifest → GetManifest covers all expected files."""
-    client, tmp_path = manifest_server
+    client, data_root = manifest_server
     run_dir = "manifest_roundtrip.pffd"
-    module_run_dir = _make_manifest_run_dir(tmp_path, run_dir)
+    module_run_dir = _make_manifest_run_dir(data_root, run_dir)
 
     gen_resp = client.GenerateManifest(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": MODULE_ID,
             "include_patterns": ["*.pff"],
@@ -314,7 +314,7 @@ def test_roundtrip_full(manifest_server):
 
     entries = client.GetManifest(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": MODULE_ID,
         }
@@ -341,15 +341,13 @@ def test_roundtrip_full(manifest_server):
 
 def test_manifest_file_format_four_columns(manifest_server):
     """The manifest file on disk uses 4-column two-space-delimited format."""
-    from pathlib import Path
-
-    client, tmp_path = manifest_server
+    client, data_root = manifest_server
     run_dir = "manifest_format.pffd"
-    _make_manifest_run_dir(tmp_path, run_dir)
+    _make_manifest_run_dir(data_root, run_dir)
 
     resp = client.GenerateManifest(
         {
-            "data_dir": str(tmp_path),
+            "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": MODULE_ID,
             "include_patterns": ["*.pff"],
