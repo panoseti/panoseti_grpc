@@ -39,7 +39,7 @@ def manifest_server(tmp_path_factory):
         try:
             with socket.create_connection(("localhost", TEST_PORT), timeout=0.1):
                 break
-        except (OSError, ConnectionRefusedError):
+        except OSError, ConnectionRefusedError:
             time.sleep(0.05)
     else:
         proc.terminate()
@@ -90,7 +90,7 @@ def test_generate_manifest_success(manifest_server):
     """GenerateManifest returns success=True, correct file_count and total_bytes."""
     client, data_root = manifest_server
     run_dir = "manifest_test.pffd"
-    module_run_dir = _make_manifest_run_dir(data_root, run_dir)
+    _make_manifest_run_dir(data_root, run_dir)
 
     expected_total_bytes = sum(len(c) for c in _PFF_FILES.values())
 

@@ -74,6 +74,7 @@ class RedisBatcher:
                 if logs:
                     try:
                         import redis
+
                         await cast(Any, self.redis.rpush(LOG_REDIS_KEY, *logs))
                     except (redis.exceptions.RedisError, Exception) as e:
                         logger.critical(f"Redis Batcher Failure (OOM or Connection): {e}. Falling back to local log.")

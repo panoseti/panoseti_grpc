@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from pathlib import Path
 import os
 import sys
 import threading
@@ -208,7 +207,6 @@ def get_logger(
     grpc_enabled: bool = True,
     reset: bool = True,
 ) -> logging.Logger:
-
     """
     Get or create a configured logger.
 

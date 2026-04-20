@@ -38,7 +38,7 @@ def cleanup_server(tmp_path_factory):
         try:
             with socket.create_connection(("localhost", TEST_PORT), timeout=0.1):
                 break
-        except (OSError, ConnectionRefusedError):
+        except OSError, ConnectionRefusedError:
             time.sleep(0.05)
     else:
         proc.terminate()
@@ -123,9 +123,7 @@ def test_selective_preserve_overrides_delete(cleanup_server):
     run_dir = "test_preserve.pffd"
     module_run_dir = _make_run_dir(data_root, run_dir)
 
-    pff_size_before = sum(
-        f.stat().st_size for f in module_run_dir.glob("*.pff")
-    )
+    pff_size_before = sum(f.stat().st_size for f in module_run_dir.glob("*.pff"))
     assert pff_size_before > 0
 
     resp = client.CleanupData(
@@ -151,8 +149,8 @@ def test_selective_preserve_overrides_delete(cleanup_server):
 
     # preserved_paths are relative to the module run dir
     preserved = resp["preserved_paths"]
-    assert any("data1.pff" in p or "data1.pff" == p for p in preserved)
-    assert any("data2.pff" in p or "data2.pff" == p for p in preserved)
+    assert any("data1.pff" in p or p == "data1.pff" for p in preserved)
+    assert any("data2.pff" in p or p == "data2.pff" for p in preserved)
 
 
 def test_selective_no_matching_files(cleanup_server):
@@ -206,7 +204,7 @@ def test_full_cleanup_already_gone(cleanup_server):
     """CLEANUP_FULL on a directory that was already removed returns success=False."""
     client, data_root = cleanup_server
     run_dir = "test_gone.pffd"
-    module_run_dir = _make_run_dir(data_root, run_dir)
+    _make_run_dir(data_root, run_dir)
 
     # First cleanup
     resp = client.CleanupData(

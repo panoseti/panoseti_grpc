@@ -2,7 +2,7 @@
 Daq Control Service configuration classes for validation
 """
 
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -60,7 +60,7 @@ class StatusDaqModel(BaseModel):
     check_run_dirs: bool = Field(...)
 
 
-class CleanupMode(str, Enum):
+class CleanupMode(StrEnum):
     CLEANUP_FULL = "CLEANUP_FULL"
     CLEANUP_SELECTIVE = "CLEANUP_SELECTIVE"
 
@@ -109,4 +109,3 @@ class GenerateManifestModel(BaseModel):
         if not full_path.is_dir():
             raise ValueError(f"'{full_path}' does not exist")
         return self
-

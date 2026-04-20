@@ -284,7 +284,8 @@ class AsyncGrpcHandler(logging.Handler):
                     function_name=payload["function_name"],
                 )
                 # 3. Attach a callback to handle success/failure in the background
-                future.add_done_callback(self._on_rpc_done)
+                if future is not None:
+                    future.add_done_callback(self._on_rpc_done)
 
             except Exception as e:
                 # Only happens if local object creation fails
@@ -309,8 +310,12 @@ class AsyncGrpcHandler(logging.Handler):
         """
         if hasattr(self, "_stop_event"):
             self._stop_event.set()
+        
+        # Give the worker a chance to flush the remaining queue
         if hasattr(self, "worker") and self.worker.is_alive():
-            self.worker.join(timeout=1.0)
+            # If the queue is not empty, wait a bit longer for it to drain
+            timeout = 3.0 if not self.queue.empty() else 1.0
+            self.worker.join(timeout=timeout)
         super().close()
 
 
@@ -364,7 +369,7 @@ def make_grpc_logger(
             logging.exception(e)
 
     # 2. Create the gRPC Handler (Always do this)
-    grpc_handler = AsyncGrpcHandler(grpc_client, service_name, queue_size=queue_size)
+    grpc_handler = AsyncGrpcHandler(grpc_client, queue_size=queue_size)
 
     # 3. Attach gRPC Handler (Idempotent check)
     if not any(isinstance(h, AsyncGrpcHandler) for h in target_logger.handlers):

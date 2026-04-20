@@ -12,7 +12,7 @@ def test_extra_context_merging() -> None:
     is correctly formatted into the final message.
     """
     mock_client = MagicMock(spec=TelemetryClient)
-    handler = AsyncGrpcHandler(mock_client, "TEST", queue_size=10)
+    handler = AsyncGrpcHandler(mock_client, queue_size=10)
 
     # Setup standard formatter (usually done by basicConfig)
     formatter = logging.Formatter("%(message)s")

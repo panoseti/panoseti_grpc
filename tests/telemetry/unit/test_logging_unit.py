@@ -18,7 +18,7 @@ class TestAsyncHandler:
         mock_client.send_log_future.side_effect = lambda *args, **kwargs: time.sleep(0.5)
 
         # Create Handler with TINY queue
-        handler = AsyncGrpcHandler(mock_client, "TEST_SERVICE", queue_size=1)
+        handler = AsyncGrpcHandler(mock_client, queue_size=1)
 
         record = logging.LogRecord(
             name="test", level=logging.INFO, pathname=__file__, lineno=10, msg="Test Message", args=(), exc_info=None
@@ -51,7 +51,7 @@ class TestAsyncHandler:
         Verifies the worker thread correctly constructs the gRPC call.
         """
         mock_client = MagicMock(spec=TelemetryClient)
-        handler = AsyncGrpcHandler(mock_client, "TEST_SERVICE", queue_size=10)
+        handler = AsyncGrpcHandler(mock_client, queue_size=10)
 
         # FIXED: Use simple string to avoid JSON-in-JSON escaping confusion in tests.
         # The worker wraps plain strings in {"text": ...}
@@ -67,6 +67,7 @@ class TestAsyncHandler:
             # NEW REQUIRED FIELDS
             "process": 1234,
             "thread": "TestWorkerThread",
+            "service": "TEST_SERVICE",
         }
         handler.queue.put(test_item)
 

@@ -158,7 +158,7 @@ def test_queue_overflow_protection(grpc_client: Any) -> None:
     service_name = "OVERFLOW_TEST"
 
     # Tiny queue size = 1
-    handler = AsyncGrpcHandler(grpc_client, service_name, queue_size=1)
+    handler = AsyncGrpcHandler(grpc_client, queue_size=1)
 
     # Mock the worker to do NOTHING (simulating a stuck thread)
     # We replace the _worker function with a no-op before starting

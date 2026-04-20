@@ -12,7 +12,7 @@ class TestStructuredLogic:
         the handler wraps it in {"text": "..."} automatically.
         """
         mock_client = MagicMock(spec=TelemetryClient)
-        handler = AsyncGrpcHandler(mock_client, "TEST", queue_size=10)
+        handler = AsyncGrpcHandler(mock_client, queue_size=10)
 
         # 1. Log a plain string
         record = logging.LogRecord(
@@ -39,7 +39,7 @@ class TestStructuredLogic:
         from the Python LogRecord and passed to gRPC.
         """
         mock_client = MagicMock(spec=TelemetryClient)
-        handler = AsyncGrpcHandler(mock_client, "TEST", queue_size=10)
+        handler = AsyncGrpcHandler(mock_client, queue_size=10)
 
         record = logging.LogRecord(
             name="test",

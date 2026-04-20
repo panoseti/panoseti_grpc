@@ -111,7 +111,7 @@ def test_queue_overflow_protection(redis_client: Any) -> None:
     service_name = "OVERFLOW_TEST"
     client = TelemetryClient(host="localhost", port=50051)
 
-    handler = AsyncGrpcHandler(client, service_name, queue_size=2)
+    handler = AsyncGrpcHandler(client, queue_size=2)
 
     logger = logging.getLogger(service_name)
     logger.handlers = [handler]

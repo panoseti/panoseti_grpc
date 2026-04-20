@@ -21,8 +21,9 @@ import signal
 from collections.abc import AsyncGenerator, Callable
 from glob import glob
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
+import anyio
 import psutil
 from google.protobuf.message import Message
 from google.protobuf.struct_pb2 import Struct
@@ -77,13 +78,13 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     Handles start daq, stop daq and status daq.
     """
 
-    def __init__(self, level: int = logging.INFO) -> None:
+    def __init__(self, level: int = logging.INFO, grpc_enabled: bool = True) -> None:
         self.logger = get_logger(
             "daq_control_server",
             level=level,
             console=True,
             log_dir=SERVER_LOG_DIR,
-            grpc_enabled=True,
+            grpc_enabled=grpc_enabled,
         )
         self.logger.info("DaqControlServicer initialized")
         self.logger.info("DaqControl Server Online")
@@ -247,6 +248,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             console=False,
         )
         # create cmdline for start HASHPIPE
+        self.logger.info(f"Starting HASHPIPE for run_dir: {run_dir}")
         cmd = [
             "hashpipe",
             "-p",
@@ -271,8 +273,8 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         ]
         # log the cmd
         cmdstr = " ".join(cmd)
-        self.logger.debug("Create subprocess...")
-        self.logger.debug(f"cmd: {cmdstr}")
+        self.logger.info("Create subprocess...")
+        self.logger.info(f"cmd: {cmdstr}")
         proc = await asyncio.create_subprocess_exec(
             *cmd, cwd=datadir, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=True
         )
@@ -436,12 +438,13 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         for cleanup_path in cleanup_paths:
             if not self._cleanup_dir(cleanup_path):
                 msg += f"_cleanup_dir failed for {cleanup_path}"
-            all_cleaned &= not os.path.exists(cleanup_path)  # noqa: ASYNC240
+            # ASYNC240: Use anyio.Path for non-blocking file existence checks in async method
+            path_obj = anyio.Path(cleanup_path)
+            all_cleaned &= not await path_obj.exists()
         if msg:
             self.logger.warning(msg)
 
         return daq_control_pb2.CleanupDataResponse(success=all_cleaned, message=msg)
-
 
     @grpc_error_handler
     async def GenerateManifest(
@@ -462,25 +465,27 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             return daq_control_pb2.GenerateManifestResponse(success=False, message=msg)
 
         all_entries = []
-        manifest_path = ""
-        algorithm = vreq.algorithm
         t0 = asyncio.get_event_loop().time()
         module_run_dir = vreq.data_dir / f"module_{vreq.module_id}" / vreq.run_dir
-        if not module_run_dir.is_dir():
+
+        # ASYNC240: Use anyio.Path for non-blocking directory checks in async method
+        module_run_dir_async = anyio.Path(module_run_dir)
+        if not await module_run_dir_async.is_dir():
             self.logger.warning(f"Module dir not found: {module_run_dir}")
             return daq_control_pb2.GenerateManifestResponse(
                 success=False,
                 message=f"Module dir not found: {module_run_dir}",
             )
+
         result = await compute_manifest(module_run_dir, vreq.include_patterns, vreq.algorithm)
         all_entries.extend(result.entries)
         manifest_path = str(result.manifest_path)
-        algorithm = result.algorithm
+        # Type narrowing for MyPy literal compatibility
+        algorithm = cast(Literal["blake3", "xxh3_128"], result.algorithm)
         elapsed = asyncio.get_event_loop().time() - t0
         total_bytes = sum(e.size_bytes for e in all_entries)
         self.logger.info(
-            f"Manifest generated: {len(all_entries)} files, {total_bytes} bytes, "
-            f"algo={algorithm}, path={manifest_path}"
+            f"Manifest generated: {len(all_entries)} files, {total_bytes} bytes, algo={algorithm}, path={manifest_path}"
         )
         return daq_control_pb2.GenerateManifestResponse(
             success=True,
@@ -495,19 +500,22 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     @grpc_error_handler
     async def GetManifest(
         self, request: daq_control_pb2.GetManifestRequest, context: grpc.ServicerContext
-    ) -> AsyncGenerator[daq_control_pb2.ManifestEntry, None]:
+    ) -> AsyncGenerator[daq_control_pb2.ManifestEntry]:
         self.logger.info("GetManifest called...")
-        data_dir = Path(request.data_dir)
-        run_dir_path = (data_dir / f"module_{request.module_id}" / request.run_dir).resolve()
-        if not run_dir_path.is_relative_to(data_dir.resolve()):
+
+        # ASYNC240: Use anyio.Path for non-blocking path resolution in async generator
+        data_dir = await anyio.Path(request.data_dir).resolve()
+        run_dir_path = await (data_dir / f"module_{request.module_id}" / request.run_dir).resolve()
+
+        if not run_dir_path.is_relative_to(data_dir):
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "run_dir escapes data_dir")
             return
 
         # Auto-detect manifest file by trying known algorithm suffixes
-        manifest_path: Path | None = None
+        manifest_path: anyio.Path | None = None
         for suffix in ("blake3", "xxh3_128", "sha256"):
             candidate = run_dir_path / f"manifest.{suffix}"
-            if candidate.is_file():
+            if await candidate.is_file():
                 manifest_path = candidate
                 break
 
@@ -515,10 +523,10 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             await context.abort(grpc.StatusCode.NOT_FOUND, f"No manifest file found in {run_dir_path}")
             return
 
-        def _read_manifest(path: Path) -> list[daq_control_pb2.ManifestEntry]:
+        async def _read_manifest(path: anyio.Path) -> list[daq_control_pb2.ManifestEntry]:
             entries = []
-            with open(path) as f:
-                for line in f:
+            async with await path.open() as f:
+                async for line in f:
                     line = line.rstrip("\n")
                     if not line:
                         continue
@@ -543,7 +551,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                     )
             return entries
 
-        entries = await asyncio.to_thread(_read_manifest, manifest_path)
+        entries = await _read_manifest(manifest_path)
         for entry in entries:
             yield entry
 

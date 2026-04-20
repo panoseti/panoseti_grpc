@@ -26,7 +26,7 @@ def crash_proof_logger() -> None:
     mock_client.send_log_future.return_value = future_mock
 
     # 3. Create the Handler manually
-    handler = AsyncGrpcHandler(mock_client, "CrashTestDummy", queue_size=10)
+    handler = AsyncGrpcHandler(mock_client, queue_size=10)
 
     # 4. Create an isolated logger
     logger = logging.getLogger("CrashTestDummy")

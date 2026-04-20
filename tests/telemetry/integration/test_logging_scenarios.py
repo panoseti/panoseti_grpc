@@ -60,7 +60,7 @@ def test_huge_payload_logging(redis_client: Any) -> None:
     logger.setLevel(logging.INFO)
     logger.handlers = []
     # Larger queue to accept the burst
-    logger.addHandler(AsyncGrpcHandler(client, service_name, queue_size=100))
+    logger.addHandler(AsyncGrpcHandler(client, queue_size=100))
 
     huge_msg = "X" * 5000
     logger.info(huge_msg)
@@ -84,7 +84,7 @@ def test_handler_survives_queue_overflow() -> None:
 
     # 2. Setup Handler with a TINY queue (size=1)
     # This makes it instant to overflow.
-    handler = AsyncGrpcHandler(mock_client, "CRASH_TEST", queue_size=1)
+    handler = AsyncGrpcHandler(mock_client, queue_size=1)
 
     # 3. Create dummy records
     # Note: We must populate process/threadName because client.py now expects them

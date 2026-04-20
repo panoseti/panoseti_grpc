@@ -7,12 +7,13 @@ Computes per-file digests and writes a manifest file atomically.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import fnmatch
 import hashlib
 import logging
 import os
-import time
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -24,14 +25,14 @@ try:
 
     def _digest_bytes(data: bytes, algo: str) -> str:
         if algo == "blake3":
-            return _blake3.blake3(data).hexdigest()  # type: ignore[attr-defined]
+            return str(_blake3.blake3(data).hexdigest())
         return _digest_xxh3(data)
 
     _HAS_BLAKE3 = True
 except ImportError:
     _HAS_BLAKE3 = False
 
-    def _digest_bytes(data: bytes, algo: str) -> str:  # type: ignore[misc]
+    def _digest_bytes(data: bytes, algo: str) -> str:
         return _digest_xxh3(data) if algo == "xxh3_128" else hashlib.sha256(data).hexdigest()
 
 
@@ -39,13 +40,13 @@ try:
     import xxhash as _xxhash
 
     def _digest_xxh3(data: bytes) -> str:
-        return _xxhash.xxh3_128(data).hexdigest()
+        return str(_xxhash.xxh3_128(data).hexdigest())
 
     _HAS_XXHASH = True
 except ImportError:
     _HAS_XXHASH = False
 
-    def _digest_xxh3(data: bytes) -> str:  # type: ignore[misc]
+    def _digest_xxh3(data: bytes) -> str:
         return hashlib.sha256(data).hexdigest()
 
 
@@ -123,10 +124,8 @@ def _compute_manifest_sync(
                 f.write(f"{entry.digest_hex}  {entry.size_bytes}  {entry.mtime_ns}  {entry.relative_path}\n")
         os.replace(tmp_path, manifest_path)
     except Exception:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp_path)
-        except OSError:
-            pass
         raise
 
     elapsed = time.monotonic() - t0
