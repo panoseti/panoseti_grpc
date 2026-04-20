@@ -42,7 +42,7 @@ class TelemetryClient:
     Supports both Strict (Production) and Flexible (Experimental) logging.
     """
 
-    def __init__(self, host: str | None = None, port: int | None = None) -> None:
+    def __init__(self, host: str | None = None, port: int | None = None, verbose: bool = False) -> None:
         """
         Initialize the client connection to the Headnode Telemetry Service server.
         Args:
@@ -51,6 +51,7 @@ class TelemetryClient:
         """
         self.host = host or os.getenv("HEADNODE_IP", DEFAULT_HEADNODE)
         self.grpc_port = port or int(os.getenv("HEADNODE_GRPC_PORT", DEFAULT_GRPC_PORT))
+        self.verbose = verbose
         # --- Define Retry Policy (JSON) ---
         # service_config = {
         #     "methodConfig": [
@@ -84,10 +85,11 @@ class TelemetryClient:
 
     def _on_channel_state_change(self, connectivity: grpc.ChannelConnectivity) -> None:
         # This runs in a background thread whenever connection state changes
-        if connectivity == grpc.ChannelConnectivity.TRANSIENT_FAILURE:
-            print(f"⚠️ Telemetry Connection Lost to [{self.target}] - Retrying...")
-        elif connectivity == grpc.ChannelConnectivity.READY:
-            print(f"✅ Telemetry Connection Active / Restored to [{self.target}]")
+        if self.verbose:
+            if connectivity == grpc.ChannelConnectivity.TRANSIENT_FAILURE:
+                print(f"⚠️ Telemetry Connection Lost to [{self.target}] - Retrying...")
+            elif connectivity == grpc.ChannelConnectivity.READY:
+                print(f"✅ Telemetry Connection Active / Restored to [{self.target}]")
 
     def _get_timestamp(self) -> Timestamp:
         ts = Timestamp()
@@ -198,10 +200,9 @@ class TelemetryClient:
 
 
 class AsyncGrpcHandler(logging.Handler):
-    def __init__(self, grpc_client: TelemetryClient | None, service_name: str, queue_size: int = 1000) -> None:
+    def __init__(self, grpc_client: TelemetryClient | None, queue_size: int = 1000) -> None:
         super().__init__()
         self.grpc_client = grpc_client
-        self.service_name = service_name
         self.queue: Queue[dict[str, Any]] = Queue(maxsize=queue_size)
 
         if grpc_client is not None:
@@ -215,7 +216,6 @@ class AsyncGrpcHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
             msg = self.format(record)
-            # Python's LogRecord already captures these!
 
             severity = int(record.levelno / 10)
             if severity < 1:
@@ -226,6 +226,7 @@ class AsyncGrpcHandler(logging.Handler):
             payload = {
                 "msg": msg,
                 "level": severity,
+                "service": record.name,
                 "timestamp": record.created,
                 "file_path": record.pathname,
                 "line_number": record.lineno,
@@ -240,10 +241,10 @@ class AsyncGrpcHandler(logging.Handler):
             self.handleError(record)
 
     def _worker(self) -> None:
-        while hasattr(self, "_stop_event") and not self._stop_event.is_set():
+        while not self._stop_event.is_set() or not self.queue.empty():
             try:
-                # 1. Get from queue (Blocking wait for new logs)
-                payload = self.queue.get(timeout=0.5)
+                # Poll frequently to allow fast shutdown
+                payload = self.queue.get(timeout=0.1)
             except queue.Empty:
                 continue
             try:
@@ -274,7 +275,7 @@ class AsyncGrpcHandler(logging.Handler):
                     )
 
                 future = self.grpc_client.send_log_future(
-                    service=self.service_name,
+                    service=payload["service"],
                     severity=payload["level"],
                     message=final_json_str,
                     timestamp=payload["timestamp"],
@@ -283,7 +284,6 @@ class AsyncGrpcHandler(logging.Handler):
                     function_name=payload["function_name"],
                 )
                 # 3. Attach a callback to handle success/failure in the background
-                # This ensures we don't block THIS thread waiting for the result.
                 future.add_done_callback(self._on_rpc_done)
 
             except Exception as e:

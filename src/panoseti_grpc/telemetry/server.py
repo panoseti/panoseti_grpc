@@ -80,7 +80,7 @@ class RedisBatcher:
                         # SC-057: Fallback to local files if Redis is full/down
                         try:
                             os.makedirs("logs", exist_ok=True)
-                            with open("logs/telemetry_fallback.log", "a") as f:
+                            with open("logs/telemetry_fallback.log", "a") as f:  # noqa: ASYNC230
                                 for log in logs:
                                     f.write(log + "\n")
                         except Exception as fe:

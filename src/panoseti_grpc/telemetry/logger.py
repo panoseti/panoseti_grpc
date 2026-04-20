@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 import os
 import sys
 import threading
@@ -115,7 +116,8 @@ class PanosetiLogFactory:
     import typing
 
     _grpc_clients: typing.ClassVar[dict[tuple[str, int], TelemetryClient]] = {}
-    _lock: threading.Lock = threading.Lock()
+    _grpc_handlers: typing.ClassVar[dict[tuple[str, int], AsyncGrpcHandler]] = {}
+    _lock: threading.RLock = threading.RLock()
 
     @classmethod
     def get_shared_client(cls, host: str, port: int) -> TelemetryClient:
@@ -131,9 +133,24 @@ class PanosetiLogFactory:
             return cls._grpc_clients[key]
 
     @classmethod
-    def reset_clients(cls) -> None:
-        """For testing purposes: Clear cached clients."""
+    def get_shared_handler(cls, host: str, port: int) -> AsyncGrpcHandler:
+        """
+        Returns a shared AsyncGrpcHandler for the given host/port.
+        """
+        key = (host, port)
         with cls._lock:
+            if key not in cls._grpc_handlers:
+                client = cls.get_shared_client(host, port)
+                cls._grpc_handlers[key] = AsyncGrpcHandler(client)
+            return cls._grpc_handlers[key]
+
+    @classmethod
+    def reset_clients(cls) -> None:
+        """For testing purposes: Clear cached clients and handlers."""
+        with cls._lock:
+            for h in cls._grpc_handlers.values():
+                h.close()
+            cls._grpc_handlers.clear()
             cls._grpc_clients.clear()
 
     @staticmethod
@@ -168,16 +185,9 @@ class PanosetiLogFactory:
 
         # 3. gRPC (SHARED RESOURCE)
         if cfg.grpc.enabled and not any(isinstance(h, AsyncGrpcHandler) for h in logger.handlers):
-            # We must verify we don't attach multiple AsyncGrpcHandlers to the same logger
-            # (e.g. if user called get_logger without reset=True)
             try:
-                # RETRIEVE SHARED CLIENT
-                client = PanosetiLogFactory.get_shared_client(cfg.grpc.host, cfg.grpc.port)
-
-                # Create a Handler unique to this service (preserves 'service_name')
-                # but backed by the SHARED client.
-                grpc_handler = AsyncGrpcHandler(client, cfg.service_name)
-                grpc_handler.setLevel(cfg.level)
+                # RETRIEVE SHARED HANDLER
+                grpc_handler = PanosetiLogFactory.get_shared_handler(cfg.grpc.host, cfg.grpc.port)
                 logger.addHandler(grpc_handler)
             except Exception as e:
                 if cfg.grpc.fail_fast:
@@ -194,10 +204,11 @@ def get_logger(
     service_name: str,
     level: int | str = logging.INFO,
     console: bool = True,
-    log_dir: str | None = None,
+    log_dir: str | Path | None = None,
     grpc_enabled: bool = True,
     reset: bool = True,
 ) -> logging.Logger:
+
     """
     Get or create a configured logger.
 
@@ -212,7 +223,8 @@ def get_logger(
     """
     file_config = FileLogConfig(enabled=False)
     if log_dir:
-        file_config = FileLogConfig(enabled=True, directory=Path(log_dir))
+        log_dir_path = Path(log_dir) if isinstance(log_dir, str) else log_dir
+        file_config = FileLogConfig(enabled=True, directory=log_dir_path)
 
     grpc_config = GrpcLogConfig(enabled=grpc_enabled)
 
