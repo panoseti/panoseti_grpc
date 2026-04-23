@@ -205,7 +205,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
     @grpc_error_handler
     async def StartDaq(
-        self, request: daq_control_pb2.StartDaqRequest, context: grpc.ServicerContext
+        self, request: daq_control_pb2.StartDaqRequest, context: grpc.aio.ServicerContext
     ) -> daq_control_pb2.StartDaqResponse:
         self.logger.info("Starting HASHPIPE instance...")
         # 1. check if we already have HASHPIPE running
@@ -214,9 +214,15 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             msg = f"Found {n} HASHPIPE instances running. pids: {pids}"
             self.logger.warning(msg)
             return daq_control_pb2.StartDaqResponse(success=False, message=msg)
-        # 2. check the parameters
-        dreq = self._request_to_dict(request)
-        vreq = StartDaqModel(**dreq)
+        # 2. validate request
+        try:
+            dreq = self._request_to_dict(request)
+            vreq = StartDaqModel(**dreq)
+        except ValidationError as e:
+            msg = f"Validation Error: {e}"
+            self.logger.error(msg)
+            return daq_control_pb2.StartDaqResponse(success=False, message=msg)
+
         vreq_dict = vreq.model_dump(mode="json", exclude_unset=True)
         # 3. get the parameters
         datadir = vreq.data_dir
@@ -327,11 +333,17 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
     @grpc_error_handler
     async def StatusDaq(
-        self, request: daq_control_pb2.DaqStatusRequest, context: grpc.ServicerContext
+        self, request: daq_control_pb2.DaqStatusRequest, context: grpc.aio.ServicerContext
     ) -> daq_control_pb2.DaqStatusResponse:
         self.logger.info("Checking Daq Node status...")
-        creq = self._request_to_dict(request)
-        vreq = StatusDaqModel(**creq)
+        try:
+            creq = self._request_to_dict(request)
+            vreq = StatusDaqModel(**creq)
+        except ValidationError as e:
+            msg = f"Validation Error: {e}"
+            self.logger.error(msg)
+            return daq_control_pb2.DaqStatusResponse(success=False)  # StatusResponse doesn't have message field
+
         datadir = vreq.data_dir
         # check hashpipe status
         if vreq.check_hashpipe_running:

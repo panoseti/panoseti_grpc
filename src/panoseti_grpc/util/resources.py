@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, TextIO, cast
 
 
-def load_package_resource(package: str, fname: str | Path, parser: Callable[[TextIO], Any] | None = None) -> Any:
+def load_package_resource[T](package: str, fname: str | Path, parser: Callable[[TextIO], T] | None = None) -> T:
     """Load a file bundled inside a Python package and parse it.
 
     Args:
@@ -19,12 +19,12 @@ def load_package_resource(package: str, fname: str | Path, parser: Callable[[Tex
         parser:  callable that accepts an open text-mode file object and
                  returns the parsed data.  Defaults to ``json.load``.
     """
-    if parser is None:
-        parser = json.load
+    actual_parser = cast(Callable[[TextIO], T], json.load) if parser is None else parser
+
     resource_path = _resources.files(package).joinpath(fname)
     with resource_path.open("r") as f:
         # Cast f as TextIO to ensure it's compatible with the parser type hint
-        return parser(cast(TextIO, f))
+        return actual_parser(cast(TextIO, f))
 
 
 def load_package_json(package: str, fname: str | Path) -> dict[str, Any]:

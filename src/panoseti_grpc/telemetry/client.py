@@ -104,7 +104,7 @@ class TelemetryClient:
         except grpc.RpcError as e:
             raise ConnectionError(f"gRPC failed: {e.details()}") from e
 
-    def log_flexible(self, device_type: str, device_id: str, data: dict[str, Any]) -> None:
+    def log_flexible(self, device_type: str, device_id: str, data: dict[str, int | float | str | bool | None]) -> None:
         """
         Experimental Mode Logging.
 
@@ -132,7 +132,7 @@ class TelemetryClient:
         )
         self._send(req)
 
-    def log_strict(self, device_type: str, device_id: str, data: dict[str, Any]) -> None:
+    def log_strict(self, device_type: str, device_id: str, data: dict[str, int | float | str | bool | None]) -> None:
         """
         Production Mode Logging.
 

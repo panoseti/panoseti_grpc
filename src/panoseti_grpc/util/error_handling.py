@@ -23,7 +23,7 @@ def grpc_error_handler[F: Callable[..., Any]](func: F) -> F:
         # Server-streaming RPC: the handler is an async generator (uses yield).
         # We must wrap it as an async generator too — you cannot await a generator.
         @functools.wraps(func)
-        async def agen_wrapper(self: Any, request: Any, context: Any) -> Any:
+        async def agen_wrapper(self: Any, request: Any, context: grpc.aio.ServicerContext) -> Any:
             try:
                 async for item in func(self, request, context):
                     yield item
@@ -36,7 +36,7 @@ def grpc_error_handler[F: Callable[..., Any]](func: F) -> F:
         return cast(F, agen_wrapper)
 
     @functools.wraps(func)
-    async def wrapper(self: Any, request: Any, context: Any) -> Any:
+    async def wrapper(self: Any, request: Any, context: grpc.aio.ServicerContext) -> Any:
         try:
             return await func(self, request, context)
         except asyncio.CancelledError:

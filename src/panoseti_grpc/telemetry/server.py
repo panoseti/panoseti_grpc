@@ -139,9 +139,12 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
         await self.redis.aclose()
         logger.info("Redis connection closed.")
 
-    def _proto_to_dict(self, message: Message) -> dict[str, Any]:
+    def _proto_to_dict(self, message: Message) -> dict[str, int | float | str | bool | None]:
         """Helper to safely convert Proto to Dict for Pydantic."""
-        return MessageToDict(message, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)
+        return cast(
+            dict[str, int | float | str | bool | None],
+            MessageToDict(message, preserving_proto_field_name=True, always_print_fields_with_no_presence=True),
+        )
 
     async def Log(
         self, request: telemetry_pb2.LogMessage, context: grpc.aio.ServicerContext
@@ -151,9 +154,9 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
         Validates schema and queues for Redis batch writing.
         """
         try:
-            # 1. Extract Data
+            # 1. Extract Data into a typed dictionary
             # We map protobuf fields to our Pydantic Schema
-            log_data: dict[str, Any] = {
+            log_data: dict[str, int | float | str | bool | None] = {
                 "host": request.host,
                 "service_name": request.service_name,
                 "timestamp": request.timestamp.seconds + request.timestamp.nanos / 1e9,
@@ -169,7 +172,6 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
             }
 
             # 2. Validate (Pydantic)
-            # This is the CPU-bound part. Pydantic is fast, but it happens inline.
             validated = LogSchema(**log_data)
 
             # 3. Serialize & Queue (Async)
@@ -201,6 +203,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
 
         try:
             # 1. Determine Payload Source & Type
+            raw_data: dict[str, int | float | str | bool | None]
             match request.WhichOneof("payload"):
                 case "gnss":
                     payload_source = "gnss"
@@ -220,7 +223,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
                     return telemetry_pb2.StatusResponse(success=False, message=msg)
 
             # Update identifiers
-            device_id = request.device_id or raw_data.get("device_id", "N/A")
+            device_id = str(request.device_id or raw_data.get("device_id", "N/A"))
             if request.device_type:
                 device_type = request.device_type
 
