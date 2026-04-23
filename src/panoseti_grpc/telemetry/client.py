@@ -310,7 +310,7 @@ class AsyncGrpcHandler(logging.Handler):
         """
         if hasattr(self, "_stop_event"):
             self._stop_event.set()
-        
+
         # Give the worker a chance to flush the remaining queue
         if hasattr(self, "worker") and self.worker.is_alive():
             # If the queue is not empty, wait a bit longer for it to drain
