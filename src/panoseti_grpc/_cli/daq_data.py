@@ -14,6 +14,7 @@ from panoseti_grpc.generated import (
     daq_data_pb2_grpc,
 )
 from panoseti_grpc.telemetry.logger import get_logger
+
 from .state import state
 
 console = Console()
@@ -26,7 +27,7 @@ def _make_channel() -> grpc.Channel:
 
 
 @app.command(name="ping")
-def daq_data_ping():
+def daq_data_ping() -> None:
     """Ping the DaqData service and report latency."""
     target = f"{state.host}:{state.port}"
     try:
@@ -37,16 +38,17 @@ def daq_data_ping():
             latency_ms = (time.monotonic() - t0) * 1000
         if state.json:
             import json
+
             print(json.dumps({"host": state.host, "port": state.port, "latency_ms": round(latency_ms, 2)}))
         else:
             console.print(f"[green]✓[/green] DaqData Ping OK — {target} — {latency_ms:.1f} ms")
     except grpc.RpcError as e:
         console.print(f"[red]✗ DaqData Ping FAILED — {e.code().name}: {e.details()}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None
 
 
 @app.command(name="init-sim")
-def daq_data_init_sim():
+def daq_data_init_sim() -> None:
     """Initialize the DaqData service in simulation mode on the target server."""
     from panoseti_grpc.util.resources import load_package_json
 
@@ -58,7 +60,7 @@ def daq_data_init_sim():
         hp_io_cfg["force"] = True
     except Exception as e:
         console.print(f"[red]Failed to load hp_io_config_simulate.json: {e}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None
 
     try:
         with _make_channel() as channel:
@@ -73,16 +75,16 @@ def daq_data_init_sim():
             resp = stub.InitHpIo(req, timeout=state.timeout, wait_for_ready=True)
     except grpc.RpcError as e:
         console.print(f"[red]✗ InitHpIo RPC failed — {e.code().name}: {e.details()}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None
     except Exception as e:
         console.print(f"[red]✗ Unexpected error: {e}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None
 
     if resp.success:
         console.print("[green]✓[/green] DaqData simulation mode initialized.")
     else:
         console.print(f"[red]✗ InitHpIo returned success=False: {resp.error_message}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None
 
 
 async def _stream_images(host: str, port: int, seconds: float, timeout_sec: float) -> int:
@@ -120,7 +122,7 @@ async def _stream_images(host: str, port: int, seconds: float, timeout_sec: floa
 @app.command(name="stream")
 def daq_data_stream(
     seconds: Annotated[float, typer.Option(help="Duration to stream; 0 = run until Ctrl-C")] = 5.0,
-):
+) -> None:
     """Stream images from the DaqData service and print frame summaries."""
     ret = asyncio.run(_stream_images(state.host, state.port, seconds, state.timeout))
     if ret != 0:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Annotated
 
 import grpc
 import typer
@@ -12,14 +13,15 @@ from rich.table import Table
 from panoseti_grpc.generated import (
     daq_control_pb2,
     daq_control_pb2_grpc,
-    daq_data_pb2,
     daq_data_pb2_grpc,
 )
 from panoseti_grpc.telemetry.client import TelemetryClient
 from panoseti_grpc.telemetry.logger import get_logger
+
 from .state import state
 
 console = Console()
+app = typer.Typer(help="Root level PANOSETI gRPC commands.", no_args_is_help=True)
 
 
 def _make_channel() -> grpc.Channel:
@@ -43,8 +45,13 @@ def get_reflected_services() -> set[str]:
         return set()
 
 
-def status():
+@app.command()
+def status(
+    timeout: Annotated[float | None, typer.Option(help="Individual RPC timeout in seconds")] = None,
+) -> None:
     """Probe all services and print a connectivity summary."""
+    if timeout:
+        state.timeout = timeout
     host, port = state.host, state.port
     get_logger("pseti-grpc.status", grpc_enabled=state.grpc_logging)
 
@@ -127,7 +134,8 @@ def status():
         raise typer.Exit(code=1)
 
 
-def reflect():
+@app.command()
+def reflect() -> None:
     """List all gRPC services advertised by the server via reflection."""
     services = get_reflected_services()
     if not services:
