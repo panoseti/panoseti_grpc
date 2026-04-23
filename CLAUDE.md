@@ -70,16 +70,16 @@ panoseti-server --list-services                   # print registered services an
 python -m panoseti_grpc                           # equivalent to panoseti-server
 ```
 
-Observatory CLI (`pseti-cli`) for a running server:
+Observatory CLI (`pseti-grpc`) for a running server:
 ```bash
-pseti-cli status                      # probe all services and print table
-pseti-cli reflect                     # list services via gRPC reflection
-pseti-cli telemetry log --message '{"event":"test"}'
-pseti-cli daq-data ping
-pseti-cli daq-data init-sim           # init simulation mode
-pseti-cli daq-data stream --seconds 5
-pseti-cli daq-control status
-pseti-cli --host mynode --port 50051 status  # connect to remote
+pseti-grpc status                      # probe all services and print table
+pseti-grpc reflect                     # list services via gRPC reflection
+pseti-grpc telemetry log --message '{"event":"test"}'
+pseti-grpc daq-data ping
+pseti-grpc daq-data init-sim           # init simulation mode
+pseti-grpc daq-data stream --seconds 5
+pseti-grpc daq-control status
+pseti-grpc --host mynode --port 50051 status  # connect to remote
 ```
 
 Individual service entry points (standalone):
