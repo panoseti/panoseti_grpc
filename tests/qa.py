@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-qa.py — PANOSETI Unified QA Runner
+qa.py — PSETI Unified QA Runner
 
 Refactored to Typer for integration into pseti-grpc CLI.
 """
@@ -10,11 +10,13 @@ import sys
 import time
 import tomllib
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Optional
 
 import typer
+from panoseti_grpc.util.cli import display_tree_callback
 
-app = typer.Typer(help="PANOSETI Unified QA Runner", no_args_is_help=True)
+
+app = typer.Typer(help="PSETI Unified QA Runner", no_args_is_help=True)
 
 
 class C:
@@ -285,7 +287,7 @@ def run_all() -> None:
     async def _run_all_tasks() -> None:
         width = 60
         print(f"\n{C.bold(C.cyan('═' * width))}")
-        print(f"{C.bold(C.cyan('  PANOSETI — Full QA Suite'))}")
+        print(f"{C.bold(C.cyan('  PSETI — Full QA Suite'))}")
         print(f"{C.bold(C.cyan('═' * width))}")
 
         all_results: list[Result] = []
@@ -317,8 +319,13 @@ def run_all() -> None:
 
 
 @app.callback()
-def main_callback() -> None:
-    """PANOSETI Unified QA Runner."""
+def main_callback(
+    ctx: typer.Context,
+    tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for gRPC tests.", callback=display_tree_callback)] = False
+) -> None:
+    """PSETI Unified QA Runner."""
+    if tree:
+        return
     # Ensure we are always running from the grpc/ directory root
     # so Docker/Compose paths resolve correctly.
     grpc_root = Path(__file__).parent.parent.resolve()

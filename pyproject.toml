@@ -66,7 +66,7 @@ docs = [
 ]
 
 [project.scripts]
-pseti-grpc           = "panoseti_grpc.cli:app"
+pseti-grpc           = "panoseti_grpc.cli:standalone_app"
 
 [project.urls]
 Homepage = "https://github.com/panoseti/panoseti_grpc"
