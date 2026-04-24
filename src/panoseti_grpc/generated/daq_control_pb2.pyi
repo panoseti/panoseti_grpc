@@ -215,10 +215,18 @@ class CleanupDataRequest(_message.Message):
     MODE_FIELD_NUMBER: _builtins.int
     DELETE_PATTERNS_FIELD_NUMBER: _builtins.int
     PRESERVE_PATTERNS_FIELD_NUMBER: _builtins.int
+    MANIFEST_DIGEST_FIELD_NUMBER: _builtins.int
     data_dir: _builtins.str
     run_dir: _builtins.str
     force: _builtins.bool
     mode: Global___CleanupMode.ValueType
+    manifest_digest: _builtins.bytes
+    """manifest_digest: hex root-digest of the manifest file, required for
+    CLEANUP_SELECTIVE to enforce "no deletion without verified integrity".
+    The server recomputes the manifest digest and rejects with
+    FAILED_PRECONDITION if it does not match. Empty bytes = no check
+    (legacy callers and CLEANUP_FULL are unaffected).
+    """
     @_builtins.property
     def module_id(self) -> _containers.RepeatedScalarFieldContainer[_builtins.int]: ...
     @_builtins.property
@@ -235,8 +243,9 @@ class CleanupDataRequest(_message.Message):
         mode: Global___CleanupMode.ValueType = ...,
         delete_patterns: _abc.Iterable[_builtins.str] | None = ...,
         preserve_patterns: _abc.Iterable[_builtins.str] | None = ...,
+        manifest_digest: _builtins.bytes = ...,
     ) -> None: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["data_dir", b"data_dir", "delete_patterns", b"delete_patterns", "force", b"force", "mode", b"mode", "module_id", b"module_id", "preserve_patterns", b"preserve_patterns", "run_dir", b"run_dir"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["data_dir", b"data_dir", "delete_patterns", b"delete_patterns", "force", b"force", "manifest_digest", b"manifest_digest", "mode", b"mode", "module_id", b"module_id", "preserve_patterns", b"preserve_patterns", "run_dir", b"run_dir"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
 
 Global___CleanupDataRequest: _TypeAlias = CleanupDataRequest  # noqa: Y015

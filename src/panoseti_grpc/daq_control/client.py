@@ -164,6 +164,7 @@ class AsyncDaqControlClient:
         request.mode = daq_control_pb2.CleanupMode.Value(v_params.mode)
         request.delete_patterns.extend(v_params.delete_patterns)
         request.preserve_patterns.extend(v_params.preserve_patterns)
+        request.manifest_digest = v_params.manifest_digest
         resp: daq_control_pb2.CleanupDataResponse = await self.stub.CleanupData(request, timeout=timeout)
         return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
@@ -291,6 +292,7 @@ class DaqControlClient:
         request.mode = daq_control_pb2.CleanupMode.Value(v_params.mode)
         request.delete_patterns.extend(v_params.delete_patterns)
         request.preserve_patterns.extend(v_params.preserve_patterns)
+        request.manifest_digest = v_params.manifest_digest
         resp: daq_control_pb2.CleanupDataResponse = self.stub.CleanupData(request, timeout=timeout)
         return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 

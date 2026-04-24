@@ -422,6 +422,33 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         module_dir_paths = [f"{datadir}/module_{id}/{rundir}" for id in module_id]
         cleanup_paths = [run_dir_path, *module_dir_paths]
 
+        # Manifest-digest precondition: when CLEANUP_SELECTIVE is requested with a
+        # non-empty manifest_digest, the server re-reads each manifest file, hashes
+        # it, and refuses the RPC if the digest doesn't match.  This enforces the
+        # "no deletion without verified integrity" invariant (plan §3.2 step 6).
+        if vreq.mode == CleanupMode.CLEANUP_SELECTIVE and request.manifest_digest:
+            import hashlib as _hashlib
+            provided_digest = request.manifest_digest.hex()
+            for cp in cleanup_paths:
+                cp_path = Path(cp)
+                for algo_suffix in ("blake3", "xxh3_128", "sha256"):
+                    mf = cp_path / f"manifest.{algo_suffix}"
+                    if mf.exists():
+                        raw = mf.read_bytes()
+                        actual = _hashlib.sha256(raw).hexdigest()
+                        if actual != provided_digest:
+                            self.logger.error(
+                                "Manifest digest mismatch for %s: provided=%s..., actual=%s...",
+                                cp, provided_digest[:16], actual[:16],
+                            )
+                            await context.abort(
+                                grpc.StatusCode.FAILED_PRECONDITION,
+                                f"Manifest digest mismatch for {cp}: "
+                                f"expected {provided_digest[:16]}…, got {actual[:16]}…. "
+                                "Cleanup refused — verify the transfer before retrying.",
+                            )
+                        break
+
         if vreq.mode == CleanupMode.CLEANUP_SELECTIVE:
             total_deleted = 0
             total_freed = 0

@@ -856,7 +856,10 @@ class AioDaqDataClient:
                 for task in tasks:
                     if not task.done():
                         task.cancel()
-                await asyncio.gather(*tasks, return_exceptions=True)
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for result in results:
+                    if isinstance(result, BaseException):
+                        self.logger.error("Error during stream cleanup: %s", result)
 
         return response_generator()
 

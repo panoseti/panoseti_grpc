@@ -26,7 +26,10 @@ if _version_not_supported:
 
 
 class UbloxControlStub(object):
-    """Interface exported by the server connected to the ublox chip
+    """DEPRECATED: UbloxControl is in maintenance-only mode and will be removed in
+    the next major release. Use the Telemetry service ReportStatus path with
+    GnssPayload for GNSS data ingestion, or read GNSS data directly via the
+    capture_gps.py daemon which stores to Redis.
     """
 
     def __init__(self, channel):
@@ -53,7 +56,10 @@ class UbloxControlStub(object):
 
 
 class UbloxControlServicer(object):
-    """Interface exported by the server connected to the ublox chip
+    """DEPRECATED: UbloxControl is in maintenance-only mode and will be removed in
+    the next major release. Use the Telemetry service ReportStatus path with
+    GnssPayload for GNSS data ingestion, or read GNSS data directly via the
+    capture_gps.py daemon which stores to Redis.
     """
 
     def InitF9t(self, request, context):
@@ -105,7 +111,10 @@ def add_UbloxControlServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class UbloxControl(object):
-    """Interface exported by the server connected to the ublox chip
+    """DEPRECATED: UbloxControl is in maintenance-only mode and will be removed in
+    the next major release. Use the Telemetry service ReportStatus path with
+    GnssPayload for GNSS data ingestion, or read GNSS data directly via the
+    capture_gps.py daemon which stores to Redis.
     """
 
     @staticmethod

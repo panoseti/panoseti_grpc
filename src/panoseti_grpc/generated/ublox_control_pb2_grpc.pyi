@@ -27,7 +27,11 @@ GRPC_GENERATED_VERSION: str
 GRPC_VERSION: str
 
 class UbloxControlStub:
-    """Interface exported by the server connected to the ublox chip"""
+    """DEPRECATED: UbloxControl is in maintenance-only mode and will be removed in
+    the next major release. Use the Telemetry service ReportStatus path with
+    GnssPayload for GNSS data ingestion, or read GNSS data directly via the
+    capture_gps.py daemon which stores to Redis.
+    """
 
     @_typing.overload
     def __new__(cls, channel: _grpc.Channel) -> _Self: ...
@@ -44,7 +48,11 @@ class UbloxControlStub:
 
 @_typing.type_check_only
 class UbloxControlAsyncStub(UbloxControlStub):
-    """Interface exported by the server connected to the ublox chip"""
+    """DEPRECATED: UbloxControl is in maintenance-only mode and will be removed in
+    the next major release. Use the Telemetry service ReportStatus path with
+    GnssPayload for GNSS data ingestion, or read GNSS data directly via the
+    capture_gps.py daemon which stores to Redis.
+    """
 
     def __init__(self, channel: _aio.Channel) -> None: ...
     InitF9t: _aio.UnaryUnaryMultiCallable[_ublox_control_pb2.InitF9tRequest, _ublox_control_pb2.InitF9tResponse]  # type: ignore[assignment]
@@ -57,7 +65,11 @@ class UbloxControlAsyncStub(UbloxControlStub):
     """
 
 class UbloxControlServicer(metaclass=_abc_1.ABCMeta):
-    """Interface exported by the server connected to the ublox chip"""
+    """DEPRECATED: UbloxControl is in maintenance-only mode and will be removed in
+    the next major release. Use the Telemetry service ReportStatus path with
+    GnssPayload for GNSS data ingestion, or read GNSS data directly via the
+    capture_gps.py daemon which stores to Redis.
+    """
 
     @_abc_1.abstractmethod
     def InitF9t(

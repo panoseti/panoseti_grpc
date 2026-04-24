@@ -82,6 +82,12 @@ message CleanupDataRequest {
     CleanupMode mode = 5;
     repeated string delete_patterns  = 6;
     repeated string preserve_patterns = 7;
+    /* manifest_digest: hex root-digest of the manifest file, required for
+       CLEANUP_SELECTIVE to enforce "no deletion without verified integrity".
+       The server recomputes the manifest digest and rejects with
+       FAILED_PRECONDITION if it does not match. Empty bytes = no check
+       (legacy callers and CLEANUP_FULL are unaffected). */
+    bytes   manifest_digest = 8;
 }
 
 message CleanupDataResponse {

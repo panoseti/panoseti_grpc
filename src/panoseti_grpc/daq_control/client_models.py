@@ -51,6 +51,7 @@ class CleanupDataParameters(BaseModel):
     mode: CleanupMode = CleanupMode.CLEANUP_FULL
     delete_patterns: list[str] = []
     preserve_patterns: list[str] = []
+    manifest_digest: bytes = b""
 
 
 class GenerateManifestParameters(BaseModel):
