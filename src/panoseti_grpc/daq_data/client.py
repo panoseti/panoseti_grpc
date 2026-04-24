@@ -627,21 +627,16 @@ class AioDaqDataClient:
 
         self.logger.info("All async client channels closed.")
 
-        # Suppress common exceptions that occur during a graceful shutdown (like Ctrl+C),
-        # but allow other, unexpected exceptions to propagate.
-        if exc_type and exc_type in [ConnectionError]:
+        # Never suppress CancelledError — cooperative cancellation must propagate.
+        if exc_type is asyncio.CancelledError:
+            return False
+        if exc_type and exc_type in (ConnectionError, grpc.RpcError, grpc.FutureCancelledError):
             self.logger.warning(f"Client exiting: {exc_val}")
-            return True  # Don't re-raise the exception
-        elif exc_type and exc_type not in [
-            asyncio.CancelledError,
-            grpc.FutureCancelledError,
-            grpc.RpcError,
-            KeyboardInterrupt,
-            SystemExit,
-        ]:
+            return True
+        if exc_type and exc_type not in (KeyboardInterrupt, SystemExit):
             self.logger.error(f"Client exiting due to an unhandled exception: {exc_val}")
-            return False  # Re-raise the exception
-        return True  # Suppress expected exceptions
+            return False
+        return exc_type is not None  # suppress KeyboardInterrupt / SystemExit only
 
     async def get_valid_daq_hosts(self) -> list[str]:
         """

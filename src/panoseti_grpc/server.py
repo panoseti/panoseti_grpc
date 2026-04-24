@@ -89,6 +89,9 @@ class ServiceDescriptor:
     config_field: str
     """Attribute name on :class:`PanosetiServerConfig` holding this service's config."""
 
+    deprecated: bool = False
+    """If True, the service is in maintenance-only mode and will be removed in a future release."""
+
 
 class ServiceRegistry:
     """Maps service names to their :class:`ServiceDescriptor` objects.

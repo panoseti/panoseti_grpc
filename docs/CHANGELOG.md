@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Deprecated
+- **`ublox_control` service** is now in maintenance-only mode and will be removed in the next major
+  release. No new callers should be added. The service emits a `DeprecationWarning` at startup.
+  **Migration:** use `TelemetryClient.ReportStatus` with `GnssPayload` for GNSS data ingestion,
+  or read GNSS data directly from Redis (populated by `capture_gps.py`). The proto definition,
+  server module, and all tests will be deleted in the follow-on removal PR.
+
 ### Added
 - **Unified QA Infrastructure**: Introduced `tests/qa.py` and `tests/qa.toml` for containerized linting and testing.
 - **Python 3.14 Modernization**: Updated `src/panoseti_grpc/util/`, `src/panoseti_grpc/telemetry/`, and `src/panoseti_grpc/daq_data/` to leverage Python 3.14 features.

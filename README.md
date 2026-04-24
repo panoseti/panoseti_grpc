@@ -13,7 +13,7 @@ Each service operates independently. Click the links below for detailed API docu
 | :--- |:-------------------------------------------------------|:--------------| :--- |
 | **DAQ Data** | Streams real-time science data directly from Hashpipe. | 🟢 Production | [**Read Docs**](./docs/daq_data_service.md) |
 | **DAQ Control** | Manages Hashpipe lifecycle on DAQ nodes (start/stop/status). | 🟢 Production | [**Read Docs**](./docs/daq_control_service.md) |
-| **U-blox Control** | Controls and configures GNSS chips (F9T/F9P).          | 🟡 Beta | [**Read Docs**](./src/panoseti_grpc/ublox_control/README.md) |
+| **U-blox Control** | Controls and configures GNSS chips (F9T/F9P).          | 🔴 Deprecated | [**Read Docs**](./src/panoseti_grpc/ublox_control/README.md) |
 | **Telemetry** | Collects metadata from remote Linux machines.          | 🟢 Production  | [**Read Docs**](./docs/telemetry_service.md) |
 
 ---

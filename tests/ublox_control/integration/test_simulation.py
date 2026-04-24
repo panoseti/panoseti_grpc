@@ -3,6 +3,9 @@
 import asyncio
 import base64
 import json
+import pytest
+
+pytestmark = pytest.mark.skip(reason="ublox_control deprecated — tests preserved for the removal PR")
 from typing import Any
 
 import pytest

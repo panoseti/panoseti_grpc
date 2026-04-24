@@ -18,9 +18,11 @@ log_dir = "/var/log/panoseti"
 grpc_logging = true
 
 [server.services]
-telemetry   = false   # telemetry runs on headnode; logs forwarded via HEADNODE_IP env var
-daq_data    = true
-daq_control = true
+telemetry    = false   # telemetry runs on headnode; logs forwarded via HEADNODE_IP env var
+daq_data     = true
+daq_control  = true
+# DEPRECATED: ublox_control is in maintenance-only mode; will be removed in next major release.
+ublox_control = false
 
 # -------------------------------------------------------
 # DAQ Data service settings (production — real hardware)

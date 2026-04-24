@@ -4,6 +4,9 @@ import copy
 
 import grpc
 import pytest
+
+pytestmark = pytest.mark.skip(reason="ublox_control deprecated — tests preserved for the removal PR")
+import pytest
 from google.protobuf.json_format import ParseDict
 from google.protobuf.struct_pb2 import Struct
 

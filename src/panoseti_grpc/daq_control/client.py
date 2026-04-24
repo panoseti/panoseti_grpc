@@ -7,6 +7,7 @@ import grpc.aio
 from google.protobuf.json_format import MessageToDict
 
 from panoseti_grpc.generated import daq_control_pb2, daq_control_pb2_grpc
+from panoseti_grpc.grpc_utils import grpc_call
 
 from .client_models import (
     CleanupDataParameters,
@@ -56,6 +57,7 @@ class AsyncDaqControlClient:
             raise RuntimeError("AsyncDaqControlClient must be used as an async context manager.")
         return self._stub
 
+    @grpc_call
     async def StartDaq(self, parameters: dict[str, Any], timeout: float | None = None) -> bool:
         """Start hashpipe on the remote DAQ node.
 
@@ -80,14 +82,12 @@ class AsyncDaqControlClient:
         request.run_dir = v_params.run_dir
         request.obs = v_params.obs
         request.module_id.extend(v_params.module_id)
-        try:
-            resp: daq_control_pb2.StartDaqResponse = await self.stub.StartDaq(request, timeout=timeout)
-            if not resp.success:
-                raise ValueError(f"Server rejected data: {resp.message}")
-            return bool(resp.success)
-        except grpc.RpcError as e:
-            raise ConnectionError(f"gRPC failed: {e.details()}") from e
+        resp: daq_control_pb2.StartDaqResponse = await self.stub.StartDaq(request, timeout=timeout)
+        if not resp.success:
+            raise ValueError(f"Server rejected data: {resp.message}")
+        return bool(resp.success)
 
+    @grpc_call
     async def StopDaq(self, parameters: dict[str, Any], timeout: float = 30.0) -> bool:
         """Stop hashpipe on the remote DAQ node.
 
@@ -106,14 +106,12 @@ class AsyncDaqControlClient:
         request = daq_control_pb2.StopDaqRequest()
         request.data_dir = v_params.data_dir
         request.run_dir = v_params.run_dir
-        try:
-            resp: daq_control_pb2.StopDaqResponse = await self.stub.StopDaq(request, timeout=timeout)
-            if not resp.success:
-                raise ValueError(f"Server rejected data: {resp.message}")
-            return bool(resp.success)
-        except grpc.RpcError as e:
-            raise ConnectionError(f"gRPC failed: {e.details()}") from e
+        resp: daq_control_pb2.StopDaqResponse = await self.stub.StopDaq(request, timeout=timeout)
+        if not resp.success:
+            raise ValueError(f"Server rejected data: {resp.message}")
+        return bool(resp.success)
 
+    @grpc_call
     async def StatusDaq(self, parameters: dict[str, Any], timeout: float | None = None) -> tuple[bool, dict[str, Any]]:
         """Retrieve the current status of hashpipe and disk usage on the node.
 
@@ -134,18 +132,16 @@ class AsyncDaqControlClient:
         request.check_hashpipe_running = v_params.check_hashpipe_running
         request.check_disk_usage = v_params.check_disk_usage
         request.check_run_dirs = v_params.check_run_dirs
-        try:
-            resp: daq_control_pb2.DaqStatusResponse = await self.stub.StatusDaq(request, timeout=timeout)
-            if not resp.success:
-                raise ValueError(f"Server rejected data: {resp.message}")
-            status: dict[str, Any] = {}
-            status["hashpipe_running"] = bool(resp.hashpipe_running)
-            status["disk_usage"] = dict(resp.disk_usage)
-            status["run_dirs"] = list(resp.run_dirs)
-            return bool(resp.success), status
-        except grpc.RpcError as e:
-            raise ConnectionError(f"gRPC failed: {e.details()}") from e
+        resp: daq_control_pb2.DaqStatusResponse = await self.stub.StatusDaq(request, timeout=timeout)
+        if not resp.success:
+            raise ValueError(f"Server rejected data: {resp.message}")
+        status: dict[str, Any] = {}
+        status["hashpipe_running"] = bool(resp.hashpipe_running)
+        status["disk_usage"] = dict(resp.disk_usage)
+        status["run_dirs"] = list(resp.run_dirs)
+        return bool(resp.success), status
 
+    @grpc_call
     async def CleanupData(self, parameters: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
         """Trigger data cleanup on the remote DAQ node.
 
@@ -168,14 +164,10 @@ class AsyncDaqControlClient:
         request.mode = daq_control_pb2.CleanupMode.Value(v_params.mode)
         request.delete_patterns.extend(v_params.delete_patterns)
         request.preserve_patterns.extend(v_params.preserve_patterns)
-        try:
-            resp: daq_control_pb2.CleanupDataResponse = await self.stub.CleanupData(request, timeout=timeout)
-            return MessageToDict(
-                resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True
-            )
-        except grpc.RpcError as e:
-            raise ConnectionError(f"gRPC failed: {e.details()}") from e
+        resp: daq_control_pb2.CleanupDataResponse = await self.stub.CleanupData(request, timeout=timeout)
+        return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
+    @grpc_call
     async def GenerateManifest(self, parameters: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
         """Generate a checksum manifest for run data.
 
@@ -196,14 +188,10 @@ class AsyncDaqControlClient:
         request.module_id = v_params.module_id
         request.algorithm = v_params.algorithm
         request.include_patterns.extend(v_params.include_patterns)
-        try:
-            resp: daq_control_pb2.GenerateManifestResponse = await self.stub.GenerateManifest(request, timeout=timeout)
-            return MessageToDict(
-                resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True
-            )
-        except grpc.RpcError as e:
-            raise ConnectionError(f"gRPC failed: {e.details()}") from e
+        resp: daq_control_pb2.GenerateManifestResponse = await self.stub.GenerateManifest(request, timeout=timeout)
+        return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
+    @grpc_call
     async def GetManifest(self, parameters: dict[str, Any], timeout: float | None = None) -> AsyncIterator[dict[str, Any]]:
         """Stream manifest entries for a specific module/run.
 
@@ -222,13 +210,8 @@ class AsyncDaqControlClient:
         request.data_dir = v_params.data_dir
         request.run_dir = v_params.run_dir
         request.module_id = v_params.module_id
-        try:
-            async for entry in self.stub.GetManifest(request, timeout=timeout):
-                yield MessageToDict(
-                    entry, always_print_fields_with_no_presence=True, preserving_proto_field_name=True
-                )
-        except grpc.RpcError as e:
-            raise ConnectionError(f"gRPC failed: {e.details()}") from e
+        async for entry in self.stub.GetManifest(request, timeout=timeout):
+            yield MessageToDict(entry, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
 
 class DaqControlClient:
@@ -240,13 +223,15 @@ class DaqControlClient:
     """
 
     def __init__(self, host: str = "localhost", port: int = 50051) -> None:
-        self.channel = grpc.insecure_channel(f"{host}:{port}")
+        self.target = f"{host}:{port}"
+        self.channel = grpc.insecure_channel(self.target)
         self.stub: daq_control_pb2_grpc.DaqControlStub = daq_control_pb2_grpc.DaqControlStub(self.channel)
 
     def close(self) -> None:
         """Close the synchronous gRPC channel."""
         self.channel.close()
 
+    @grpc_call
     def StartDaq(self, parameters: dict[str, Any], timeout: float | None = None) -> bool:
         """Start hashpipe on the remote DAQ node. (Sync)"""
         v_params = StartDaqParameters(**parameters)
@@ -259,28 +244,24 @@ class DaqControlClient:
         request.run_dir = v_params.run_dir
         request.obs = v_params.obs
         request.module_id.extend(v_params.module_id)
-        try:
-            resp: daq_control_pb2.StartDaqResponse = self.stub.StartDaq(request, timeout=timeout)
-            if not resp.success:
-                raise ValueError(f"Server rejected data: {resp.message}")
-            return bool(resp.success)
-        except grpc.RpcError as e:
-            raise ConnectionError(f"gRPC failed: {e.details()}") from e
+        resp: daq_control_pb2.StartDaqResponse = self.stub.StartDaq(request, timeout=timeout)
+        if not resp.success:
+            raise ValueError(f"Server rejected data: {resp.message}")
+        return bool(resp.success)
 
+    @grpc_call
     def StopDaq(self, parameters: dict[str, Any], timeout: float = 30.0) -> bool:
         """Stop hashpipe on the remote DAQ node. (Sync)"""
         v_params = StopDaqParameters(**parameters)
         request = daq_control_pb2.StopDaqRequest()
         request.data_dir = v_params.data_dir
         request.run_dir = v_params.run_dir
-        try:
-            resp: daq_control_pb2.StopDaqResponse = self.stub.StopDaq(request, timeout=timeout)
-            if not resp.success:
-                raise ValueError(f"Server rejected data: {resp.message}")
-            return bool(resp.success)
-        except grpc.RpcError as e:
-            raise ConnectionError(f"gRPC failed: {e.details()}") from e
+        resp: daq_control_pb2.StopDaqResponse = self.stub.StopDaq(request, timeout=timeout)
+        if not resp.success:
+            raise ValueError(f"Server rejected data: {resp.message}")
+        return bool(resp.success)
 
+    @grpc_call
     def StatusDaq(self, parameters: dict[str, Any], timeout: float | None = None) -> tuple[bool, dict[str, Any]]:
         """Retrieve the current status of hashpipe and disk usage. (Sync)"""
         v_params = StatusDaqParameters(**parameters)
@@ -289,18 +270,16 @@ class DaqControlClient:
         request.check_hashpipe_running = v_params.check_hashpipe_running
         request.check_disk_usage = v_params.check_disk_usage
         request.check_run_dirs = v_params.check_run_dirs
-        try:
-            resp: daq_control_pb2.DaqStatusResponse = self.stub.StatusDaq(request, timeout=timeout)
-            if not resp.success:
-                raise ValueError(f"Server rejected data: {resp.message}")
-            status: dict[str, Any] = {}
-            status["hashpipe_running"] = bool(resp.hashpipe_running)
-            status["disk_usage"] = dict(resp.disk_usage)
-            status["run_dirs"] = list(resp.run_dirs)
-            return bool(resp.success), status
-        except grpc.RpcError as e:
-            raise ConnectionError(f"gRPC failed: {e.details()}") from e
+        resp: daq_control_pb2.DaqStatusResponse = self.stub.StatusDaq(request, timeout=timeout)
+        if not resp.success:
+            raise ValueError(f"Server rejected data: {resp.message}")
+        status: dict[str, Any] = {}
+        status["hashpipe_running"] = bool(resp.hashpipe_running)
+        status["disk_usage"] = dict(resp.disk_usage)
+        status["run_dirs"] = list(resp.run_dirs)
+        return bool(resp.success), status
 
+    @grpc_call
     def CleanupData(self, parameters: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
         """Trigger data cleanup on the remote DAQ node. (Sync)"""
         v_params = CleanupDataParameters(**parameters)
@@ -312,14 +291,10 @@ class DaqControlClient:
         request.mode = daq_control_pb2.CleanupMode.Value(v_params.mode)
         request.delete_patterns.extend(v_params.delete_patterns)
         request.preserve_patterns.extend(v_params.preserve_patterns)
-        try:
-            resp: daq_control_pb2.CleanupDataResponse = self.stub.CleanupData(request, timeout=timeout)
-            return MessageToDict(
-                resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True
-            )
-        except grpc.RpcError as e:
-            raise ConnectionError(f"gRPC failed: {e.details()}") from e
+        resp: daq_control_pb2.CleanupDataResponse = self.stub.CleanupData(request, timeout=timeout)
+        return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
+    @grpc_call
     def GenerateManifest(self, parameters: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
         """Generate a checksum manifest for run data. (Sync)"""
         v_params = GenerateManifestParameters(**parameters)
@@ -329,14 +304,10 @@ class DaqControlClient:
         request.module_id = v_params.module_id
         request.algorithm = v_params.algorithm
         request.include_patterns.extend(v_params.include_patterns)
-        try:
-            resp: daq_control_pb2.GenerateManifestResponse = self.stub.GenerateManifest(request, timeout=timeout)
-            return MessageToDict(
-                resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True
-            )
-        except grpc.RpcError as e:
-            raise ConnectionError(f"gRPC failed: {e.details()}") from e
+        resp: daq_control_pb2.GenerateManifestResponse = self.stub.GenerateManifest(request, timeout=timeout)
+        return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
+    @grpc_call
     def GetManifest(self, parameters: dict[str, Any], timeout: float | None = None) -> list[dict[str, Any]]:
         """Retrieve manifest entries for a specific module/run. (Sync)"""
         v_params = GetManifestParameters(**parameters)
@@ -344,12 +315,9 @@ class DaqControlClient:
         request.data_dir = v_params.data_dir
         request.run_dir = v_params.run_dir
         request.module_id = v_params.module_id
-        try:
-            entries: list[dict[str, Any]] = []
-            for entry in self.stub.GetManifest(request, timeout=timeout):
-                entries.append(
-                    MessageToDict(entry, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
-                )
-            return entries
-        except grpc.RpcError as e:
-            raise ConnectionError(f"gRPC failed: {e.details()}") from e
+        entries: list[dict[str, Any]] = []
+        for entry in self.stub.GetManifest(request, timeout=timeout):
+            entries.append(
+                MessageToDict(entry, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
+            )
+        return entries

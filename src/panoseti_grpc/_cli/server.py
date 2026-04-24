@@ -46,8 +46,9 @@ def main(
 
     if list_services:
         print("Registered PANOSETI gRPC services:")
-        for name in ServiceRegistry.all():
-            print(f"  {name}")
+        for name, descriptor in ServiceRegistry.all().items():
+            tag = "  [DEPRECATED]" if descriptor.deprecated else ""
+            print(f"  {name}{tag}")
         return
 
     # Load config

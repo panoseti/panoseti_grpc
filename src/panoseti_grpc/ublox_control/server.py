@@ -15,6 +15,7 @@ import re
 import signal
 import stat
 import uuid
+import warnings
 from typing import Any
 
 import grpc
@@ -344,7 +345,17 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
 
 async def serve(_stop_event: asyncio.Event | None = None, in_main_thread: bool = True) -> None:
     """Initializes and starts the async gRPC server."""
+    warnings.warn(
+        "UbloxControl service is deprecated and will be removed in the next major release. "
+        "Use the Telemetry service ReportStatus path with GnssPayload, or capture_gps.py for GNSS data.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     logger = make_rich_logger(__name__, level=logging.DEBUG)
+    logger.warning(
+        "UbloxControl service is DEPRECATED and will be removed in the next major release. "
+        "Migration: use Telemetry.ReportStatus with GnssPayload or capture_gps.py → Redis."
+    )
     try:
         server_config = load_package_json("panoseti_grpc", CFG_DIR / "ublox_control_server_config.json")
         # with open(, "r") as f:

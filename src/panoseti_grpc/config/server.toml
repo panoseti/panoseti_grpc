@@ -23,9 +23,12 @@ grpc_logging = true
 # Telemetry MUST remain first in the unified boot order; it is the logging
 # backend for all other services.  Set to false only when running telemetry
 # on a separate machine (see server_daq_node.toml).
-telemetry   = true
-daq_data    = true
-daq_control = true
+telemetry    = true
+daq_data     = true
+daq_control  = true
+# DEPRECATED: ublox_control is in maintenance-only mode; use Telemetry.ReportStatus
+# with GnssPayload instead.  Will be removed in the next major release.
+ublox_control = false
 
 # -------------------------------------------------------
 # Telemetry service settings
