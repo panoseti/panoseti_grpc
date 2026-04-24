@@ -321,12 +321,15 @@ def run_all() -> None:
 @app.callback()
 def main_callback(
     ctx: typer.Context,
-    tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for gRPC tests.", callback=display_tree_callback)] = False
+    tree: Annotated[
+        bool,
+        typer.Option("--tree", "-t", help="Display the command tree for gRPC tests.", callback=display_tree_callback),
+    ] = False,
 ) -> None:
     """PSETI Unified QA Runner."""
     if tree:
         return
-    # Ensure we are always running from the grpc/tests directory 
+    # Ensure we are always running from the grpc/tests directory
     # so that relative paths in qa.toml resolve correctly.
     grpc_tests_root = Path(__file__).parent.resolve()
     import os

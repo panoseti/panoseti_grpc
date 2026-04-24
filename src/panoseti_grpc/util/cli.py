@@ -38,8 +38,8 @@ def display_tree_callback(ctx: typer.Context, value: bool) -> None:
 
         # Determine the name for the root of the tree
         # Use the full command path if possible
-        full_path = []
-        p = ctx
+        full_path: list[str | None] = []
+        p: click.Context | None = ctx
         while p:
             full_path.insert(0, p.info_name)
             p = p.parent
@@ -60,7 +60,7 @@ else:
     TyperGroup = typer.core.TyperGroup
 
 
-class BaseLazyGroup(TyperGroup):  # type: ignore
+class BaseLazyGroup(TyperGroup):
     """
     Base class for lazy-loading Click Groups in Typer.
     """
@@ -90,7 +90,7 @@ class BaseLazyGroup(TyperGroup):  # type: ignore
         for cmd in base_cmds:
             if cmd not in default_order:
                 default_order.append(cmd)
-        for cmd in self.lazy_mapping.keys():
+        for cmd in self.lazy_mapping:
             if cmd not in default_order:
                 default_order.append(cmd)
 
