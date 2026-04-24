@@ -3,10 +3,10 @@
 import pytest
 from pyubx2 import UBXMessage
 
-pytestmark = pytest.mark.skip(reason="ublox_control deprecated — tests preserved for the removal PR")
-
 from panoseti_grpc.ublox_control.initialize.conf_gnss import _layers_mask, _split_scaled_llh
 from panoseti_grpc.ublox_control.resources import get_f9t_redis_key, ubx_to_dict
+
+pytestmark = pytest.mark.skip(reason="ublox_control deprecated — tests preserved for the removal PR")
 
 
 def test_get_f9t_redis_key_valid() -> None:

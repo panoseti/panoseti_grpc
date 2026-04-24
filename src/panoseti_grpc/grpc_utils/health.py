@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Thin wrappers around grpc.health.v1 for PANOSETI services.
 
 grpcio-health-checking is an optional dependency. Import errors are surfaced
@@ -7,7 +5,9 @@ at call time rather than module import so that services that don't use health
 checks can still import grpc_utils without the extra package installed.
 """
 
-from typing import TYPE_CHECKING
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, cast
 
 import grpc
 import grpc.aio
@@ -78,6 +78,6 @@ class HealthClient:
                     self._health_pb2.HealthCheckRequest(service=service),
                     timeout=timeout,
                 )
-                return resp.status == self._health_pb2.HealthCheckResponse.SERVING
+                return cast(bool, resp.status == self._health_pb2.HealthCheckResponse.SERVING)
             except grpc.RpcError:
                 return False

@@ -59,7 +59,7 @@ class AsyncDaqControlClient:
         return self._stub
 
     @grpc_call
-    async def StartDaq(self, parameters: dict[str, Any], timeout: float | None = None) -> bool:
+    async def StartDaq(self, parameters: dict[str, Any], timeout: float | None = None) -> bool:  # noqa: ASYNC109
         """Start hashpipe on the remote DAQ node.
 
         Args:
@@ -89,7 +89,7 @@ class AsyncDaqControlClient:
         return bool(resp.success)
 
     @grpc_call
-    async def StopDaq(self, parameters: dict[str, Any], timeout: float = 30.0) -> bool:
+    async def StopDaq(self, parameters: dict[str, Any], timeout: float = 30.0) -> bool:  # noqa: ASYNC109
         """Stop hashpipe on the remote DAQ node.
 
         Args:
@@ -113,7 +113,7 @@ class AsyncDaqControlClient:
         return bool(resp.success)
 
     @grpc_call
-    async def StatusDaq(self, parameters: dict[str, Any], timeout: float | None = None) -> tuple[bool, dict[str, Any]]:
+    async def StatusDaq(self, parameters: dict[str, Any], timeout: float | None = None) -> tuple[bool, dict[str, Any]]:  # noqa: ASYNC109
         """Retrieve the current status of hashpipe and disk usage on the node.
 
         Args:
@@ -143,7 +143,7 @@ class AsyncDaqControlClient:
         return bool(resp.success), status
 
     @grpc_call
-    async def CleanupData(self, parameters: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
+    async def CleanupData(self, parameters: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:  # noqa: ASYNC109
         """Trigger data cleanup on the remote DAQ node.
 
         Args:
@@ -170,7 +170,7 @@ class AsyncDaqControlClient:
         return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
     @grpc_call
-    async def GenerateManifest(self, parameters: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
+    async def GenerateManifest(self, parameters: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:  # noqa: ASYNC109
         """Generate a checksum manifest for run data.
 
         Args:
@@ -195,7 +195,9 @@ class AsyncDaqControlClient:
 
     @grpc_call
     async def GetManifest(
-        self, parameters: dict[str, Any], timeout: float | None = None
+        self,
+        parameters: dict[str, Any],
+        timeout: float | None = None,  # noqa: ASYNC109
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream manifest entries for a specific module/run.
 

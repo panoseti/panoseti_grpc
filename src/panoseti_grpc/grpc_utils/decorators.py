@@ -1,19 +1,16 @@
 from __future__ import annotations
 
-import asyncio
 import functools
 import inspect
 from collections.abc import AsyncIterator, Callable
-from typing import Any, TypeVar
+from typing import Any
 
 import grpc
 
 from .exceptions import from_rpc_error
 
-F = TypeVar("F", bound=Callable[..., Any])
 
-
-def grpc_call(fn: F) -> F:
+def grpc_call[F: Callable[..., Any]](fn: F) -> F:
     """Decorator that maps grpc.RpcError → PanosetiRpcError on any client method.
 
     Handles three call shapes:
@@ -38,7 +35,7 @@ def grpc_call(fn: F) -> F:
 
         return _agen_wrapper  # type: ignore[return-value]
 
-    elif asyncio.iscoroutinefunction(fn):
+    elif inspect.iscoroutinefunction(fn):
 
         @functools.wraps(fn)
         async def _async_wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:

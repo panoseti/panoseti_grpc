@@ -3,16 +3,14 @@
 import asyncio
 import base64
 import json
-
-import pytest
-
-pytestmark = pytest.mark.skip(reason="ublox_control deprecated — tests preserved for the removal PR")
 from typing import Any
 
 import pytest
 from pyubx2 import UBXReader
 
 from panoseti_grpc.generated import ublox_control_pb2
+
+pytestmark = pytest.mark.skip(reason="ublox_control deprecated — tests preserved for the removal PR")
 
 
 # This assumes you have run save_raw_ubx.py and have ubx_packets.jsonl

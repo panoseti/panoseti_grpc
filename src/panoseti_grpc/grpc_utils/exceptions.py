@@ -66,7 +66,7 @@ _CODE_TO_EXCEPTION: dict[grpc.StatusCode, type[PanosetiRpcError]] = {
 
 def from_rpc_error(e: grpc.RpcError, target: str) -> PanosetiRpcError:
     """Convert a raw grpc.RpcError into the appropriate PanosetiRpcError subclass."""
-    code: grpc.StatusCode = e.code()  # type: ignore[attr-defined]
-    details: str = e.details() or ""  # type: ignore[attr-defined]
+    code: grpc.StatusCode = e.code()
+    details: str = e.details() or ""
     cls = _CODE_TO_EXCEPTION.get(code, PanosetiRpcError)
     return cls(f"gRPC {code.name} from {target}: {details}", code, details, target)

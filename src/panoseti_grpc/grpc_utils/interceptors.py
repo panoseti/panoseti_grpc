@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 """gRPC interceptor stubs for PANOSETI services.
 
 These are lightweight placeholders. Full implementation (logging, deadline
 injection, metadata propagation) can be added incrementally without changing
 the registration call sites.
 """
+
+from __future__ import annotations
 
 import grpc
 import grpc.aio
@@ -14,7 +14,7 @@ import grpc.aio
 class LoggingClientInterceptor(grpc.aio.UnaryUnaryClientInterceptor):  # type: ignore[misc]
     """Logs outgoing RPCs (method, target) at DEBUG level."""
 
-    async def intercept_unary_unary(  # type: ignore[override]
+    async def intercept_unary_unary(
         self,
         continuation: grpc.aio.ClientCallDetails,
         client_call_details: grpc.aio.ClientCallDetails,
@@ -30,7 +30,7 @@ class ExceptionServerInterceptor(grpc.aio.ServerInterceptor):  # type: ignore[mi
     util/error_handling.py but applied globally at the server level.
     """
 
-    async def intercept_service(  # type: ignore[override]
+    async def intercept_service(
         self,
         continuation: grpc.aio.ServicerContext,
         handler_call_details: grpc.HandlerCallDetails,
