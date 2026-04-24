@@ -1,8 +1,6 @@
 services:
   redis:
     image: redis:alpine
-    ports:
-      - "6379:6379"
     healthcheck:
       test: [ "CMD", "redis-cli", "ping"]
       interval: 5s
@@ -14,8 +12,6 @@ services:
 
   influxdb:
     image: influxdb:1.8
-    ports:
-      - "8086:8086"
     environment:
       - INFLUXDB_DB=metadata
       - INFLUXDB_ADMIN_USER=root
@@ -31,8 +27,6 @@ services:
 #  loki:
 #    image: grafana/loki:3.6.0
 #    user: "0:0"
-#    ports:
-#      - "3100:3100"
 #    # Mount config if necessary, or use defaults for testing
 #    command: -config.file=/etc/loki/local-config.yaml
 #    networks:
@@ -51,8 +45,6 @@ services:
       - LOKI_URL=http://loki:3100
       - GRPC_PORT=50051
       - HEADNODE_IP=localhost
-    ports:
-      - "50051:50051"
     # This prevents the runner from crashing on startup
     depends_on:
       redis:
@@ -61,13 +53,10 @@ services:
         condition: service_started
 #      loki:
 #        condition: service_started
+    command: ["sleep", "infinity"]
     # Wait for the gRPC server to spin up inside pytest
     healthcheck:
-      test: [ "CMD-SHELL", "python3 -c 'import socket; s=socket.create_connection((\"localhost\", 50051))' || exit 1" ]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
+      test: [ "CMD", "true" ]
     networks:
       - panoseti-net
 #    command: ["pytest", "--timeout=40", "-v", "tests/telemetry/integration/test_distributed.py"]

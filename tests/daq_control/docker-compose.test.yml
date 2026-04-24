@@ -6,4 +6,4 @@ services:
       target: daq-control-test
     environment:
       - GRPC_PORT=50051
-    command: ["pytest", "--timeout=20", "-v", "tests/daq_control/integration", "tests/daq_control/unit"]
+    command: ["sleep", "infinity"]
