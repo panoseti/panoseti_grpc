@@ -428,6 +428,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         # "no deletion without verified integrity" invariant (plan §3.2 step 6).
         if vreq.mode == CleanupMode.CLEANUP_SELECTIVE and request.manifest_digest:
             import hashlib as _hashlib
+
             provided_digest = request.manifest_digest.hex()
             for cp in cleanup_paths:
                 cp_path = Path(cp)
@@ -439,7 +440,9 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                         if actual != provided_digest:
                             self.logger.error(
                                 "Manifest digest mismatch for %s: provided=%s..., actual=%s...",
-                                cp, provided_digest[:16], actual[:16],
+                                cp,
+                                provided_digest[:16],
+                                actual[:16],
                             )
                             await context.abort(
                                 grpc.StatusCode.FAILED_PRECONDITION,

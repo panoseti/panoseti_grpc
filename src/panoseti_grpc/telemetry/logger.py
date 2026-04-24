@@ -2,10 +2,11 @@
 PANOSETI Unified Logging Module.
 
 This module provides a thread-safe factory for creating loggers that can dispatch
-logs to three destinations simultaneously:
+logs to four destinations simultaneously:
 1. Console (via Rich)
-2. Filesystem (Rotating File Handler)
-3. Telemetry Service (via gRPC)
+2. Filesystem — plain text ``.log`` (human-readable)
+3. Filesystem — structured JSONL ``.jsonl`` (picked up by Grafana Alloy → Loki)
+4. Telemetry Service (via gRPC, shadow path during Alloy migration)
 
 Usage:
     from panoseti_grpc.logging import get_logger
@@ -26,6 +27,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -40,6 +42,72 @@ from rich.logging import RichHandler
 
 # Import your existing client components
 from panoseti_grpc.telemetry.client import AsyncGrpcHandler, TelemetryClient
+
+# --- JSONL Formatter ---
+
+
+class JsonlFormatter(logging.Formatter):
+    """Single-line JSON formatter for Grafana Alloy ingestion.
+
+    Each log record is serialised to one JSON object per line with the fields
+    that Alloy's ``loki.process`` stage extracts as labels:
+    ``service``, ``level``, ``git_commit``, ``run_id``, ``hostname``, ``pid``,
+    ``thread``.  Any ``extra`` dict fields passed to the logger call are merged
+    into the top-level object so they are queryable via LogQL.
+    """
+
+    def __init__(self, service_name: str) -> None:
+        super().__init__()
+        self._service = service_name
+        self._hostname = os.getenv("HOSTNAME", os.uname().nodename)
+
+    # Standard LogRecord attributes that should not be emitted as extra fields.
+    _STDLIB_KEYS: frozenset[str] = frozenset(
+        {
+            "name",
+            "msg",
+            "args",
+            "levelname",
+            "levelno",
+            "pathname",
+            "filename",
+            "module",
+            "exc_info",
+            "exc_text",
+            "stack_info",
+            "lineno",
+            "funcName",
+            "created",
+            "msecs",
+            "relativeCreated",
+            "thread",
+            "threadName",
+            "processName",
+            "process",
+            "taskName",
+            "message",
+            "asctime",
+        }
+    )
+
+    def format(self, record: logging.LogRecord) -> str:
+        obj: dict[str, Any] = {
+            "timestamp": self.formatTime(record, datefmt=None),
+            "service": self._service,
+            "level": record.levelname,
+            "message": record.getMessage(),
+            "hostname": self._hostname,
+            "pid": record.process,
+            "thread": record.threadName,
+        }
+        # Merge any extra fields injected by the caller (git_commit, run_id, …)
+        for key, val in record.__dict__.items():
+            if key not in self._STDLIB_KEYS and not key.startswith("_"):
+                obj.setdefault(key, val)
+        if record.exc_info:
+            obj["exc_info"] = self.formatException(record.exc_info)
+        return json.dumps(obj, default=str)
+
 
 # --- Configuration Models ---
 
@@ -60,6 +128,7 @@ class FileLogConfig(BaseModel):
     directory: Path = Path("/var/log/panoseti")
     max_bytes: int = 10 * 1024 * 1024  # 10 MB
     backup_count: int = 5
+    jsonl_enabled: bool = True  # write structured JSONL for Grafana Alloy ingestion
 
     @field_validator("directory")
     @classmethod
@@ -76,7 +145,7 @@ class FileLogConfig(BaseModel):
 
             fallback = Path(tempfile.gettempdir()) / "panoseti_logs"
             fallback.mkdir(parents=True, exist_ok=True)
-            print(f"⚠️ Log directory '{v}' is not writable ({e}). Falling back to '{fallback}'", file=sys.stderr)
+            print(f"Warning: Log directory '{v}' is not writable ({e}). Falling back to '{fallback}'", file=sys.stderr)
             return fallback
         return v
 
@@ -168,7 +237,7 @@ class PanosetiLogFactory:
             console.setLevel(cfg.level)
             logger.addHandler(console)
 
-        # 2. Filesystem
+        # 2. Filesystem — plain text .log (human-readable)
         if cfg.file.enabled:
             cfg.file.directory.mkdir(parents=True, exist_ok=True)
             log_path = cfg.file.directory / f"{cfg.service_name}.log"
@@ -181,6 +250,20 @@ class PanosetiLogFactory:
                 fh.setLevel(cfg.level)
                 fh.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
                 logger.addHandler(fh)
+
+        # 2b. Filesystem — structured JSONL .jsonl (Grafana Alloy → Loki)
+        if cfg.file.enabled and cfg.file.jsonl_enabled:
+            cfg.file.directory.mkdir(parents=True, exist_ok=True)
+            jsonl_path = cfg.file.directory / f"{cfg.service_name}.jsonl"
+
+            if not any(
+                isinstance(h, RotatingFileHandler) and h.baseFilename == str(jsonl_path.resolve())
+                for h in logger.handlers
+            ):
+                jfh = RotatingFileHandler(jsonl_path, maxBytes=cfg.file.max_bytes, backupCount=cfg.file.backup_count)
+                jfh.setLevel(cfg.level)
+                jfh.setFormatter(JsonlFormatter(cfg.service_name))
+                logger.addHandler(jfh)
 
         # 3. gRPC (SHARED RESOURCE)
         if cfg.grpc.enabled and not any(isinstance(h, AsyncGrpcHandler) for h in logger.handlers):
@@ -205,24 +288,32 @@ def get_logger(
     console: bool = True,
     log_dir: str | Path | None = None,
     grpc_enabled: bool = True,
+    jsonl_enabled: bool = True,
     reset: bool = True,
 ) -> logging.Logger:
-    """
-    Get or create a configured logger.
+    """Get or create a configured logger with up to four output paths.
+
+    When *log_dir* is set the logger writes to two files in that directory:
+    - ``{service_name}.log`` — plain text, human-readable.
+    - ``{service_name}.jsonl`` — one JSON object per line, consumed by
+      Grafana Alloy and shipped to Loki (shadow path during Alloy migration).
 
     Args:
-        service_name: Unique name for the service (e.g. 'DAQ_Writer').
-        level: Logging level (e.g. logging.INFO, 'DEBUG').
-        console: Whether to print to stdout/stderr.
-        log_dir: Path to write log files. If None, file logging is disabled.
-        grpc_enabled: Whether to send logs to the Telemetry Server.
-        reset: If True (default), clears existing handlers on this logger
-               to apply the new configuration cleanly.
+        service_name: Unique name for the service (e.g. ``'daq_control'``).
+        level: Logging level (e.g. ``logging.INFO``, ``'DEBUG'``).
+        console: Whether to emit rich-formatted output to stdout/stderr.
+        log_dir: Directory for ``.log`` and ``.jsonl`` files.  File logging is
+            disabled when ``None``.
+        grpc_enabled: Whether to forward logs to the Telemetry gRPC service
+            (shadow path running alongside Alloy during the migration window).
+        jsonl_enabled: Whether to write the structured JSONL file for Alloy.
+            Defaults to ``True`` when *log_dir* is provided.
+        reset: Clear existing handlers before applying this configuration.
     """
     file_config = FileLogConfig(enabled=False)
     if log_dir:
         log_dir_path = Path(log_dir) if isinstance(log_dir, str) else log_dir
-        file_config = FileLogConfig(enabled=True, directory=log_dir_path)
+        file_config = FileLogConfig(enabled=True, directory=log_dir_path, jsonl_enabled=jsonl_enabled)
 
     grpc_config = GrpcLogConfig(enabled=grpc_enabled)
 

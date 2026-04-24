@@ -26,6 +26,7 @@ def grpc_call(fn: F) -> F:
     self.target (str) is used as the error target label.
     """
     if inspect.isasyncgenfunction(fn):
+
         @functools.wraps(fn)
         async def _agen_wrapper(self: Any, *args: Any, **kwargs: Any) -> AsyncIterator[Any]:
             target: str = getattr(self, "target", "unknown")
@@ -38,6 +39,7 @@ def grpc_call(fn: F) -> F:
         return _agen_wrapper  # type: ignore[return-value]
 
     elif asyncio.iscoroutinefunction(fn):
+
         @functools.wraps(fn)
         async def _async_wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
             target: str = getattr(self, "target", "unknown")
@@ -49,6 +51,7 @@ def grpc_call(fn: F) -> F:
         return _async_wrapper  # type: ignore[return-value]
 
     else:
+
         @functools.wraps(fn)
         def _sync_wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
             target: str = getattr(self, "target", "unknown")

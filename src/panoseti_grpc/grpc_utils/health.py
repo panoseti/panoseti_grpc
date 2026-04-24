@@ -13,7 +13,7 @@ import grpc
 import grpc.aio
 
 if TYPE_CHECKING:
-    from grpc_health.v1 import health_pb2_grpc
+    pass
 
 
 def register_health(server: grpc.aio.Server, service_names: list[str]) -> None:
@@ -27,7 +27,8 @@ def register_health(server: grpc.aio.Server, service_names: list[str]) -> None:
         ImportError: If grpcio-health-checking is not installed.
     """
     try:
-        from grpc_health.v1 import health, health_pb2, health_pb2_grpc as hpb2_grpc
+        from grpc_health.v1 import health, health_pb2
+        from grpc_health.v1 import health_pb2_grpc as hpb2_grpc
     except ImportError as exc:
         raise ImportError(
             "grpcio-health-checking is required for health check support. "

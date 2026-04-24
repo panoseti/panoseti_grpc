@@ -100,9 +100,9 @@ python -m panoseti_grpc.telemetry.server
 | Service | Status | Purpose |
 |---------|--------|---------|
 | `daq_data` | Production | Streams real-time science images from Hashpipe shared memory |
-| `ublox_control` | Production | Configures and streams data from ZED-F9T/F9P GNSS chips |
-| `telemetry` | Beta | Collects metadata/health; hybrid Redis (hot) + InfluxDB (cold) + Loki (logs) |
-| `daq_control` | In Development | High-voltage control and DAQ system configuration |
+| `daq_control` | Production | Start/stop Hashpipe, generate manifests, selective cleanup with integrity precondition |
+| `telemetry` | Beta | Device status → Redis/InfluxDB; log shipping via Grafana Alloy → Loki (shadow period) |
+| `ublox_control` | 🔴 Deprecated | GNSS chip control — disabled by default; removed in next major release |
 
 Each service lives under `src/panoseti_grpc/<service>/` and follows the pattern:
 - `server.py` — gRPC servicer implementation
@@ -125,20 +125,37 @@ Bridges Hashpipe (C/C++ hardware pipeline) to gRPC streams via Unix Domain Socke
 **Tests:** All daq_data integration tests create isolated servers in `tempfile.TemporaryDirectory()` with unique socket paths. The `server_config_base` fixture loads `tests/daq_data/config/daq_data_server_config.json`; test helpers call `_make_server_config(server_config_base, socket_dir)` to override paths.
 
 ### Telemetry Service
-Two storage tiers controlled by device type:
-- **Production devices** (registered in schema): strict Pydantic schema, permanent Redis hash + InfluxDB timeseries. Redis TTL = -1 (no expiry). Key format: `{DEVICE_TYPE}_{device_id}`.
-- **Experimental / DEV_ devices**: flexible JSON payload, Redis TTL ≤ 3600 s.
-- **Unknown device types**: routed to `SANDBOX:{type}:{device_id}` namespace with positive TTL.
 
-`RedisBatcher` in `server.py` batches up to 100 log RPCs before writing to the `logs:ingress` Redis list. Integration tests that check Redis must account for this flush delay — use polling helpers rather than `time.sleep` fixed waits. The `grpc_client.send_log_future()` method returns a future; call `.result()` on all futures before asserting Redis state.
+**Two independent pipelines** share one gRPC service:
 
-`logger.py` provides an async gRPC logging handler that injects Git commit, hostname, and PID metadata automatically.
+**Device status path (`ReportStatus` RPC)** — the active, authoritative path:
+- **Production devices** (registered in schema): strict Pydantic schema, permanent Redis HASH + InfluxDB timeseries. TTL = -1. Key: `{DEVICE_TYPE}_{device_id}`.
+- **DEV_ devices**: flexible JSON payload, Redis TTL ≤ 3600 s.
+- **Unknown types**: routed to `SANDBOX:{type}:{device_id}` namespace with positive TTL.
+`RedisBatcher` in `server.py` batches up to 100 `ReportStatus` RPCs before flushing to Redis. Integration tests must poll rather than using fixed `time.sleep` waits because of this flush latency.
+
+**Log shipping path — shadow period (Alloy migration):**
+
+`logger.py` (`get_logger()`) currently writes to **three** destinations simultaneously:
+1. Console via `RichHandler` (human-readable).
+2. `{service}.log` — plain text `RotatingFileHandler`.
+3. `{service}.jsonl` — structured JSON `RotatingFileHandler` (`JsonlFormatter`), one JSON object per line.  **Grafana Alloy** reads `.jsonl` files from `$PANOSETI_LOG_DIR/` and ships them to Loki (see `alloy/config.alloy`).
+4. gRPC `Log` RPC via `AsyncGrpcHandler` — legacy path running in parallel during the migration window.
+
+The `.jsonl` format emits: `timestamp`, `service`, `level`, `message`, `hostname`, `pid`, `thread`, plus any `extra` dict fields (`git_commit`, `run_id`, …).
+
+Once the Alloy soak period passes (log-line divergence < 0.1% vs. gRPC path over 7 observing days), the gRPC `Log` RPC, `AsyncGrpcHandler`, and `RedisBatcher` log queue will be removed.
 
 ### U-blox Control Service
-Communicates via serial port using the UBX binary protocol (`pyubx2`). Configuration is JSON5-based (`f9t_config.json`) with position, constellation, and timepulse settings.
+**Deprecated.** Disabled by default (`ublox_control = false` in all server profiles). Will be removed in the next major release. Migrate GNSS data ingestion to `Telemetry.ReportStatus` with `GnssPayload`.
 
 ### Unified Server
-`src/panoseti_grpc/server.py` hosts all three services on a single `grpc.aio.Server` instance (one port). gRPC routes RPCs by proto package name automatically, so there is no collision.
+`src/panoseti_grpc/server.py` hosts all active services on a single `grpc.aio.Server` instance (one port). gRPC routes RPCs by proto package name automatically, so there is no collision.
+
+After all services start, the server automatically calls `grpc_utils.health.register_health()`, which registers a `grpc.health.v1.HealthServicer` and marks every active service `SERVING`. Use `grpc_health_probe` or `HealthClient` instead of the old `daq_data.Ping` RPC for liveness probes:
+```bash
+grpc_health_probe -addr=daqnode-1:50051 -service=panoseti.daq_control
+```
 
 **Deployment profiles** (`src/panoseti_grpc/config/`):
 
@@ -170,13 +187,39 @@ Manages the Hashpipe process lifecycle on each DAQ node. `DaqControlServicer` tr
 - `StartDaq` fails immediately if a Hashpipe process is already running (guards against double-start).
 - `StopDaq` sends `SIGINT` and blocks until the process exits; returns `success=True` if already stopped.
 - `CleanupData` is blocked while `hashpipe_pid > 0`. Supports two modes via `CleanupMode` enum:
-  - `CLEANUP_FULL` (0, default) — legacy `rmtree` behavior; wire-compatible with old clients
-  - `CLEANUP_SELECTIVE` (1) — deletes only files matching `delete_patterns` not covered by `preserve_patterns`; used by the Transfer Daemon to remove `.pff` files while preserving `.json`/`.log` metadata
+  - `CLEANUP_FULL` (0, default) — legacy `rmtree` behavior; wire-compatible with old clients.
+  - `CLEANUP_SELECTIVE` (1) — deletes only files matching `delete_patterns` not covered by `preserve_patterns`. **Requires `manifest_digest`** (SHA-256 of the manifest file content): the server recomputes the digest of its local manifest and aborts with `FAILED_PRECONDITION` if values differ. This guarantees no `.pff` data is deleted without head-node integrity confirmation.
 - `GenerateManifest` — computes blake3/xxhash/sha256 checksums for run files; writes a 4-column manifest atomically (`{digest}  {size}  {mtime_ns}  {relpath}`); implemented in `manifest.py` using `asyncio.to_thread` for blocking I/O.
 - `GetManifest` — server-streaming RPC that yields `ManifestEntry` per line of the manifest file; path-traversal guarded.
 - Hashpipe stdout/stderr are streamed to per-run log files under `{data_dir}/{run_dir}/hp_stdout.log` and `hp_stderr.log`.
 
-New files added in Phase 1: `manifest.py` (compute + write manifests). New Pydantic models in `config.py`: `GenerateManifestModel`, `CleanupMode` enum; extended `CleanupDataModel` with `mode`, `delete_patterns`, `preserve_patterns`.
+**Client methods** (`AsyncDaqControlClient` / `DaqControlClient`) are all decorated with `@grpc_call` from `grpc_utils.decorators`, which maps `grpc.RpcError → PanosetiRpcError` subclasses and never suppresses `asyncio.CancelledError`. Callers catch typed exceptions instead of raw `grpc.RpcError`:
+```python
+from panoseti_grpc.grpc_utils import FailedPreconditionError
+try:
+    await client.CleanupData(params)
+except FailedPreconditionError as exc:
+    logger.error("Cleanup refused — manifest digest mismatch: %s", exc.details)
+```
+
+Pydantic models in `client_models.py` (`CleanupDataParameters`, `GenerateManifestParameters`, …) are validated before hitting the network.
+
+### grpc_utils — Shared gRPC Machinery
+`src/panoseti_grpc/grpc_utils/` is a service-agnostic package imported by all active services. See `grpc_utils/README.md` for the full decision framework. Key modules:
+
+| Module | What it provides |
+|---|---|
+| `exceptions.py` | `PanosetiRpcError` + 8 typed subclasses; `from_rpc_error(e, target)` factory |
+| `decorators.py` | `@grpc_call` — wraps async/sync/generator methods; maps `grpc.RpcError`; never suppresses `CancelledError` |
+| `channel.py` | `AsyncChannelManager` — owns channel lifecycle with keepalive options |
+| `retries.py` | `build_retry_service_config()` — declarative retry policy JSON |
+| `health.py` | `register_health(server, names)` + `HealthClient`; auto-called by `PanosetiServer.run()` |
+| `interceptors.py` | Lightweight client/server interceptor stubs |
+
+**Concurrency rule** (see `grpc_utils/README.md` for full rationale):
+- Use `asyncio.TaskGroup` for all-or-nothing fan-outs (startup, manifest gen, teardown ladder).
+- Use outcome-collection under `TaskGroup` for best-effort fan-outs (cleanup, stop-all, probes).
+- Never silently discard exceptions from `asyncio.gather(return_exceptions=True)`.
 
 ## Testing Infrastructure
 - `pytest-asyncio` with `asyncio_mode = "auto"` (set in `pyproject.toml`) — all async tests run without explicit markers.

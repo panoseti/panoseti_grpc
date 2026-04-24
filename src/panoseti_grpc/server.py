@@ -343,6 +343,22 @@ class PanosetiServer:
         # Enable reflection
         reflection.enable_server_reflection(reflection_service_names, server)
 
+        # Register standard gRPC health protocol (grpc.health.v1) if available.
+        # Marks every active service as SERVING so that health probes and
+        # `grpc_health_probe` work out of the box.  If grpcio-health-checking
+        # is not installed the warning is logged but startup continues.
+        try:
+            from panoseti_grpc.grpc_utils.health import register_health
+
+            proto_service_names = [n for n in reflection_service_names if n != reflection.SERVICE_NAME]
+            register_health(server, proto_service_names)
+            _logger.info("gRPC health checks registered for %d service(s).", len(proto_service_names))
+        except ImportError:
+            _logger.warning(
+                "grpcio-health-checking not installed; health probes disabled. "
+                "Install with: pip install grpcio-health-checking"
+            )
+
         # Bind port
         server.add_insecure_port(f"[::]:{cfg.port}")
 
