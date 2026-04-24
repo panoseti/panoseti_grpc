@@ -1,8 +1,8 @@
-name: PANOSETI gRPC CI
+name: PSETI gRPC CI
 
 on:
   push:
-    branches: [main, dev, feature/test-suite-hardening, add-linting]
+    branches: [main, dev]
   pull_request:
     branches: [main, dev]
 
@@ -11,215 +11,50 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# All test stages inherit from the shared `base` stage in Dockerfile.ci.
-# BuildKit caches the base layer across jobs via GitHub Actions cache,
-# so the dependencies and environment are only built once per commit tree.
-
 jobs:
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # Lint — Ruff linting + formatting and MyPy type checking.
-  # ─────────────────────────────────────────────────────────────────────────
-  lint:
-    name: Lint & Type Check
+  # 1. Warm up the base cache.
+  prepare-base:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+      
+      - name: Pre-build and Cache All Test Images
+        run: |
+          BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
+            -f tests/qa.toml \
+            --pull=false \
+            --set *.context=. \
+            --set *.cache-from=type=gha,scope=pseti-grpc-ci \
+            --set *.cache-to=type=gha,mode=max,scope=pseti-grpc-ci
 
-      - name: Build and Run Linter
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: Dockerfile.ci
-          target: qa-linter
-          load: true
-          tags: panoseti-lint:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Run Lint checks
-        run: docker run --rm panoseti-lint:ci
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # DAQ Data — pure Python tests, no external services required.
-  # ─────────────────────────────────────────────────────────────────────────
-  daq-data-test:
-    name: DAQ Data Tests
+  # 2. Run All Tests
+  test-suite:
+    needs: prepare-base
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install host dependencies
+        run: uv sync --all-extras
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Build daq-data-test image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: Dockerfile.ci
-          target: daq-data-test
-          load: true
-          tags: panoseti-daq-data-test:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Run DAQ Data tests
-        run: docker run --rm panoseti-daq-data-test:ci
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # DAQ Data Hashpipe — integration tests against a compiled hashpipe binary.
-  # ─────────────────────────────────────────────────────────────────────────
-  daq-data-hashpipe-test:
-    name: DAQ Data Hashpipe Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build daq-data-hashpipe-test image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: Dockerfile.ci
-          target: daq-data-hashpipe-test
-          load: true
-          tags: panoseti-daq-data-hashpipe-test:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Run Hashpipe DAQ Data tests
-        env:
-          RUN_REAL_DATA_TESTS: "1"
+      
+      - name: Run Full Test Suite via pseti-grpc CLI
         run: |
-          docker run --rm \
-            --shm-size=2g \
-            --env RUN_REAL_DATA_TESTS=${RUN_REAL_DATA_TESTS} \
-            panoseti-daq-data-hashpipe-test:ci \
-            python -m pytest -s -v --maxfail=2 tests/daq_data_hashpipe/
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # Telemetry — requires Redis + InfluxDB sidecars.
-  # ─────────────────────────────────────────────────────────────────────────
-  telemetry-test:
-    name: Telemetry Service Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build telemetry-runner image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: Dockerfile.ci
-          target: telemetry-runner
-          load: true
-          tags: panoseti-telemetry-runner:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build telemetry-client image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: Dockerfile.ci
-          target: telemetry-client
-          load: true
-          tags: panoseti-telemetry-client:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Run Telemetry tests (Docker Compose)
-        run: |
-          docker compose -f tests/telemetry/docker-compose.test.yml up \
-            --abort-on-container-exit \
-            --exit-code-from test_runner
-
-      - name: Cleanup
-        if: always()
-        run: |
-          docker compose -f tests/telemetry/docker-compose.test.yml down \
-            --volumes --remove-orphans
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # DAQ Control — integration tests against a compiled hashpipe binary.
-  # ─────────────────────────────────────────────────────────────────────────
-  daq-control-test:
-    name: DAQ Control Service Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build daq-control-test image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: Dockerfile.ci
-          target: daq-control-test
-          load: true
-          tags: panoseti-daq-control-test:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Run DAQ Control tests (Docker Compose)
-        run: |
-          docker compose -f tests/daq_control/docker-compose.test.yml up \
-            --abort-on-container-exit \
-            --exit-code-from test_runner
-
-      - name: Cleanup
-        if: always()
-        run: |
-          docker compose -f tests/daq_control/docker-compose.test.yml down \
-            --volumes --remove-orphans
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # Unified Server — all three services on one port.
-  # ─────────────────────────────────────────────────────────────────────────
-  unified-server-test:
-    name: Unified Server Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build unified-server-test image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: Dockerfile.ci
-          target: unified-server-test
-          load: true
-          tags: panoseti-unified-server-test:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Run Unified Server tests (Docker Compose with Redis)
-        run: |
-          docker compose -f tests/unified_server/docker-compose.test.yml up \
-            --abort-on-container-exit \
-            --exit-code-from test_runner
-
-      - name: Cleanup
-        if: always()
-        run: |
-          docker compose -f tests/unified_server/docker-compose.test.yml down \
-            --volumes --remove-orphans
+          # Use pseti-grpc CLI to run tests defined in tests/qa.toml
+          # The CLI handles the docker bake/run orchestration internally
+          PYTHONPATH=src uv run python3 -m panoseti_grpc.cli test all

@@ -44,6 +44,7 @@ from panoseti_grpc.panoseti_util import control_utils
 ## daq_data utils
 from panoseti_grpc.telemetry.logger import get_logger
 
+from .client_models import InitHpIoParameters, StreamImagesParameters
 from .resources import format_stream_images_response, load_package_json, parse_pano_image
 
 hp_io_config_simulate: dict[str, Any] = load_package_json("panoseti_grpc.daq_data", "config/hp_io_config_simulate.json")
@@ -343,14 +344,20 @@ class DaqDataClient:
             Generator[Dict[str, Any], None, None]: A generator that yields either
             parsed image data dictionaries or raw protobuf responses.
         """
-        valid_hosts = self.validate_daq_hosts(hosts)
-
-        # Create the request message
-        stream_images_request = StreamImagesRequest(
+        v_params = StreamImagesParameters(
             stream_movie_data=stream_movie_data,
             stream_pulse_height_data=stream_pulse_height_data,
             update_interval_seconds=update_interval_seconds,
             module_ids=list(module_ids),
+        )
+        valid_hosts = self.validate_daq_hosts(hosts)
+
+        # Create the request message
+        stream_images_request = StreamImagesRequest(
+            stream_movie_data=v_params.stream_movie_data,
+            stream_pulse_height_data=v_params.stream_pulse_height_data,
+            update_interval_seconds=v_params.update_interval_seconds,
+            module_ids=v_params.module_ids,
         )
         req_dict = MessageToDict(
             stream_images_request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True
@@ -434,12 +441,16 @@ class DaqDataClient:
             daq_node = self.daq_nodes[host]
             stub = daq_node["stub"]
 
+            # Merge node-specific defaults with provided config
+            full_hp_io_cfg = {"data_dir": daq_node["config"].get("data_dir", "/tmp"), **hp_io_cfg}
+            v_params = InitHpIoParameters(**full_hp_io_cfg)
+
             init_hp_io_request = InitHpIoRequest(
-                data_dir=daq_node["config"].get("data_dir", ""),
-                update_interval_seconds=hp_io_cfg["update_interval_seconds"],
-                simulate_daq=hp_io_cfg["simulate_daq"],
-                force=hp_io_cfg["force"],
-                module_ids=hp_io_cfg.get("module_ids", []),
+                data_dir=v_params.data_dir,
+                update_interval_seconds=v_params.update_interval_seconds,
+                simulate_daq=v_params.simulate_daq,
+                force=v_params.force,
+                module_ids=v_params.module_ids,
             )
             self.logger.info(f"Initializing hp_io on '{daq_node['connection_target']}'...")
             try:
@@ -779,13 +790,19 @@ class AioDaqDataClient:
             Generator[Dict[str, Any], None, None]: A generator that yields either
             parsed image data dictionaries or raw protobuf responses.
         """
-        valid_hosts = await self.validate_daq_hosts(hosts)
-
-        stream_images_request = StreamImagesRequest(
+        v_params = StreamImagesParameters(
             stream_movie_data=stream_movie_data,
             stream_pulse_height_data=stream_pulse_height_data,
             update_interval_seconds=update_interval_seconds,
             module_ids=list(module_ids),
+        )
+        valid_hosts = await self.validate_daq_hosts(hosts)
+
+        stream_images_request = StreamImagesRequest(
+            stream_movie_data=v_params.stream_movie_data,
+            stream_pulse_height_data=v_params.stream_pulse_height_data,
+            update_interval_seconds=v_params.update_interval_seconds,
+            module_ids=v_params.module_ids,
         )
 
         streams = [
@@ -898,12 +915,20 @@ class AioDaqDataClient:
         async def _init_single_host(host: str) -> bool:
             daq_node = self.daq_nodes[host]
             stub = daq_node["stub"]
+
+            # Merge node-specific defaults with provided config
+            full_hp_io_cfg = {
+                "data_dir": hp_io_cfg.get("data_dir") or daq_node["config"].get("data_dir", "/tmp"),
+                **hp_io_cfg,
+            }
+            v_params = InitHpIoParameters(**full_hp_io_cfg)
+
             init_hp_io_request = InitHpIoRequest(
-                data_dir=hp_io_cfg.get("data_dir", ""),
-                update_interval_seconds=hp_io_cfg["update_interval_seconds"],
-                simulate_daq=hp_io_cfg["simulate_daq"],
-                force=hp_io_cfg.get("force", False),
-                module_ids=hp_io_cfg.get("module_ids", []),
+                data_dir=v_params.data_dir,
+                update_interval_seconds=v_params.update_interval_seconds,
+                simulate_daq=v_params.simulate_daq,
+                force=v_params.force,
+                module_ids=v_params.module_ids,
             )
 
             self.logger.info(f"Initializing hp_io on {host}...")

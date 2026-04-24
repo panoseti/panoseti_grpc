@@ -60,7 +60,10 @@ def main(
         bool, typer.Option("--grpc-logging", help="Forward CLI logs to Telemetry via gRPC")
     ] = False,
     log_level: Annotated[str, typer.Option(help="CLI log verbosity (DEBUG, INFO, etc)")] = "INFO",
-    tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for PSETI gRPC.", callback=display_tree_callback)] = False
+    tree: Annotated[
+        bool,
+        typer.Option("--tree", "-t", help="Display the command tree for PSETI gRPC.", callback=display_tree_callback),
+    ] = False,
 ) -> None:
     """
     PSETI gRPC CLI entry point.
@@ -93,6 +96,7 @@ standalone_app.callback()(main)
 # Add the test command explicitly to the standalone app only
 try:
     from tests.qa import app as test_app
+
     standalone_app.add_typer(test_app, name="test")
 except ImportError:
     pass

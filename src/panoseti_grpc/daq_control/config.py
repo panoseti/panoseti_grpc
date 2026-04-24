@@ -26,7 +26,7 @@ class StartDaqModel(BaseModel):
     data_dir: Path = Field(...)
     daq_ip_addr: IPvAnyAddress
     bindhost: str = Field(..., min_length=1, max_length=16)
-    max_file_size_mb: float = Field(ge=1, le=99999)
+    max_file_size_mb: float = Field(ge=0, le=99999)
     group_ph_frames: bool
     run_dir: str = Field(..., min_length=1)
     obs: str = Field(..., min_length=1, max_length=16)

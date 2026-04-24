@@ -10,11 +10,11 @@ import sys
 import time
 import tomllib
 from pathlib import Path
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 import typer
-from panoseti_grpc.util.cli import display_tree_callback
 
+from panoseti_grpc.util.cli import display_tree_callback
 
 app = typer.Typer(help="PSETI Unified QA Runner", no_args_is_help=True)
 
@@ -326,12 +326,12 @@ def main_callback(
     """PSETI Unified QA Runner."""
     if tree:
         return
-    # Ensure we are always running from the grpc/ directory root
-    # so Docker/Compose paths resolve correctly.
-    grpc_root = Path(__file__).parent.parent.resolve()
+    # Ensure we are always running from the grpc/tests directory 
+    # so that relative paths in qa.toml resolve correctly.
+    grpc_tests_root = Path(__file__).parent.resolve()
     import os
 
-    os.chdir(grpc_root)
+    os.chdir(grpc_tests_root)
 
 
 if __name__ == "__main__":

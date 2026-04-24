@@ -94,7 +94,7 @@ class TestStartDaqModel:
                 data_dir=str(tmp_path),
                 daq_ip_addr="127.0.0.1",
                 bindhost="lo",
-                max_file_size_mb=0,  # ge=1
+                max_file_size_mb=-1,  # ge=0
                 group_ph_frames=False,
                 run_dir="run.pffd",
                 obs="obs",
