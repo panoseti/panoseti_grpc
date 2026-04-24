@@ -21,9 +21,57 @@ Hashpipe subprocess output is streamed in real time to two per-run log files (`h
 
 ---
 
-## gRPC API
+## Python Client API
+
+We provide both synchronous and asynchronous clients. For performance-critical coordination (like starting an observatory run), the **Async Client** is recommended.
+
+### Async Client (`AsyncDaqControlClient`)
+
+The async client uses `grpc.aio` and should be used as an async context manager to ensure the gRPC channel is closed properly.
+
+```python
+from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+
+async def main():
+    async with AsyncDaqControlClient(host="daq-node-01", port=50051) as client:
+        # 1. Start a run
+        await client.StartDaq({
+            "data_dir": "/data/panoseti",
+            "daq_ip_addr": "192.168.1.10",
+            "bindhost": "eth0",
+            "max_file_size_mb": 1024,
+            "group_ph_frames": True,
+            "run_dir": "start_2026-01-01T120000Z.pffd",
+            "obs": "gj1132",
+            "module_id": [224, 225],
+        })
+
+        # 2. Check status
+        success, status = await client.StatusDaq({
+            "data_dir": "/data/panoseti",
+            "check_hashpipe_running": True
+        })
+        print(f"Hashpipe running: {status['hashpipe_running']}")
+```
+
+### Sync Client (`DaqControlClient`)
+
+A standard blocking client for simple scripts or REPL usage.
+
+```python
+from panoseti_grpc.daq_control.client import DaqControlClient
+
+client = DaqControlClient(host="daq-node-01", port=50051)
+client.StopDaq({"data_dir": "/data", "run_dir": "run.pffd"})
+client.close()
+```
+
+---
+
+## gRPC API Reference
 
 ### `StartDaq`
+...
 
 Launches a new Hashpipe instance. Fails immediately if a Hashpipe process is already running.
 
@@ -212,72 +260,38 @@ The server guards against path traversal: any entry with `..` in its path is ski
 
 ---
 
-## Typical Workflow
+## Typical Async Workflow
 
-### Legacy (full cleanup)
-
-```python
-from panoseti_grpc.daq_control.client import DaqControlClient
-
-client = DaqControlClient(host="daq-node-01", port=50051)
-
-# 1. Start a run
-client.StartDaq({
-    "data_dir": "/data/panoseti",
-    "daq_ip_addr": "192.168.1.10",
-    "bindhost": "eth0",
-    "max_file_size_mb": 1024,
-    "group_ph_frames": True,
-    "run_dir": "start_2026-01-01T120000Z.pffd",
-    "obs": "gj1132",
-    "module_id": [224, 225],
-})
-
-# 2. Stop the run
-client.StopDaq({
-    "data_dir": "/data/panoseti",
-    "run_dir": "start_2026-01-01T120000Z.pffd",
-})
-
-# 3. Full cleanup (legacy)
-client.CleanupData({
-    "data_dir": "/data/panoseti",
-    "run_dir": "start_2026-01-01T120000Z.pffd",
-    "module_id": [224, 225],
-})
-```
-
-### Transfer Daemon workflow (selective cleanup + manifest)
+### Multi-node coordination
 
 ```python
-# After StopDaq — generate manifests before rsync
-client.GenerateManifest({
-    "data_dir": "/data/panoseti",
-    "run_dir": "start_2026-01-01T120000Z.pffd",
-    "module_id": [224],
-    "algorithm": "blake3",
-    "include_patterns": ["*.pff"],
-})
+import asyncio
+from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
-# Stream manifest back to verify after rsync
-entries = client.GetManifest({
-    "data_dir": "/data/panoseti",
-    "run_dir": "start_2026-01-01T120000Z.pffd",
-    "module_id": 224,
-})
+async def run_observatory():
+    nodes = ["daq-1", "daq-2", "daq-3"]
+    run_dir = "start_2026-01-01T120000Z.pffd"
+    
+    # 1. Start all nodes concurrently
+    async def start_node(host):
+        async with AsyncDaqControlClient(host=host) as client:
+            return await client.StartDaq({...})
 
-# Selective cleanup — keep metadata, remove science files
-client.CleanupData({
-    "data_dir": "/data/panoseti",
-    "run_dir": "start_2026-01-01T120000Z.pffd",
-    "module_id": [224, 225],
-    "mode": "CLEANUP_SELECTIVE",
-    "delete_patterns": ["*.pff"],
-    "preserve_patterns": ["*.json", "*.log", "*.toml"],
-})
+    results = await asyncio.gather(*[start_node(n) for n in nodes])
+    
+    # ... Wait for run to finish ...
+
+    # 2. Generate manifests concurrently
+    async def gen_manifest(host):
+        async with AsyncDaqControlClient(host=host) as client:
+            return await client.GenerateManifest({...})
+            
+    await asyncio.gather(*[gen_manifest(n) for n in nodes])
 ```
 
 ---
+
+## gRPC API Reference
 
 ## Configuration & Validation
 

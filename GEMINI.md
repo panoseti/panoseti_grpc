@@ -5,14 +5,10 @@ This file serves as a foundational mandate for Gemini CLI interactions within th
 ## 🌌 Project Overview
 PANOSETI gRPC Services is a microservice-based control and data acquisition layer for the PANOSETI observatory. It leverages **Python 3.14+**, **asyncio**, and **gRPC** to provide high-performance, real-time access to observatory hardware and data streams.
 
-### Core Services
-- **`daq_data`**: Streams real-time science images from the Hashpipe C++ pipeline via Unix Domain Sockets (UDS).
-- **`daq_control`**: Manages the lifecycle of the Hashpipe process (start/stop/status) on DAQ nodes.
-- **`telemetry`**: A hybrid logging and metadata collection service using Redis (hot storage) and InfluxDB (cold storage).
-- **`ublox_control`**: Configures and streams data from ZED-F9T/F9P GNSS chips via serial/UBX.
-
 ### Architecture
-The project uses a **Unified Server** model (`panoseti_grpc.server.py`) where multiple services are co-hosted on a single gRPC port. Services are registered via a `ServiceRegistry` and configured using Pydantic models.
+- **Unified Server**: Multiple services co-hosted on a single gRPC port (`panoseti_grpc.server.py`).
+- **Async-First Clients**: Native `AsyncDaqControlClient` and `AsyncDaqDataClient` using `grpc.aio` for non-blocking coordination.
+- **Model-Driven Requests**: Dedicated `client_models.py` for each service provide client-side parameter validation decoupled from server-side filesystem checks.
 
 ---
 
@@ -29,20 +25,13 @@ This script generates both Python source (`_pb2.py`) and MyPy type stubs (`.pyi`
 We use a unified QA runner located in the `tests/` directory.
 ```bash
 # Run all linters and test suites
-python tests/qa.py all
+pseti test grpc all
 
 # Run specific tasks
-python tests/qa.py lint               # Ruff (lint/format) + MyPy
-python tests/qa.py daq_data           # Individual test suite
+pseti test grpc lint               # Ruff (lint/format) + MyPy
+pseti test grpc daq-control        # Individual test suite
 ```
-Configuration is driven by `tests/qa.toml`.
-
-### Running the Server
-```bash
-panoseti-server                       # All services enabled
-panoseti-server --profile daq_node    # DAQ-specific subset
-panoseti-server --profile headnode    # Telemetry-only subset
-```
+Configuration is driven by `tests/qa.toml`. Unique project names (`-p pseti-grpc-NAME`) MUST be used for Docker isolation.
 
 ---
 
@@ -51,17 +40,16 @@ panoseti-server --profile headnode    # Telemetry-only subset
 ### Coding Style & Linting
 - **Ruff**: Primary linter and formatter.
 - **MyPy**: Strict type checking is required.
-- **Line Length**: 120 characters.
-- **Style**: Follow PEP-8, but prefer the modern, concise patterns found in the unified server implementation. Use Pydantic for configuration schemas.
+- **Pydantic**: Use for all configuration schemas and request validation. Prefer attribute access over dictionary indexing.
 
 ### gRPC & Protobuf
 - **Generated Code**: Located in `src/panoseti_grpc/generated/`. **NEVER** edit these files manually.
-- **Type Safety**: Always generate `.pyi` stubs. MyPy is configured to ignore the `.py` generated files but use the `.pyi` stubs for type safety.
-- **Relative Imports**: The compilation script automatically patches generated code to use relative imports (`from . import ...`).
+- **Type Safety**: Always generate `.pyi` stubs.
+- **Async Clients**: MUST implement `__aenter__` and `__aexit__` for channel lifecycle management.
 
 ### Testing Conventions
-- **Integration Tests**: Typically require Docker Compose (defined in `tests/<service>/docker-compose.test.yml`).
-- **Isolation**: Each test should aim for environment isolation (e.g., using `TemporaryDirectory` for socket paths).
+- **Isolation**: Integration tests MUST NOT bind to host ports. Use bridge networks for inter-container communication.
+- **Project Scope**: Each test suite MUST use a unique Docker Compose project name to prevent network/container collisions during concurrent runs.
 - **Async**: Use `pytest-asyncio` with `asyncio_mode = "auto"`.
 
 ---
