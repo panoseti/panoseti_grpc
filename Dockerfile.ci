@@ -34,6 +34,8 @@ WORKDIR /app
 
 # Build deps needed for compiling Python extension wheels (e.g. grpcio).
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        iputils-ping \
+        curl \
         gcc build-essential \
     && rm -rf /var/lib/apt/lists/*
 
