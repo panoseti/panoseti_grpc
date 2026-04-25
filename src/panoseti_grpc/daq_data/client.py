@@ -148,11 +148,11 @@ class DaqDataClient:
             daq_cfg_ip = daq_node["ip_addr"]
             if "port_forwarding" in daq_node:
                 real_ip = daq_node["port_forwarding"]["gw_ip"]
-                port = self.GRPC_PORT
+                port = daq_node["port_forwarding"].get("grpc_port", self.GRPC_PORT)
                 self.logger.info(f'Using port forwarding: "{daq_cfg_ip=}:{port}" --> "{real_ip=}:{port}"')
-                daq_host = real_ip
+                daq_host = f"{real_ip}:{port}"
             else:
-                daq_host = daq_cfg_ip
+                daq_host = f"{daq_cfg_ip}:{self.GRPC_PORT}"
             self.daq_nodes[daq_host] = {"config": daq_node}
             self.daq_nodes[daq_host]["channel"] = None
             self.daq_nodes[daq_host]["stub"] = None
@@ -165,7 +165,7 @@ class DaqDataClient:
             DaqDataClient: The instance of the client.
         """
         for daq_host, daq_node in self.daq_nodes.items():
-            grpc_connection_target = f"{daq_host}" if daq_host.startswith("unix:") else f"{daq_host}:{self.GRPC_PORT}"
+            grpc_connection_target = daq_host if daq_host.startswith("unix:") else daq_host
             daq_node["connection_target"] = grpc_connection_target
             try:
                 channel = grpc.insecure_channel(grpc_connection_target)
@@ -585,11 +585,11 @@ class AioDaqDataClient:
             daq_cfg_ip = daq_node["ip_addr"]
             if "port_forwarding" in daq_node:
                 real_ip = daq_node["port_forwarding"]["gw_ip"]
-                port = self.GRPC_PORT
+                port = daq_node["port_forwarding"].get("grpc_port", self.GRPC_PORT)
                 self.logger.info(f'Using port forwarding: "{daq_cfg_ip=}:{port}" --> "{real_ip=}:{port}"')
-                daq_host = real_ip
+                daq_host = f"{real_ip}:{port}"
             else:
-                daq_host = daq_cfg_ip
+                daq_host = f"{daq_cfg_ip}:{self.GRPC_PORT}"
             self.daq_nodes[daq_host] = {"config": daq_node}
             self.daq_nodes[daq_host]["channel"] = None
             self.daq_nodes[daq_host]["stub"] = None
@@ -598,7 +598,7 @@ class AioDaqDataClient:
     async def __aenter__(self) -> AioDaqDataClient:
         """Establishes async gRPC channels to all configured DAQ nodes."""
         for daq_host, daq_node in self.daq_nodes.items():
-            grpc_connection_target = f"{daq_host}" if daq_host.startswith("unix:") else f"{daq_host}:{self.GRPC_PORT}"
+            grpc_connection_target = daq_host if daq_host.startswith("unix:") else daq_host
             daq_node["connection_target"] = grpc_connection_target
             try:
                 channel = grpc.aio.insecure_channel(grpc_connection_target)  # Use async channel

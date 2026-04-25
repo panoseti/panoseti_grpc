@@ -6,7 +6,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, DirectoryPath, Field, IPvAnyAddress, model_validator
+from pydantic import BaseModel, Path, Field, IPvAnyAddress, model_validator
 
 
 class DaqControlServerConfig(BaseModel):
@@ -42,7 +42,7 @@ class StartDaqModel(BaseModel):
 
 
 class StopDaqModel(BaseModel):
-    data_dir: DirectoryPath = Field(...)
+    data_dir: Path = Field(...)
     run_dir: str = Field(..., min_length=1)
 
     @model_validator(mode="after")
@@ -54,7 +54,7 @@ class StopDaqModel(BaseModel):
 
 
 class StatusDaqModel(BaseModel):
-    data_dir: DirectoryPath = Field(...)
+    data_dir: Path = Field(...)
     check_hashpipe_running: bool = Field(...)
     check_disk_usage: bool = Field(...)
     check_run_dirs: bool = Field(...)
@@ -66,7 +66,7 @@ class CleanupMode(StrEnum):
 
 
 class CleanupDataModel(BaseModel):
-    data_dir: DirectoryPath = Field(...)
+    data_dir: Path = Field(...)
     run_dir: str = Field(..., min_length=1)
     module_id: list[Uint8] = Field(...)
     force: bool = False
@@ -97,7 +97,7 @@ class CleanupDataModel(BaseModel):
 
 
 class GenerateManifestModel(BaseModel):
-    data_dir: DirectoryPath
+    data_dir: Path
     run_dir: str = Field(..., min_length=1)
     module_id: Uint8
     algorithm: Literal["blake3", "xxh3_128"] = "blake3"
