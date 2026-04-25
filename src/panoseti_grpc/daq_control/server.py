@@ -234,6 +234,10 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         module_id = vreq.module_id
         # get the full path for hashpipe.so, rundir and module.config
         hashpipe_so = f"{datadir}/hashpipe.so"
+        if not os.path.exists(hashpipe_so) and os.path.exists("/usr/local/lib/panoseti_hashpipe.so"):
+            hashpipe_so = "/usr/local/lib/panoseti_hashpipe.so"
+            self.logger.info(f"Using baked-in Hashpipe plugin: {hashpipe_so}")
+
         configfn = f"{datadir}/module.config"
         # create module.config
         self._create_module_config(datadir, module_id)
