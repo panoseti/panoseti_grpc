@@ -43,6 +43,12 @@ class DaqControlStub:
     """GenerateManifest: Generate a checksum manifest for run data"""
     GetManifest: _grpc.UnaryStreamMultiCallable[_daq_control_pb2.GetManifestRequest, _daq_control_pb2.ManifestEntry]
     """GetManifest: Stream manifest entries for a module's run data"""
+    GetTransferStatus: _grpc.UnaryUnaryMultiCallable[_daq_control_pb2.GetTransferStatusRequest, _daq_control_pb2.GetTransferStatusResponse]
+    """GetTransferStatus: Per-node transfer readiness: hashpipe state, run dirs, disk, manifest presence"""
+    GetManifestDigest: _grpc.UnaryUnaryMultiCallable[_daq_control_pb2.GetManifestDigestRequest, _daq_control_pb2.GetManifestDigestResponse]
+    """GetManifestDigest: SHA-256 of the on-disk manifest file; used to satisfy CleanupData precondition"""
+    RetryFailedTransfer: _grpc.UnaryUnaryMultiCallable[_daq_control_pb2.RetryFailedTransferRequest, _daq_control_pb2.RetryFailedTransferResponse]
+    """RetryFailedTransfer: Re-emit a single file by path; returns size + digest for reconciliation"""
 
 @_typing.type_check_only
 class DaqControlAsyncStub(DaqControlStub):
@@ -59,6 +65,12 @@ class DaqControlAsyncStub(DaqControlStub):
     """GenerateManifest: Generate a checksum manifest for run data"""
     GetManifest: _aio.UnaryStreamMultiCallable[_daq_control_pb2.GetManifestRequest, _daq_control_pb2.ManifestEntry]  # type: ignore[assignment]
     """GetManifest: Stream manifest entries for a module's run data"""
+    GetTransferStatus: _aio.UnaryUnaryMultiCallable[_daq_control_pb2.GetTransferStatusRequest, _daq_control_pb2.GetTransferStatusResponse]  # type: ignore[assignment]
+    """GetTransferStatus: Per-node transfer readiness: hashpipe state, run dirs, disk, manifest presence"""
+    GetManifestDigest: _aio.UnaryUnaryMultiCallable[_daq_control_pb2.GetManifestDigestRequest, _daq_control_pb2.GetManifestDigestResponse]  # type: ignore[assignment]
+    """GetManifestDigest: SHA-256 of the on-disk manifest file; used to satisfy CleanupData precondition"""
+    RetryFailedTransfer: _aio.UnaryUnaryMultiCallable[_daq_control_pb2.RetryFailedTransferRequest, _daq_control_pb2.RetryFailedTransferResponse]  # type: ignore[assignment]
+    """RetryFailedTransfer: Re-emit a single file by path; returns size + digest for reconciliation"""
 
 class DaqControlServicer(metaclass=_abc_1.ABCMeta):
     @_abc_1.abstractmethod
@@ -108,5 +120,29 @@ class DaqControlServicer(metaclass=_abc_1.ABCMeta):
         context: _ServicerContext,
     ) -> _typing.Union[_abc.Iterator[_daq_control_pb2.ManifestEntry], _abc.AsyncIterator[_daq_control_pb2.ManifestEntry]]:
         """GetManifest: Stream manifest entries for a module's run data"""
+
+    @_abc_1.abstractmethod
+    def GetTransferStatus(
+        self,
+        request: _daq_control_pb2.GetTransferStatusRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_daq_control_pb2.GetTransferStatusResponse, _abc.Awaitable[_daq_control_pb2.GetTransferStatusResponse]]:
+        """GetTransferStatus: Per-node transfer readiness: hashpipe state, run dirs, disk, manifest presence"""
+
+    @_abc_1.abstractmethod
+    def GetManifestDigest(
+        self,
+        request: _daq_control_pb2.GetManifestDigestRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_daq_control_pb2.GetManifestDigestResponse, _abc.Awaitable[_daq_control_pb2.GetManifestDigestResponse]]:
+        """GetManifestDigest: SHA-256 of the on-disk manifest file; used to satisfy CleanupData precondition"""
+
+    @_abc_1.abstractmethod
+    def RetryFailedTransfer(
+        self,
+        request: _daq_control_pb2.RetryFailedTransferRequest,
+        context: _ServicerContext,
+    ) -> _typing.Union[_daq_control_pb2.RetryFailedTransferResponse, _abc.Awaitable[_daq_control_pb2.RetryFailedTransferResponse]]:
+        """RetryFailedTransfer: Re-emit a single file by path; returns size + digest for reconciliation"""
 
 def add_DaqControlServicer_to_server(servicer: DaqControlServicer, server: _typing.Union[_grpc.Server, _aio.Server]) -> None: ...

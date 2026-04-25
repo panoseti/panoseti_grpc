@@ -197,6 +197,40 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
         return deleted_count, freed_bytes, preserved_paths
 
+    def _cleanup_dir_selective_dry_run(
+        self,
+        run_dir: Path,
+        delete_patterns: list[str],
+        preserve_patterns: list[str],
+    ) -> tuple[int, int, list[str]]:
+        """Dry-run counterpart of _cleanup_dir_selective: counts what *would* be deleted.
+
+        Returns (would_delete_count, would_free_bytes, preserved_paths).
+        No files are actually removed.
+        """
+        would_delete = 0
+        would_free = 0
+        preserved_paths: list[str] = []
+
+        if not run_dir.is_dir():
+            return would_delete, would_free, preserved_paths
+
+        for dirpath, _dirnames, filenames in os.walk(run_dir):
+            for filename in filenames:
+                filepath = Path(dirpath) / filename
+                matches_delete = any(fnmatch.fnmatch(filename, pat) for pat in delete_patterns)
+                matches_preserve = any(fnmatch.fnmatch(filename, pat) for pat in preserve_patterns)
+                if matches_delete and matches_preserve:
+                    preserved_paths.append(str(filepath.relative_to(run_dir)))
+                elif matches_delete and not matches_preserve:
+                    try:
+                        would_free += filepath.stat().st_size
+                        would_delete += 1
+                    except FileNotFoundError:
+                        pass
+
+        return would_delete, would_free, preserved_paths
+
     def _request_to_dict(self, request: Message) -> dict[str, Any]:
         request_dict: dict[str, Any] = MessageToDict(
             request, always_print_fields_with_no_presence=True, preserving_proto_field_name=True
@@ -457,19 +491,29 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                         break
 
         if vreq.mode == CleanupMode.CLEANUP_SELECTIVE:
+            dry_run: bool = bool(request.dry_run)
             total_deleted = 0
             total_freed = 0
             all_preserved: list[str] = []
             msg = ""
             for cleanup_path in cleanup_paths:
-                deleted, freed, preserved = self._cleanup_dir_selective(
-                    Path(cleanup_path),
-                    vreq.delete_patterns,
-                    vreq.preserve_patterns,
-                )
+                if dry_run:
+                    deleted, freed, preserved = self._cleanup_dir_selective_dry_run(
+                        Path(cleanup_path),
+                        vreq.delete_patterns,
+                        vreq.preserve_patterns,
+                    )
+                else:
+                    deleted, freed, preserved = self._cleanup_dir_selective(
+                        Path(cleanup_path),
+                        vreq.delete_patterns,
+                        vreq.preserve_patterns,
+                    )
                 total_deleted += deleted
                 total_freed += freed
                 all_preserved.extend(preserved)
+            if dry_run:
+                msg = "dry_run=True: no files deleted"
             return daq_control_pb2.CleanupDataResponse(
                 success=True,
                 message=msg,
@@ -600,6 +644,132 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         entries = await _read_manifest(manifest_path)
         for entry in entries:
             yield entry
+
+    @grpc_error_handler
+    async def GetTransferStatus(
+        self, request: daq_control_pb2.GetTransferStatusRequest, context: grpc.ServicerContext
+    ) -> daq_control_pb2.GetTransferStatusResponse:
+        """Return transfer readiness: hashpipe state, run dirs, free disk, manifest presence."""
+        self.logger.info("GetTransferStatus called for run_dir=%s", request.run_dir)
+        data_dir = Path(request.data_dir)
+        if not data_dir.is_dir():
+            return daq_control_pb2.GetTransferStatusResponse(
+                success=False, message=f"data_dir not found: {data_dir}"
+            )
+
+        hashpipe_running = self.hashpipe_pid > 0 and is_hashpipe_running(self.hashpipe_pid)
+
+        disk = shutil.disk_usage(str(data_dir))
+        free_bytes = disk.free
+        total_bytes = disk.total
+
+        run_dirs: list[str] = []
+        manifest_files: list[str] = []
+        if request.run_dir:
+            for mod_dir in sorted(data_dir.glob("module_*")):
+                run_path = mod_dir / request.run_dir
+                if run_path.is_dir():
+                    run_dirs.append(str(run_path))
+                    for suffix in ("blake3", "xxh3_128", "sha256"):
+                        mf = run_path / f"manifest.{suffix}"
+                        if mf.exists():
+                            manifest_files.append(str(mf))
+                            break
+
+        return daq_control_pb2.GetTransferStatusResponse(
+            success=True,
+            message="",
+            hashpipe_running=hashpipe_running,
+            free_bytes=free_bytes,
+            total_bytes=total_bytes,
+            run_dirs=run_dirs,
+            manifest_files=manifest_files,
+        )
+
+    @grpc_error_handler
+    async def GetManifestDigest(
+        self, request: daq_control_pb2.GetManifestDigestRequest, context: grpc.ServicerContext
+    ) -> daq_control_pb2.GetManifestDigestResponse:
+        """Return the SHA-256 hex digest of the on-disk manifest file for a module/run.
+
+        The digest is used by the head node to populate ``manifest_digest`` in
+        ``CleanupDataRequest`` and satisfy the CLEANUP_SELECTIVE integrity precondition.
+        """
+        import hashlib as _hashlib
+
+        self.logger.info(
+            "GetManifestDigest called: data_dir=%s run_dir=%s module_id=%d",
+            request.data_dir, request.run_dir, request.module_id,
+        )
+        module_run_dir = Path(request.data_dir) / f"module_{request.module_id}" / request.run_dir
+        if not module_run_dir.is_dir():
+            return daq_control_pb2.GetManifestDigestResponse(
+                success=False, message=f"Module run dir not found: {module_run_dir}"
+            )
+
+        for suffix in ("blake3", "xxh3_128", "sha256"):
+            mf = module_run_dir / f"manifest.{suffix}"
+            if mf.exists():
+                raw = await asyncio.to_thread(mf.read_bytes)
+                digest_hex = _hashlib.sha256(raw).hexdigest()
+                return daq_control_pb2.GetManifestDigestResponse(
+                    success=True,
+                    message="",
+                    digest_hex=digest_hex,
+                    algo_suffix=suffix,
+                    manifest_path=str(mf),
+                )
+
+        return daq_control_pb2.GetManifestDigestResponse(
+            success=False,
+            message=f"No manifest file found in {module_run_dir}",
+        )
+
+    @grpc_error_handler
+    async def RetryFailedTransfer(
+        self, request: daq_control_pb2.RetryFailedTransferRequest, context: grpc.ServicerContext
+    ) -> daq_control_pb2.RetryFailedTransferResponse:
+        """Re-emit a single file's digest so the head node can verify it without a full re-rsync.
+
+        The file must reside under ``data_dir/module_{module_id}/run_dir/`` to prevent
+        path traversal.  Returns the file size and blake3/sha256 digest.
+        """
+        import hashlib as _hashlib
+
+        self.logger.info(
+            "RetryFailedTransfer called: data_dir=%s run_dir=%s module_id=%d file_path=%s",
+            request.data_dir, request.run_dir, request.module_id, request.file_path,
+        )
+        data_dir = Path(request.data_dir).resolve()
+        module_run_dir = (data_dir / f"module_{request.module_id}" / request.run_dir).resolve()
+
+        file_path = Path(request.file_path)
+        if not file_path.is_absolute():
+            file_path = (module_run_dir / request.file_path).resolve()
+        else:
+            file_path = file_path.resolve()
+
+        if not file_path.is_relative_to(module_run_dir):
+            await context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                f"file_path escapes module run dir: {request.file_path}",
+            )
+            return daq_control_pb2.RetryFailedTransferResponse(success=False, message="")
+
+        if not file_path.is_file():
+            return daq_control_pb2.RetryFailedTransferResponse(
+                success=False, message=f"File not found: {file_path}"
+            )
+
+        raw = await asyncio.to_thread(file_path.read_bytes)
+        digest_hex = _hashlib.sha256(raw).hexdigest()
+        return daq_control_pb2.RetryFailedTransferResponse(
+            success=True,
+            message="",
+            size_bytes=len(raw),
+            digest_hex=digest_hex,
+            algorithm="sha256",
+        )
 
 
 async def serve(grpc_port: int = 50051, level: int = logging.DEBUG) -> None:

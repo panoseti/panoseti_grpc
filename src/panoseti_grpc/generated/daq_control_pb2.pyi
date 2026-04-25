@@ -216,6 +216,7 @@ class CleanupDataRequest(_message.Message):
     DELETE_PATTERNS_FIELD_NUMBER: _builtins.int
     PRESERVE_PATTERNS_FIELD_NUMBER: _builtins.int
     MANIFEST_DIGEST_FIELD_NUMBER: _builtins.int
+    DRY_RUN_FIELD_NUMBER: _builtins.int
     data_dir: _builtins.str
     run_dir: _builtins.str
     force: _builtins.bool
@@ -226,6 +227,10 @@ class CleanupDataRequest(_message.Message):
     The server recomputes the manifest digest and rejects with
     FAILED_PRECONDITION if it does not match. Empty bytes = no check
     (legacy callers and CLEANUP_FULL are unaffected).
+    """
+    dry_run: _builtins.bool
+    """dry_run: when true, return the would-be preserved_paths and deleted_count
+    without actually deleting anything. Only meaningful for CLEANUP_SELECTIVE.
     """
     @_builtins.property
     def module_id(self) -> _containers.RepeatedScalarFieldContainer[_builtins.int]: ...
@@ -244,8 +249,9 @@ class CleanupDataRequest(_message.Message):
         delete_patterns: _abc.Iterable[_builtins.str] | None = ...,
         preserve_patterns: _abc.Iterable[_builtins.str] | None = ...,
         manifest_digest: _builtins.bytes = ...,
+        dry_run: _builtins.bool = ...,
     ) -> None: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["data_dir", b"data_dir", "delete_patterns", b"delete_patterns", "force", b"force", "manifest_digest", b"manifest_digest", "mode", b"mode", "module_id", b"module_id", "preserve_patterns", b"preserve_patterns", "run_dir", b"run_dir"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["data_dir", b"data_dir", "delete_patterns", b"delete_patterns", "dry_run", b"dry_run", "force", b"force", "manifest_digest", b"manifest_digest", "mode", b"mode", "module_id", b"module_id", "preserve_patterns", b"preserve_patterns", "run_dir", b"run_dir"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
 
 Global___CleanupDataRequest: _TypeAlias = CleanupDataRequest  # noqa: Y015
@@ -388,3 +394,161 @@ class ManifestEntry(_message.Message):
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
 
 Global___ManifestEntry: _TypeAlias = ManifestEntry  # noqa: Y015
+
+@_typing.final
+class GetTransferStatusRequest(_message.Message):
+    DESCRIPTOR: _descriptor.Descriptor
+
+    DATA_DIR_FIELD_NUMBER: _builtins.int
+    RUN_DIR_FIELD_NUMBER: _builtins.int
+    data_dir: _builtins.str
+    run_dir: _builtins.str
+    def __init__(
+        self,
+        *,
+        data_dir: _builtins.str = ...,
+        run_dir: _builtins.str = ...,
+    ) -> None: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["data_dir", b"data_dir", "run_dir", b"run_dir"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+
+Global___GetTransferStatusRequest: _TypeAlias = GetTransferStatusRequest  # noqa: Y015
+
+@_typing.final
+class GetTransferStatusResponse(_message.Message):
+    DESCRIPTOR: _descriptor.Descriptor
+
+    SUCCESS_FIELD_NUMBER: _builtins.int
+    MESSAGE_FIELD_NUMBER: _builtins.int
+    HASHPIPE_RUNNING_FIELD_NUMBER: _builtins.int
+    FREE_BYTES_FIELD_NUMBER: _builtins.int
+    TOTAL_BYTES_FIELD_NUMBER: _builtins.int
+    RUN_DIRS_FIELD_NUMBER: _builtins.int
+    MANIFEST_FILES_FIELD_NUMBER: _builtins.int
+    success: _builtins.bool
+    message: _builtins.str
+    hashpipe_running: _builtins.bool
+    free_bytes: _builtins.int
+    total_bytes: _builtins.int
+    @_builtins.property
+    def run_dirs(self) -> _containers.RepeatedScalarFieldContainer[_builtins.str]: ...
+    @_builtins.property
+    def manifest_files(self) -> _containers.RepeatedScalarFieldContainer[_builtins.str]: ...
+    def __init__(
+        self,
+        *,
+        success: _builtins.bool = ...,
+        message: _builtins.str = ...,
+        hashpipe_running: _builtins.bool = ...,
+        free_bytes: _builtins.int = ...,
+        total_bytes: _builtins.int = ...,
+        run_dirs: _abc.Iterable[_builtins.str] | None = ...,
+        manifest_files: _abc.Iterable[_builtins.str] | None = ...,
+    ) -> None: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["free_bytes", b"free_bytes", "hashpipe_running", b"hashpipe_running", "manifest_files", b"manifest_files", "message", b"message", "run_dirs", b"run_dirs", "success", b"success", "total_bytes", b"total_bytes"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+
+Global___GetTransferStatusResponse: _TypeAlias = GetTransferStatusResponse  # noqa: Y015
+
+@_typing.final
+class GetManifestDigestRequest(_message.Message):
+    DESCRIPTOR: _descriptor.Descriptor
+
+    DATA_DIR_FIELD_NUMBER: _builtins.int
+    RUN_DIR_FIELD_NUMBER: _builtins.int
+    MODULE_ID_FIELD_NUMBER: _builtins.int
+    data_dir: _builtins.str
+    run_dir: _builtins.str
+    module_id: _builtins.int
+    def __init__(
+        self,
+        *,
+        data_dir: _builtins.str = ...,
+        run_dir: _builtins.str = ...,
+        module_id: _builtins.int = ...,
+    ) -> None: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["data_dir", b"data_dir", "module_id", b"module_id", "run_dir", b"run_dir"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+
+Global___GetManifestDigestRequest: _TypeAlias = GetManifestDigestRequest  # noqa: Y015
+
+@_typing.final
+class GetManifestDigestResponse(_message.Message):
+    DESCRIPTOR: _descriptor.Descriptor
+
+    SUCCESS_FIELD_NUMBER: _builtins.int
+    MESSAGE_FIELD_NUMBER: _builtins.int
+    DIGEST_HEX_FIELD_NUMBER: _builtins.int
+    ALGO_SUFFIX_FIELD_NUMBER: _builtins.int
+    MANIFEST_PATH_FIELD_NUMBER: _builtins.int
+    success: _builtins.bool
+    message: _builtins.str
+    digest_hex: _builtins.str
+    algo_suffix: _builtins.str
+    manifest_path: _builtins.str
+    def __init__(
+        self,
+        *,
+        success: _builtins.bool = ...,
+        message: _builtins.str = ...,
+        digest_hex: _builtins.str = ...,
+        algo_suffix: _builtins.str = ...,
+        manifest_path: _builtins.str = ...,
+    ) -> None: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["algo_suffix", b"algo_suffix", "digest_hex", b"digest_hex", "manifest_path", b"manifest_path", "message", b"message", "success", b"success"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+
+Global___GetManifestDigestResponse: _TypeAlias = GetManifestDigestResponse  # noqa: Y015
+
+@_typing.final
+class RetryFailedTransferRequest(_message.Message):
+    DESCRIPTOR: _descriptor.Descriptor
+
+    DATA_DIR_FIELD_NUMBER: _builtins.int
+    RUN_DIR_FIELD_NUMBER: _builtins.int
+    MODULE_ID_FIELD_NUMBER: _builtins.int
+    FILE_PATH_FIELD_NUMBER: _builtins.int
+    data_dir: _builtins.str
+    run_dir: _builtins.str
+    module_id: _builtins.int
+    file_path: _builtins.str
+    def __init__(
+        self,
+        *,
+        data_dir: _builtins.str = ...,
+        run_dir: _builtins.str = ...,
+        module_id: _builtins.int = ...,
+        file_path: _builtins.str = ...,
+    ) -> None: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["data_dir", b"data_dir", "file_path", b"file_path", "module_id", b"module_id", "run_dir", b"run_dir"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+
+Global___RetryFailedTransferRequest: _TypeAlias = RetryFailedTransferRequest  # noqa: Y015
+
+@_typing.final
+class RetryFailedTransferResponse(_message.Message):
+    DESCRIPTOR: _descriptor.Descriptor
+
+    SUCCESS_FIELD_NUMBER: _builtins.int
+    MESSAGE_FIELD_NUMBER: _builtins.int
+    SIZE_BYTES_FIELD_NUMBER: _builtins.int
+    DIGEST_HEX_FIELD_NUMBER: _builtins.int
+    ALGORITHM_FIELD_NUMBER: _builtins.int
+    success: _builtins.bool
+    message: _builtins.str
+    size_bytes: _builtins.int
+    digest_hex: _builtins.str
+    algorithm: _builtins.str
+    def __init__(
+        self,
+        *,
+        success: _builtins.bool = ...,
+        message: _builtins.str = ...,
+        size_bytes: _builtins.int = ...,
+        digest_hex: _builtins.str = ...,
+        algorithm: _builtins.str = ...,
+    ) -> None: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["algorithm", b"algorithm", "digest_hex", b"digest_hex", "message", b"message", "size_bytes", b"size_bytes", "success", b"success"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+
+Global___RetryFailedTransferResponse: _TypeAlias = RetryFailedTransferResponse  # noqa: Y015

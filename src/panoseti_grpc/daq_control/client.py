@@ -13,7 +13,10 @@ from panoseti_grpc.grpc_utils import grpc_call
 from .client_models import (
     CleanupDataParameters,
     GenerateManifestParameters,
+    GetManifestDigestParameters,
     GetManifestParameters,
+    GetTransferStatusParameters,
+    RetryFailedTransferParameters,
     StartDaqParameters,
     StatusDaqParameters,
     StopDaqParameters,
@@ -166,6 +169,7 @@ class AsyncDaqControlClient:
         request.delete_patterns.extend(v_params.delete_patterns)
         request.preserve_patterns.extend(v_params.preserve_patterns)
         request.manifest_digest = v_params.manifest_digest
+        request.dry_run = v_params.dry_run
         resp: daq_control_pb2.CleanupDataResponse = await self.stub.CleanupData(request, timeout=timeout)
         return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
@@ -218,6 +222,78 @@ class AsyncDaqControlClient:
         request.module_id = v_params.module_id
         async for entry in self.stub.GetManifest(request, timeout=timeout):
             yield MessageToDict(entry, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
+
+    @grpc_call
+    async def GetTransferStatus(self, parameters: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:  # noqa: ASYNC109
+        """Return transfer readiness for a DAQ node.
+
+        Args:
+            parameters: Query parameters including ``data_dir`` and optional ``run_dir``.
+            timeout: Optional gRPC timeout in seconds.
+
+        Returns:
+            Dictionary with ``hashpipe_running``, ``free_bytes``, ``total_bytes``,
+            ``run_dirs``, and ``manifest_files``.
+
+        Raises:
+            ConnectionError: If the RPC call fails.
+        """
+        v_params = GetTransferStatusParameters(**parameters)
+        request = daq_control_pb2.GetTransferStatusRequest()
+        request.data_dir = v_params.data_dir
+        request.run_dir = v_params.run_dir
+        resp: daq_control_pb2.GetTransferStatusResponse = await self.stub.GetTransferStatus(request, timeout=timeout)
+        return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
+
+    @grpc_call
+    async def GetManifestDigest(self, parameters: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:  # noqa: ASYNC109
+        """Return the SHA-256 hex digest of the on-disk manifest for a module/run.
+
+        The returned ``digest_hex`` is used to populate ``manifest_digest`` in
+        ``CleanupDataRequest`` to satisfy the CLEANUP_SELECTIVE integrity precondition.
+
+        Args:
+            parameters: Query parameters including ``data_dir``, ``run_dir``, ``module_id``.
+            timeout: Optional gRPC timeout in seconds.
+
+        Returns:
+            Dictionary with ``digest_hex``, ``algo_suffix``, and ``manifest_path``.
+
+        Raises:
+            ConnectionError: If the RPC call fails.
+        """
+        v_params = GetManifestDigestParameters(**parameters)
+        request = daq_control_pb2.GetManifestDigestRequest()
+        request.data_dir = v_params.data_dir
+        request.run_dir = v_params.run_dir
+        request.module_id = v_params.module_id
+        resp: daq_control_pb2.GetManifestDigestResponse = await self.stub.GetManifestDigest(request, timeout=timeout)
+        return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
+
+    @grpc_call
+    async def RetryFailedTransfer(self, parameters: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:  # noqa: ASYNC109
+        """Re-emit a single file's digest so the head node can reconcile without a full re-rsync.
+
+        Args:
+            parameters: Parameters including ``data_dir``, ``run_dir``, ``module_id``, ``file_path``.
+            timeout: Optional gRPC timeout in seconds.
+
+        Returns:
+            Dictionary with ``size_bytes``, ``digest_hex``, and ``algorithm``.
+
+        Raises:
+            ConnectionError: If the RPC call fails.
+        """
+        v_params = RetryFailedTransferParameters(**parameters)
+        request = daq_control_pb2.RetryFailedTransferRequest()
+        request.data_dir = v_params.data_dir
+        request.run_dir = v_params.run_dir
+        request.module_id = v_params.module_id
+        request.file_path = v_params.file_path
+        resp: daq_control_pb2.RetryFailedTransferResponse = await self.stub.RetryFailedTransfer(
+            request, timeout=timeout
+        )
+        return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
 
 class DaqControlClient:
@@ -298,6 +374,7 @@ class DaqControlClient:
         request.delete_patterns.extend(v_params.delete_patterns)
         request.preserve_patterns.extend(v_params.preserve_patterns)
         request.manifest_digest = v_params.manifest_digest
+        request.dry_run = v_params.dry_run
         resp: daq_control_pb2.CleanupDataResponse = self.stub.CleanupData(request, timeout=timeout)
         return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
@@ -328,3 +405,36 @@ class DaqControlClient:
                 MessageToDict(entry, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
             )
         return entries
+
+    @grpc_call
+    def GetTransferStatus(self, parameters: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
+        """Return transfer readiness for a DAQ node. (Sync)"""
+        v_params = GetTransferStatusParameters(**parameters)
+        request = daq_control_pb2.GetTransferStatusRequest()
+        request.data_dir = v_params.data_dir
+        request.run_dir = v_params.run_dir
+        resp: daq_control_pb2.GetTransferStatusResponse = self.stub.GetTransferStatus(request, timeout=timeout)
+        return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
+
+    @grpc_call
+    def GetManifestDigest(self, parameters: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
+        """Return the SHA-256 hex digest of the on-disk manifest for a module/run. (Sync)"""
+        v_params = GetManifestDigestParameters(**parameters)
+        request = daq_control_pb2.GetManifestDigestRequest()
+        request.data_dir = v_params.data_dir
+        request.run_dir = v_params.run_dir
+        request.module_id = v_params.module_id
+        resp: daq_control_pb2.GetManifestDigestResponse = self.stub.GetManifestDigest(request, timeout=timeout)
+        return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
+
+    @grpc_call
+    def RetryFailedTransfer(self, parameters: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
+        """Re-emit a single file's digest for reconciliation. (Sync)"""
+        v_params = RetryFailedTransferParameters(**parameters)
+        request = daq_control_pb2.RetryFailedTransferRequest()
+        request.data_dir = v_params.data_dir
+        request.run_dir = v_params.run_dir
+        request.module_id = v_params.module_id
+        request.file_path = v_params.file_path
+        resp: daq_control_pb2.RetryFailedTransferResponse = self.stub.RetryFailedTransfer(request, timeout=timeout)
+        return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)

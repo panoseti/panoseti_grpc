@@ -16,6 +16,12 @@ service DaqControl {
     rpc GenerateManifest (GenerateManifestRequest) returns (GenerateManifestResponse) {}
     /* GetManifest: Stream manifest entries for a module's run data */
     rpc GetManifest (GetManifestRequest) returns (stream ManifestEntry) {}
+    /* GetTransferStatus: Per-node transfer readiness: hashpipe state, run dirs, disk, manifest presence */
+    rpc GetTransferStatus (GetTransferStatusRequest) returns (GetTransferStatusResponse) {}
+    /* GetManifestDigest: SHA-256 of the on-disk manifest file; used to satisfy CleanupData precondition */
+    rpc GetManifestDigest (GetManifestDigestRequest) returns (GetManifestDigestResponse) {}
+    /* RetryFailedTransfer: Re-emit a single file by path; returns size + digest for reconciliation */
+    rpc RetryFailedTransfer (RetryFailedTransferRequest) returns (RetryFailedTransferResponse) {}
 }
 
 /* start daq request and response */
@@ -88,6 +94,9 @@ message CleanupDataRequest {
        FAILED_PRECONDITION if it does not match. Empty bytes = no check
        (legacy callers and CLEANUP_FULL are unaffected). */
     bytes   manifest_digest = 8;
+    /* dry_run: when true, return the would-be preserved_paths and deleted_count
+       without actually deleting anything. Only meaningful for CLEANUP_SELECTIVE. */
+    bool    dry_run = 11;
 }
 
 message CleanupDataResponse {
@@ -127,4 +136,48 @@ message ManifestEntry {
     string  digest_hex    = 2;
     uint64  size_bytes    = 3;
     int64   mtime_ns      = 4;
+}
+
+message GetTransferStatusRequest {
+    string  data_dir = 1;
+    string  run_dir  = 2;
+}
+
+message GetTransferStatusResponse {
+    bool    success          = 1;
+    string  message          = 2;
+    bool    hashpipe_running = 3;
+    uint64  free_bytes       = 4;
+    uint64  total_bytes      = 5;
+    repeated string run_dirs       = 6;
+    repeated string manifest_files = 7;
+}
+
+message GetManifestDigestRequest {
+    string  data_dir  = 1;
+    string  run_dir   = 2;
+    uint32  module_id = 3;
+}
+
+message GetManifestDigestResponse {
+    bool    success       = 1;
+    string  message       = 2;
+    string  digest_hex    = 3;
+    string  algo_suffix   = 4;
+    string  manifest_path = 5;
+}
+
+message RetryFailedTransferRequest {
+    string  data_dir  = 1;
+    string  run_dir   = 2;
+    uint32  module_id = 3;
+    string  file_path = 4;
+}
+
+message RetryFailedTransferResponse {
+    bool    success    = 1;
+    string  message    = 2;
+    uint64  size_bytes = 3;
+    string  digest_hex = 4;
+    string  algorithm  = 5;
 }

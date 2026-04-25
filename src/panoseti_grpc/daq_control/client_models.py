@@ -52,6 +52,7 @@ class CleanupDataParameters(BaseModel):
     delete_patterns: list[str] = []
     preserve_patterns: list[str] = []
     manifest_digest: bytes = b""
+    dry_run: bool = False
 
 
 class GenerateManifestParameters(BaseModel):
@@ -66,3 +67,21 @@ class GetManifestParameters(BaseModel):
     data_dir: str = Field(..., min_length=1)
     run_dir: str = Field(..., min_length=1)
     module_id: Uint8
+
+
+class GetTransferStatusParameters(BaseModel):
+    data_dir: str = Field(..., min_length=1)
+    run_dir: str = ""
+
+
+class GetManifestDigestParameters(BaseModel):
+    data_dir: str = Field(..., min_length=1)
+    run_dir: str = Field(..., min_length=1)
+    module_id: Uint8
+
+
+class RetryFailedTransferParameters(BaseModel):
+    data_dir: str = Field(..., min_length=1)
+    run_dir: str = Field(..., min_length=1)
+    module_id: Uint8
+    file_path: str = Field(..., min_length=1)
