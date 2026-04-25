@@ -105,7 +105,7 @@ class GenerateManifestModel(BaseModel):
 
     @model_validator(mode="after")
     def check_run_dir(self) -> GenerateManifestModel:
-        full_path = self.data_dir / self.run_dir
+        full_path = self.data_dir / f"module_{self.module_id}" / self.run_dir
         if not full_path.is_dir():
             raise ValueError(f"'{full_path}' does not exist")
         return self
