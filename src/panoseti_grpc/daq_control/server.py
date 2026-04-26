@@ -146,8 +146,8 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     def _cleanup_dir(self, rundir: str | Path) -> bool:
         path = Path(rundir)
         if not path.is_dir():
-            self.logger.warning(f"Data Directory not exist: {rundir}")
-            return False
+            self.logger.info(f"Data Directory already cleaned (noop): {rundir}")
+            return True
         else:
             self.logger.debug(f"Cleaning up {rundir}")
             shutil.rmtree(path)
