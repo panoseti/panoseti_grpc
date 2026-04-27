@@ -431,29 +431,57 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         module_id = vreq.module_id
         force = vreq.force
 
-        if self.hashpipe_pid > 0:
-            process_alive = is_hashpipe_running(self.hashpipe_pid)
-            if process_alive:
-                # Process is genuinely running — refuse even with force=True.
-                # force is only an escape hatch for the orphaned-PID path.
-                # is_hashpipe_running() also guards against PID reuse: it
-                # verifies the cmdline still contains "hashpipe".
-                msg = f"HASHPIPE is still alive, pid[{self.hashpipe_pid}]. Cleanup refused."
-                self.logger.warning(msg)
-                return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
-            elif not force:
-                # Process is dead (orphaned) but caller did not pass force=True.
-                msg = (
-                    f"Orphaned HASHPIPE pid[{self.hashpipe_pid}] (process dead). "
-                    "Use force=True to override and clean up."
-                )
+        # Defensive liveness check (SC-010 resolution)
+        pid_alive = False
+        uncertain = False
+        parsed_pid = -1
+        
+        try:
+            parsed_pid = int(self.hashpipe_pid)
+        except (ValueError, TypeError):
+            if self.hashpipe_pid != -1:
+                uncertain = True
+
+        if not uncertain and parsed_pid > 0:
+            try:
+                # os.kill(pid, 0) verifies process existence and access
+                os.kill(parsed_pid, 0)
+                pid_alive = True
+            except ProcessLookupError:
+                # PID does not exist — safe to clean up
+                pid_alive = False
+            except PermissionError:
+                # Process alive but owned by another user — treat as alive (unsafe)
+                pid_alive = True
+            except Exception as e:
+                self.logger.error(f"Unexpected error during liveness check: {e}")
+                uncertain = True
+
+        if pid_alive:
+            msg = f"HASHPIPE is still alive, pid[{parsed_pid}]. Cleanup refused."
+            self.logger.warning(msg)
+            return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
+        elif uncertain:
+            msg = f"HASHPIPE status uncertain for pid[{self.hashpipe_pid}]. Refusing cleanup without force=True."
+            if not force:
                 self.logger.warning(msg)
                 return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
             else:
-                # Process is dead and force=True — allowed; reset tracked PID.
-                msg = f"Orphaned HASHPIPE pid[{self.hashpipe_pid}] (dead). Force cleanup in progress."
-                self.logger.warning(msg)
+                self.logger.warning(f"{msg} (Force cleanup enabled)")
                 self.hashpipe_pid = -1
+        elif parsed_pid > 0 and not force:
+            # pid_alive is False and not uncertain: process is dead (orphaned)
+            # but caller did not pass force=True.
+            msg = (
+                f"Orphaned HASHPIPE pid[{parsed_pid}] (process dead). "
+                "Use force=True to override and clean up."
+            )
+            self.logger.warning(msg)
+            return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
+        elif parsed_pid > 0:
+            # Process is dead and force=True — allowed; reset tracked PID.
+            self.logger.info(f"Orphaned HASHPIPE pid[{parsed_pid}] (dead). Force cleanup allowed.")
+            self.hashpipe_pid = -1
 
         # clean up the run dir in data dir
         run_dir_path = f"{datadir}/{rundir}"
