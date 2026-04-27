@@ -28,7 +28,7 @@ class StartDaqParameters(BaseModel):
 
 class StopDaqParameters(BaseModel):
     data_dir: str = Field(..., min_length=1)
-    run_dir: str = Field(..., min_length=1)
+    run_dir: str = ""
 
 
 class StatusDaqParameters(BaseModel):
