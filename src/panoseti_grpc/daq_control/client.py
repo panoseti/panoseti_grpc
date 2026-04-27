@@ -143,6 +143,7 @@ class AsyncDaqControlClient:
         status["hashpipe_running"] = bool(resp.hashpipe_running)
         status["disk_usage"] = dict(resp.disk_usage)
         status["run_dirs"] = list(resp.run_dirs)
+        status["hashpipe_pid"] = int(resp.hashpipe_pid) if resp.hashpipe_pid > 0 else None
         return bool(resp.success), status
 
     @grpc_call
@@ -359,6 +360,7 @@ class DaqControlClient:
         status["hashpipe_running"] = bool(resp.hashpipe_running)
         status["disk_usage"] = dict(resp.disk_usage)
         status["run_dirs"] = list(resp.run_dirs)
+        status["hashpipe_pid"] = int(resp.hashpipe_pid) if resp.hashpipe_pid > 0 else None
         return bool(resp.success), status
 
     @grpc_call

@@ -15,7 +15,7 @@ import sys
 sys.path.append("/app/")
 import contextlib
 
-from panoseti_util import control_utils as util
+from panoseti_grpc.panoseti_util import control_utils as util
 
 
 def main() -> None:

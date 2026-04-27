@@ -39,6 +39,7 @@ from google.protobuf.json_format import MessageToDict
 from panoseti_grpc.generated import daq_control_pb2, daq_control_pb2_grpc
 from panoseti_grpc.telemetry.logger import get_logger
 from panoseti_grpc.util.error_handling import grpc_error_handler
+from panoseti_grpc.panoseti_util.control_utils import kill_hk_recorder
 
 from .config import CleanupDataModel, CleanupMode, GenerateManifestModel, StartDaqModel, StatusDaqModel
 from .manifest import compute_manifest
@@ -344,30 +345,69 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     async def StopDaq(
         self, request: daq_control_pb2.StopDaqRequest, context: grpc.ServicerContext
     ) -> daq_control_pb2.StopDaqResponse:
-        self.logger.info("Stop HASHPIPE instance...")
-        # data dir and run dir is not used in this method
-        # dreq = self._request_to_dict(request)
-        # vreq = StopDaqModel(**dreq)
-        if self.hashpipe_pid == -1:
+        self.logger.info("Stop HASHPIPE instance(s)...")
+
+        # 1. Identify all hashpipe processes (Non-blocking)
+        n_initial, pids = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
+        if n_initial == 0:
             self.logger.info("No HASHPIPE instance is running.")
-            return daq_control_pb2.StopDaqResponse(success=True)
-        try:
-            p = psutil.Process(self.hashpipe_pid)
-            p.send_signal(signal.SIGINT)
-            await asyncio.get_running_loop().run_in_executor(None, p.wait)
-        except psutil.NoSuchProcess:
-            # Process already gone (e.g. killed externally) — treat as stopped.
-            self.logger.info(f"HASHPIPE process (pid={self.hashpipe_pid}) no longer exists; treating as stopped.")
             self.hashpipe_pid = -1
-            return daq_control_pb2.StopDaqResponse(success=True)
-        success = is_hashpipe_running(self.hashpipe_pid)
-        if success:
-            self.logger.warning("HASHPIPE is still running...")
-            return daq_control_pb2.StopDaqResponse(success=False)
-        else:
-            self.hashpipe_pid = -1
-            self.logger.info("HASHPIPE instance stopped successfully.")
-            return daq_control_pb2.StopDaqResponse(success=True)
+            return daq_control_pb2.StopDaqResponse(success=True, message="No processes found.")
+
+        self.logger.info(f"Found {n_initial} HASHPIPE process(es): {pids}")
+
+        # 2. Tier 1: SIGINT to all detected instances
+        for pid in pids:
+            try:
+                p = psutil.Process(pid)
+                p.send_signal(signal.SIGINT)
+            except psutil.NoSuchProcess:
+                continue
+
+        # 3. Graceful Wait Loop (up to 60s)
+        WAIT_TIMEOUT = 60.0
+        POLL_INTERVAL = 2.0
+        elapsed = 0.0
+        while elapsed < WAIT_TIMEOUT:
+            _, remaining_pids = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
+            if not remaining_pids:
+                break
+            self.logger.info(f"Waiting for {len(remaining_pids)} HASHPIPE process(es) to exit gracefully... ({int(elapsed)}s)")
+            await asyncio.sleep(POLL_INTERVAL)
+            elapsed += POLL_INTERVAL
+
+        # 4. Tier 2: Escalation to SIGKILL for survivors
+        _, final_pids = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
+        killed_count = 0
+        if final_pids:
+            self.logger.warning(f"{len(final_pids)} process(es) refused SIGINT. Escalating to SIGKILL: {final_pids}")
+            for pid in final_pids:
+                try:
+                    p = psutil.Process(pid)
+                    p.kill()
+                    killed_count += 1
+                except psutil.NoSuchProcess:
+                    continue
+            # Brief wait for OS to reap
+            await asyncio.sleep(1.0)
+
+        # 5. Cleanup sidecars (HK recorder)
+        await asyncio.to_thread(kill_hk_recorder)
+
+        # 6. Final verification
+        n_remaining, _ = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
+        self.hashpipe_pid = -1
+        
+        success = (n_remaining == 0)
+        status_msg = (
+            f"Successfully stopped {n_initial} processes." if success else
+            f"Failed to stop all processes. {n_remaining} still active."
+        )
+        if killed_count > 0:
+            status_msg += f" ({killed_count} required SIGKILL escalation)."
+
+        self.logger.info(status_msg)
+        return daq_control_pb2.StopDaqResponse(success=success, message=status_msg)
 
     @grpc_error_handler
     async def StatusDaq(
@@ -383,10 +423,18 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             return daq_control_pb2.DaqStatusResponse(success=False)  # StatusResponse doesn't have message field
 
         datadir = vreq.data_dir
+        hashpipe_pid = -1
         # check hashpipe status
         if vreq.check_hashpipe_running:
             self.logger.debug("Checking HASHPIPE status...")
-            hashpipe_running = False if self.hashpipe_pid == -1 else is_hashpipe_running(self.hashpipe_pid)
+            # Consistency Fix: check for ANY running hashpipe process, not just the tracked one.
+            n, pids = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
+            hashpipe_running = (n > 0)
+            if n > 0:
+                hashpipe_pid = pids[0]
+            # Update tracked pid if exactly one found and we didn't have one
+            if n == 1 and self.hashpipe_pid == -1:
+                self.hashpipe_pid = pids[0]
         else:
             hashpipe_running = False
         # check free space
@@ -410,7 +458,11 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             run_dirs = self._check_run_dirs(datadir)
         # return
         return daq_control_pb2.DaqStatusResponse(
-            success=True, hashpipe_running=hashpipe_running, disk_usage=disk_usage_struct, run_dirs=run_dirs
+            success=True,
+            hashpipe_running=hashpipe_running,
+            disk_usage=disk_usage_struct,
+            run_dirs=run_dirs,
+            hashpipe_pid=hashpipe_pid
         )
 
     @grpc_error_handler
@@ -510,7 +562,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                                 provided_digest[:16],
                                 actual[:16],
                             )
-                            await context.abort(
+                            context.abort(
                                 grpc.StatusCode.FAILED_PRECONDITION,
                                 f"Manifest digest mismatch for {cp}: "
                                 f"expected {provided_digest[:16]}…, got {actual[:16]}…. "
@@ -626,7 +678,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         run_dir_path = await (data_dir / f"module_{request.module_id}" / request.run_dir).resolve()
 
         if not run_dir_path.is_relative_to(data_dir):
-            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "run_dir escapes data_dir")
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "run_dir escapes data_dir")
             return
 
         # Auto-detect manifest file by trying known algorithm suffixes
@@ -638,7 +690,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 break
 
         if manifest_path is None:
-            await context.abort(grpc.StatusCode.NOT_FOUND, f"No manifest file found in {run_dir_path}")
+            context.abort(grpc.StatusCode.NOT_FOUND, f"No manifest file found in {run_dir_path}")
             return
 
         async def _read_manifest(path: anyio.Path) -> list[daq_control_pb2.ManifestEntry]:
@@ -778,7 +830,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             file_path = file_path.resolve()
 
         if not file_path.is_relative_to(module_run_dir):
-            await context.abort(
+            context.abort(
                 grpc.StatusCode.INVALID_ARGUMENT,
                 f"file_path escapes module run dir: {request.file_path}",
             )

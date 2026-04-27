@@ -174,10 +174,12 @@ class DaqStatusResponse(_message.Message):
     DISK_USAGE_FIELD_NUMBER: _builtins.int
     RUN_DIRS_FIELD_NUMBER: _builtins.int
     MESSAGE_FIELD_NUMBER: _builtins.int
+    HASHPIPE_PID_FIELD_NUMBER: _builtins.int
     success: _builtins.bool
     hashpipe_running: _builtins.bool
     """response to check_hashpipe_running"""
     message: _builtins.str
+    hashpipe_pid: _builtins.int
     @_builtins.property
     def disk_usage(self) -> _struct_pb2.Struct:
         """response to check_disk_usage"""
@@ -194,10 +196,11 @@ class DaqStatusResponse(_message.Message):
         disk_usage: _struct_pb2.Struct | None = ...,
         run_dirs: _abc.Iterable[_builtins.str] | None = ...,
         message: _builtins.str = ...,
+        hashpipe_pid: _builtins.int = ...,
     ) -> None: ...
     _HasFieldArgType: _TypeAlias = _typing.Literal["disk_usage", b"disk_usage"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["disk_usage", b"disk_usage", "hashpipe_running", b"hashpipe_running", "message", b"message", "run_dirs", b"run_dirs", "success", b"success"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["disk_usage", b"disk_usage", "hashpipe_pid", b"hashpipe_pid", "hashpipe_running", b"hashpipe_running", "message", b"message", "run_dirs", b"run_dirs", "success", b"success"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
 
 Global___DaqStatusResponse: _TypeAlias = DaqStatusResponse  # noqa: Y015

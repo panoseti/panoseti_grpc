@@ -72,6 +72,7 @@ message DaqStatusResponse {
     /* response to check_run_dir */
     repeated string run_dirs = 4;
     string  message = 5;
+    int32   hashpipe_pid = 6;
 }
 
 enum CleanupMode {
