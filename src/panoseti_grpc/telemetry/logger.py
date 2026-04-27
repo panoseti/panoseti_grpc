@@ -224,7 +224,14 @@ class PanosetiLogFactory:
     @staticmethod
     def configure_logger(cfg: LoggerConfig, reset_handlers: bool = True) -> logging.Logger:
         logger = logging.getLogger(cfg.service_name)
+        
+        # Idempotency: skip if already configured with our standard handlers
+        if not reset_handlers and any(isinstance(h, RichHandler) for h in logger.handlers):
+            return logger
+
         logger.setLevel(cfg.level)
+        # Prevent propagation to root logger to avoid double logging
+        logger.propagate = False
 
         if reset_handlers and logger.handlers:
             for h in list(logger.handlers):
@@ -235,6 +242,8 @@ class PanosetiLogFactory:
         if cfg.console and not any(isinstance(h, RichHandler) for h in logger.handlers):
             console = RichHandler(rich_tracebacks=True, markup=False, show_path=False)
             console.setLevel(cfg.level)
+            # Add service tag to console output
+            console.setFormatter(logging.Formatter("[%(name)s] %(message)s"))
             logger.addHandler(console)
 
         # 2. Filesystem — plain text .log (human-readable)
