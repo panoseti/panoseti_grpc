@@ -192,7 +192,7 @@ class AsyncDaqControlClient:
         request = daq_control_pb2.GenerateManifestRequest()
         request.data_dir = v_params.data_dir
         request.run_dir = v_params.run_dir
-        request.module_id = v_params.module_id
+        request.module_id.extend(v_params.module_id)
         request.algorithm = v_params.algorithm
         request.include_patterns.extend(v_params.include_patterns)
         resp: daq_control_pb2.GenerateManifestResponse = await self.stub.GenerateManifest(request, timeout=timeout)
@@ -220,7 +220,7 @@ class AsyncDaqControlClient:
         request = daq_control_pb2.GetManifestRequest()
         request.data_dir = v_params.data_dir
         request.run_dir = v_params.run_dir
-        request.module_id = v_params.module_id
+        request.module_id.extend(v_params.module_id)
         async for entry in self.stub.GetManifest(request, timeout=timeout):
             yield MessageToDict(entry, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
@@ -267,7 +267,7 @@ class AsyncDaqControlClient:
         request = daq_control_pb2.GetManifestDigestRequest()
         request.data_dir = v_params.data_dir
         request.run_dir = v_params.run_dir
-        request.module_id = v_params.module_id
+        request.module_id.extend(v_params.module_id)
         resp: daq_control_pb2.GetManifestDigestResponse = await self.stub.GetManifestDigest(request, timeout=timeout)
         return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
@@ -289,7 +289,7 @@ class AsyncDaqControlClient:
         request = daq_control_pb2.RetryFailedTransferRequest()
         request.data_dir = v_params.data_dir
         request.run_dir = v_params.run_dir
-        request.module_id = v_params.module_id
+        request.module_id.extend(v_params.module_id)
         request.file_path = v_params.file_path
         resp: daq_control_pb2.RetryFailedTransferResponse = await self.stub.RetryFailedTransfer(
             request, timeout=timeout
@@ -387,7 +387,7 @@ class DaqControlClient:
         request = daq_control_pb2.GenerateManifestRequest()
         request.data_dir = v_params.data_dir
         request.run_dir = v_params.run_dir
-        request.module_id = v_params.module_id
+        request.module_id.extend(v_params.module_id)
         request.algorithm = v_params.algorithm
         request.include_patterns.extend(v_params.include_patterns)
         resp: daq_control_pb2.GenerateManifestResponse = self.stub.GenerateManifest(request, timeout=timeout)
@@ -400,7 +400,7 @@ class DaqControlClient:
         request = daq_control_pb2.GetManifestRequest()
         request.data_dir = v_params.data_dir
         request.run_dir = v_params.run_dir
-        request.module_id = v_params.module_id
+        request.module_id.extend(v_params.module_id)
         entries: list[dict[str, Any]] = []
         for entry in self.stub.GetManifest(request, timeout=timeout):
             entries.append(
@@ -425,7 +425,7 @@ class DaqControlClient:
         request = daq_control_pb2.GetManifestDigestRequest()
         request.data_dir = v_params.data_dir
         request.run_dir = v_params.run_dir
-        request.module_id = v_params.module_id
+        request.module_id.extend(v_params.module_id)
         resp: daq_control_pb2.GetManifestDigestResponse = self.stub.GetManifestDigest(request, timeout=timeout)
         return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
@@ -436,7 +436,7 @@ class DaqControlClient:
         request = daq_control_pb2.RetryFailedTransferRequest()
         request.data_dir = v_params.data_dir
         request.run_dir = v_params.run_dir
-        request.module_id = v_params.module_id
+        request.module_id.extend(v_params.module_id)
         request.file_path = v_params.file_path
         resp: daq_control_pb2.RetryFailedTransferResponse = self.stub.RetryFailedTransfer(request, timeout=timeout)
         return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)

@@ -111,7 +111,7 @@ message CleanupDataResponse {
 message GenerateManifestRequest {
     string  data_dir = 1;
     string  run_dir  = 2;
-    uint32  module_id = 3;
+    repeated uint32  module_id = 3 [packed=true];
     string  algorithm = 4;
     repeated string include_patterns = 5;
 }
@@ -129,7 +129,7 @@ message GenerateManifestResponse {
 message GetManifestRequest {
     string  data_dir = 1;
     string  run_dir  = 2;
-    uint32  module_id = 3;
+    repeated uint32  module_id = 3 [packed=true];
 }
 
 message ManifestEntry {
@@ -157,7 +157,7 @@ message GetTransferStatusResponse {
 message GetManifestDigestRequest {
     string  data_dir  = 1;
     string  run_dir   = 2;
-    uint32  module_id = 3;
+    repeated uint32  module_id = 3 [packed=true];
 }
 
 message GetManifestDigestResponse {
@@ -171,7 +171,7 @@ message GetManifestDigestResponse {
 message RetryFailedTransferRequest {
     string  data_dir  = 1;
     string  run_dir   = 2;
-    uint32  module_id = 3;
+    repeated uint32  module_id = 3 [packed=true];
     string  file_path = 4;
 }
 

@@ -299,8 +299,9 @@ class GenerateManifestRequest(_message.Message):
     INCLUDE_PATTERNS_FIELD_NUMBER: _builtins.int
     data_dir: _builtins.str
     run_dir: _builtins.str
-    module_id: _builtins.int
     algorithm: _builtins.str
+    @_builtins.property
+    def module_id(self) -> _containers.RepeatedScalarFieldContainer[_builtins.int]: ...
     @_builtins.property
     def include_patterns(self) -> _containers.RepeatedScalarFieldContainer[_builtins.str]: ...
     def __init__(
@@ -308,7 +309,7 @@ class GenerateManifestRequest(_message.Message):
         *,
         data_dir: _builtins.str = ...,
         run_dir: _builtins.str = ...,
-        module_id: _builtins.int = ...,
+        module_id: _abc.Iterable[_builtins.int] | None = ...,
         algorithm: _builtins.str = ...,
         include_patterns: _abc.Iterable[_builtins.str] | None = ...,
     ) -> None: ...
@@ -360,13 +361,14 @@ class GetManifestRequest(_message.Message):
     MODULE_ID_FIELD_NUMBER: _builtins.int
     data_dir: _builtins.str
     run_dir: _builtins.str
-    module_id: _builtins.int
+    @_builtins.property
+    def module_id(self) -> _containers.RepeatedScalarFieldContainer[_builtins.int]: ...
     def __init__(
         self,
         *,
         data_dir: _builtins.str = ...,
         run_dir: _builtins.str = ...,
-        module_id: _builtins.int = ...,
+        module_id: _abc.Iterable[_builtins.int] | None = ...,
     ) -> None: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["data_dir", b"data_dir", "module_id", b"module_id", "run_dir", b"run_dir"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
@@ -462,13 +464,14 @@ class GetManifestDigestRequest(_message.Message):
     MODULE_ID_FIELD_NUMBER: _builtins.int
     data_dir: _builtins.str
     run_dir: _builtins.str
-    module_id: _builtins.int
+    @_builtins.property
+    def module_id(self) -> _containers.RepeatedScalarFieldContainer[_builtins.int]: ...
     def __init__(
         self,
         *,
         data_dir: _builtins.str = ...,
         run_dir: _builtins.str = ...,
-        module_id: _builtins.int = ...,
+        module_id: _abc.Iterable[_builtins.int] | None = ...,
     ) -> None: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["data_dir", b"data_dir", "module_id", b"module_id", "run_dir", b"run_dir"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
@@ -513,14 +516,15 @@ class RetryFailedTransferRequest(_message.Message):
     FILE_PATH_FIELD_NUMBER: _builtins.int
     data_dir: _builtins.str
     run_dir: _builtins.str
-    module_id: _builtins.int
     file_path: _builtins.str
+    @_builtins.property
+    def module_id(self) -> _containers.RepeatedScalarFieldContainer[_builtins.int]: ...
     def __init__(
         self,
         *,
         data_dir: _builtins.str = ...,
         run_dir: _builtins.str = ...,
-        module_id: _builtins.int = ...,
+        module_id: _abc.Iterable[_builtins.int] | None = ...,
         file_path: _builtins.str = ...,
     ) -> None: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["data_dir", b"data_dir", "file_path", b"file_path", "module_id", b"module_id", "run_dir", b"run_dir"]  # noqa: Y015

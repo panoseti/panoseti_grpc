@@ -80,8 +80,8 @@ class TestGenerateManifestRequest:
         assert req.run_dir == "run001.pffd"
 
     def test_module_id_field(self) -> None:
-        req = daq_control_pb2.GenerateManifestRequest(module_id=42)
-        assert req.module_id == 42
+        req = daq_control_pb2.GenerateManifestRequest(module_id=[42])
+        assert list(req.module_id) == [42]
 
     def test_algorithm_field(self) -> None:
         req = daq_control_pb2.GenerateManifestRequest(algorithm="blake3")
@@ -138,8 +138,8 @@ class TestGetManifestRequest:
         assert req.run_dir == "run001.pffd"
 
     def test_module_id_field(self) -> None:
-        req = daq_control_pb2.GetManifestRequest(module_id=10)
-        assert req.module_id == 10
+        req = daq_control_pb2.GetManifestRequest(module_id=[10])
+        assert list(req.module_id) == [10]
 
 
 class TestManifestEntry:

@@ -58,7 +58,7 @@ class CleanupDataParameters(BaseModel):
 class GenerateManifestParameters(BaseModel):
     data_dir: str = Field(..., min_length=1)
     run_dir: str = Field(..., min_length=1)
-    module_id: Uint8
+    module_id: list[Uint8] = Field(...)
     algorithm: Literal["blake3", "xxh3_128"] = "blake3"
     include_patterns: list[str] = Field(default=["*.pff"], min_length=1)
 
@@ -66,7 +66,7 @@ class GenerateManifestParameters(BaseModel):
 class GetManifestParameters(BaseModel):
     data_dir: str = Field(..., min_length=1)
     run_dir: str = Field(..., min_length=1)
-    module_id: Uint8
+    module_id: list[Uint8] = Field(...)
 
 
 class GetTransferStatusParameters(BaseModel):
@@ -77,11 +77,11 @@ class GetTransferStatusParameters(BaseModel):
 class GetManifestDigestParameters(BaseModel):
     data_dir: str = Field(..., min_length=1)
     run_dir: str = Field(..., min_length=1)
-    module_id: Uint8
+    module_id: list[Uint8] = Field(...)
 
 
 class RetryFailedTransferParameters(BaseModel):
     data_dir: str = Field(..., min_length=1)
     run_dir: str = Field(..., min_length=1)
-    module_id: Uint8
+    module_id: list[Uint8] = Field(...)
     file_path: str = Field(..., min_length=1)

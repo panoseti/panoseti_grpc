@@ -100,7 +100,7 @@ def test_generate_manifest_success(manifest_server):
         {
             "data_dir": str(data_root),
             "run_dir": run_dir,
-            "module_id": MODULE_ID,
+            "module_id": [MODULE_ID],
             "algorithm": "blake3",
             "include_patterns": ["*.pff"],
         }
@@ -124,7 +124,7 @@ def test_generate_manifest_file_exists(manifest_server):
         {
             "data_dir": str(data_root),
             "run_dir": run_dir,
-            "module_id": MODULE_ID,
+            "module_id": [MODULE_ID],
             "include_patterns": ["*.pff"],
         }
     )
@@ -146,7 +146,7 @@ def test_get_manifest_entry_count(manifest_server):
         {
             "data_dir": str(data_root),
             "run_dir": run_dir,
-            "module_id": MODULE_ID,
+            "module_id": [MODULE_ID],
             "include_patterns": ["*.pff"],
         }
     )
@@ -157,7 +157,7 @@ def test_get_manifest_entry_count(manifest_server):
         {
             "data_dir": str(data_root),
             "run_dir": run_dir,
-            "module_id": MODULE_ID,
+            "module_id": [MODULE_ID],
         }
     )
 
@@ -174,7 +174,7 @@ def test_get_manifest_sizes_match(manifest_server):
         {
             "data_dir": str(data_root),
             "run_dir": run_dir,
-            "module_id": MODULE_ID,
+            "module_id": [MODULE_ID],
             "include_patterns": ["*.pff"],
         }
     )
@@ -183,7 +183,7 @@ def test_get_manifest_sizes_match(manifest_server):
         {
             "data_dir": str(data_root),
             "run_dir": run_dir,
-            "module_id": MODULE_ID,
+            "module_id": [MODULE_ID],
         }
     )
 
@@ -206,7 +206,7 @@ def test_get_manifest_mtime_ns_positive(manifest_server):
         {
             "data_dir": str(data_root),
             "run_dir": run_dir,
-            "module_id": MODULE_ID,
+            "module_id": [MODULE_ID],
             "include_patterns": ["*.pff"],
         }
     )
@@ -215,7 +215,7 @@ def test_get_manifest_mtime_ns_positive(manifest_server):
         {
             "data_dir": str(data_root),
             "run_dir": run_dir,
-            "module_id": MODULE_ID,
+            "module_id": [MODULE_ID],
         }
     )
 
@@ -234,7 +234,7 @@ def test_get_manifest_digest_hex_is_hex(manifest_server):
         {
             "data_dir": str(data_root),
             "run_dir": run_dir,
-            "module_id": MODULE_ID,
+            "module_id": [MODULE_ID],
             "include_patterns": ["*.pff"],
         }
     )
@@ -243,7 +243,7 @@ def test_get_manifest_digest_hex_is_hex(manifest_server):
         {
             "data_dir": str(data_root),
             "run_dir": run_dir,
-            "module_id": MODULE_ID,
+            "module_id": [MODULE_ID],
         }
     )
 
@@ -267,7 +267,7 @@ def test_get_manifest_digest_matches_sha256_when_algorithm_is_sha256(manifest_se
         {
             "data_dir": str(data_root),
             "run_dir": run_dir,
-            "module_id": MODULE_ID,
+            "module_id": [MODULE_ID],
             "include_patterns": ["*.pff"],
         }
     )
@@ -281,7 +281,7 @@ def test_get_manifest_digest_matches_sha256_when_algorithm_is_sha256(manifest_se
         {
             "data_dir": str(data_root),
             "run_dir": run_dir,
-            "module_id": MODULE_ID,
+            "module_id": [MODULE_ID],
         }
     )
 
@@ -304,7 +304,7 @@ def test_roundtrip_full(manifest_server):
         {
             "data_dir": str(data_root),
             "run_dir": run_dir,
-            "module_id": MODULE_ID,
+            "module_id": [MODULE_ID],
             "include_patterns": ["*.pff"],
         }
     )
@@ -316,7 +316,7 @@ def test_roundtrip_full(manifest_server):
         {
             "data_dir": str(data_root),
             "run_dir": run_dir,
-            "module_id": MODULE_ID,
+            "module_id": [MODULE_ID],
         }
     )
 
@@ -349,7 +349,7 @@ def test_manifest_file_format_four_columns(manifest_server):
         {
             "data_dir": str(data_root),
             "run_dir": run_dir,
-            "module_id": MODULE_ID,
+            "module_id": [MODULE_ID],
             "include_patterns": ["*.pff"],
         }
     )

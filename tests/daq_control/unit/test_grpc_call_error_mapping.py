@@ -144,7 +144,7 @@ async def test_generatemanifest_deadline_raises_deadline_error() -> None:
         await client.GenerateManifest({
             "data_dir": "/data",
             "run_dir": "run.pffd",
-            "module_id": 250,
+            "module_id": [250],
             "algorithm": "blake3",
         })
 

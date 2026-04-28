@@ -17,6 +17,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import socket
+
 _manifest_logger = logging.getLogger(__name__)
 
 # Try fast hash libraries, fall back to hashlib.sha256
@@ -33,7 +35,11 @@ except ImportError:
     _HAS_BLAKE3 = False
 
     def _digest_bytes(data: bytes, algo: str) -> str:
-        return _digest_xxh3(data) if algo == "xxh3_128" else hashlib.sha256(data).hexdigest()
+        if algo == "blake3":
+            raise ValueError(
+                "Algorithm 'blake3' requested but 'blake3' library is not installed."
+            )
+        return _digest_xxh3(data)
 
 
 try:
@@ -51,17 +57,18 @@ except ImportError:
 
 
 def _effective_algo(algo: str) -> str:
-    """Return the actual algorithm used (may differ from requested if library unavailable)."""
+    """Return the actual algorithm used (fails if library unavailable)."""
     if algo == "blake3":
         if not _HAS_BLAKE3:
-            _manifest_logger.warning("blake3 not available, falling back to xxh3_128")
-            algo = "xxh3_128"
-        else:
-            return "blake3"
+            raise ValueError(
+                "Algorithm 'blake3' requested but 'blake3' library is not installed."
+            )
+        return "blake3"
     if algo == "xxh3_128":
         if not _HAS_XXHASH:
-            _manifest_logger.warning("xxhash not available, falling back to sha256")
-            return "sha256"
+            raise ValueError(
+                "Algorithm 'xxh3_128' requested but 'xxhash' library is not installed."
+            )
         return "xxh3_128"
     return algo
 
@@ -85,7 +92,8 @@ class ManifestResult:
 
 
 def _compute_manifest_sync(
-    run_dir: Path,
+    source_dirs: list[Path],
+    output_dir: Path,
     patterns: list[str],
     algo: str,
 ) -> ManifestResult:
@@ -95,29 +103,37 @@ def _compute_manifest_sync(
 
     entries: list[ManifestEntry] = []
 
-    for dirpath, _dirnames, filenames in os.walk(run_dir):
-        for filename in sorted(filenames):
-            if not any(fnmatch.fnmatch(filename, pat) for pat in patterns):
-                continue
-            abs_path = Path(dirpath) / filename
-            rel_path = abs_path.relative_to(run_dir)
-            stat = abs_path.stat()
-            data = abs_path.read_bytes()
-            digest = _digest_bytes(data, effective)
-            entries.append(
-                ManifestEntry(
-                    relative_path=str(rel_path),
-                    digest_hex=digest,
-                    size_bytes=stat.st_size,
-                    mtime_ns=stat.st_mtime_ns,
+    for run_dir in source_dirs:
+        if not run_dir.is_dir():
+            continue
+        for dirpath, _dirnames, filenames in os.walk(run_dir):
+            for filename in sorted(filenames):
+                if not any(fnmatch.fnmatch(filename, pat) for pat in patterns):
+                    continue
+                # In compliance with rsync flattening, rel_path is just the filename.
+                # Filenames are globally unique in PANOSETI as per Data-file-names.md.
+                abs_path = Path(dirpath) / filename
+                rel_path = filename
+                stat = abs_path.stat()
+                data = abs_path.read_bytes()
+                digest = _digest_bytes(data, effective)
+                entries.append(
+                    ManifestEntry(
+                        relative_path=str(rel_path),
+                        digest_hex=digest,
+                        size_bytes=stat.st_size,
+                        mtime_ns=stat.st_mtime_ns,
+                    )
                 )
-            )
 
     total_bytes = sum(e.size_bytes for e in entries)
-    manifest_path = run_dir / f"manifest.{effective}"
+    # Convention: dp_manifest.node_<hostname>.algo_<algo>.txt
+    hostname = socket.gethostname()
+    manifest_filename = f"dp_manifest.node_{hostname}.algo_{effective}.txt"
+    manifest_path = output_dir / manifest_filename
 
     # Atomic write
-    fd, tmp_path = tempfile.mkstemp(dir=run_dir, prefix=".manifest_tmp_")
+    fd, tmp_path = tempfile.mkstemp(dir=output_dir, prefix=".manifest_tmp_")
     try:
         with os.fdopen(fd, "w") as f:
             for entry in entries:
@@ -142,7 +158,8 @@ def _compute_manifest_sync(
 
 
 async def compute_manifest(
-    run_dir: Path,
+    source_dirs: list[Path],
+    output_dir: Path,
     patterns: list[str],
     algo: str = "blake3",
 ) -> ManifestResult:
@@ -150,4 +167,4 @@ async def compute_manifest(
 
     Uses asyncio.to_thread to avoid blocking the event loop during file I/O.
     """
-    return await asyncio.to_thread(_compute_manifest_sync, run_dir, patterns, algo)
+    return await asyncio.to_thread(_compute_manifest_sync, source_dirs, output_dir, patterns, algo)

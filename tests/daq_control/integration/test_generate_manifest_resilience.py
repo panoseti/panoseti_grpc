@@ -19,16 +19,18 @@ async def test_generate_manifest_late_arrival(tmp_path: Path) -> None:
     run_dir_name = "late_run.pffd"
     module_id = 100
     
-    # Target path that the server will look for
-    target_dir = data_dir / f"module_{module_id}" / run_dir_name
+    # Target paths that the server will look for
+    root_run_dir = data_dir / run_dir_name
+    module_run_dir = data_dir / f"module_{module_id}" / run_dir_name
     
     # We will call GenerateManifest, which has a 5s retry loop.
-    # We will wait 2s, then create the directory and a .pff file.
+    # We will wait 2s, then create the directories and a .pff file.
     
     async def delayed_create():
         await asyncio.sleep(2.0)
-        target_dir.mkdir(parents=True)
-        (target_dir / "test_data.pff").write_text("dummy data")
+        root_run_dir.mkdir(parents=True)
+        module_run_dir.mkdir(parents=True)
+        (module_run_dir / "test_data.pff").write_text("dummy data")
         
     # Start the delayed creation task
     creation_task = asyncio.create_task(delayed_create())
@@ -38,7 +40,7 @@ async def test_generate_manifest_late_arrival(tmp_path: Path) -> None:
             params = {
                 "data_dir": str(data_dir),
                 "run_dir": run_dir_name,
-                "module_id": module_id,
+                "module_id": [module_id],
                 "algorithm": "blake3",
                 "include_patterns": ["*.pff"],
             }
@@ -48,7 +50,7 @@ async def test_generate_manifest_late_arrival(tmp_path: Path) -> None:
             
             assert resp["success"] is True
             assert resp["file_count"] == 1
-            assert "manifest." in resp["manifest_path"]
+            assert "dp_manifest.node_" in resp["manifest_path"]
     finally:
         await creation_task
 
@@ -67,22 +69,25 @@ async def test_generate_manifest_symlink_resilience(tmp_path: Path) -> None:
     module_id = 101
     
     # 1. Create actual data in a different location
-    actual_target = actual_data_root / f"module_{module_id}" / run_dir_name
-    actual_target.mkdir(parents=True)
-    (actual_target / "data.pff").write_text("some pff data")
+    actual_root_target = actual_data_root / run_dir_name
+    actual_root_target.mkdir(parents=True)
     
-    # 2. Create a symlink in the expected data_dir location
-    # /data/module_101/symlink_run.pffd -> /actual_data/module_101/symlink_run.pffd
+    actual_mod_target = actual_data_root / f"module_{module_id}" / run_dir_name
+    actual_mod_target.mkdir(parents=True)
+    (actual_mod_target / "data.pff").write_text("some pff data")
+    
+    # 2. Create symlinks in the expected data_dir location
+    os.symlink(actual_root_target, data_dir / run_dir_name)
+    
     expected_module_root = data_dir / f"module_{module_id}"
     expected_module_root.mkdir(parents=True)
-    
-    os.symlink(actual_target, expected_module_root / run_dir_name)
+    os.symlink(actual_mod_target, expected_module_root / run_dir_name)
     
     async with AsyncDaqControlClient(host="localhost", port=50051) as client:
         params = {
             "data_dir": str(data_dir),
             "run_dir": run_dir_name,
-            "module_id": module_id,
+            "module_id": [module_id],
             "algorithm": "blake3",
             "include_patterns": ["*.pff"],
         }
@@ -91,8 +96,6 @@ async def test_generate_manifest_symlink_resilience(tmp_path: Path) -> None:
         
         assert resp["success"] is True
         assert resp["file_count"] == 1
-        # The manifest path should ideally be relative to the resolved path or preserved as per server logic
-        assert "manifest." in resp["manifest_path"]
-        # Verify it actually exists in the target
+        # The manifest path should be in the root run dir
+        assert "dp_manifest.node_" in resp["manifest_path"]
         assert os.path.exists(resp["manifest_path"])
-        assert str(actual_target) in resp["manifest_path"]

@@ -104,5 +104,5 @@ def test_cleanup_data(grpc_client: Any) -> None:
 
 
 def test_cleanup_data_again(grpc_client: Any) -> None:
-    """CleanupData returns False because the data directory has already been cleaned."""
-    assert grpc_client.CleanupData(CLEANUP_PARAMS)["success"] is False
+    """CleanupData returns True even if the data directory has already been cleaned (idempotency)."""
+    assert grpc_client.CleanupData(CLEANUP_PARAMS)["success"] is True

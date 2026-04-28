@@ -201,7 +201,7 @@ def test_full_cleanup_default_backward_compat(cleanup_server):
 
 
 def test_full_cleanup_already_gone(cleanup_server):
-    """CLEANUP_FULL on a directory that was already removed returns success=False."""
+    """CLEANUP_FULL on a directory that was already removed returns success=True (idempotency)."""
     client, data_root = cleanup_server
     run_dir = "test_gone.pffd"
     _make_run_dir(data_root, run_dir)
@@ -216,7 +216,7 @@ def test_full_cleanup_already_gone(cleanup_server):
     )
     assert resp["success"] is True
 
-    # Second cleanup — directories no longer exist, validation should fail
+    # Second cleanup — directories no longer exist, should still return success=True
     resp2 = client.CleanupData(
         {
             "data_dir": str(data_root),
@@ -224,4 +224,4 @@ def test_full_cleanup_already_gone(cleanup_server):
             "module_id": [MODULE_ID],
         }
     )
-    assert resp2["success"] is False
+    assert resp2["success"] is True

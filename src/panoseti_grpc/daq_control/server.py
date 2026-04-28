@@ -541,14 +541,6 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         cleanup_paths = [run_dir_path, *module_dir_paths]
         self.logger.info(f"CleanupData: Validating paths: {cleanup_paths}")
 
-        # Async Path Validation: Ensure all paths exist and are directories
-        for cp in cleanup_paths:
-            cp_async = anyio.Path(cp)
-            if not await cp_async.is_dir():
-                msg = f"Cleanup path not found or not a directory: {cp}"
-                self.logger.warning(msg)
-                return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
-
         # Manifest-digest precondition: when CLEANUP_SELECTIVE is requested with a
         # non-empty manifest_digest, the server re-reads each manifest file, hashes
         # it, and refuses the RPC if the digest doesn't match.  This enforces the
@@ -645,38 +637,50 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
         all_entries = []
         t0 = asyncio.get_event_loop().time()
-        # Ensure we use absolute resolution to avoid any relative path ambiguity.
-        # ASYNC240: Use anyio.Path for non-blocking resolution and checks in async method.
-        raw_module_run_dir = anyio.Path(vreq.data_dir / f"module_{vreq.module_id}" / vreq.run_dir)
         
-        # Resilience: Highly persistent retry (5s total) to outlast any VirtioFS lag
-        module_run_dir = raw_module_run_dir
+        # Identify all directories to be hashed
+        # 1. Root run directory (configuration files)
+        root_run_dir = Path(vreq.data_dir) / vreq.run_dir
+        
+        # 2. Module directories (science files)
+        source_dirs = [root_run_dir]
+        for mid in vreq.module_id:
+            source_dirs.append(Path(vreq.data_dir) / f"module_{mid}" / vreq.run_dir)
+
+        # Resilience: Highly persistent retry (5s total) to outlast any VirtioFS lag.
+        # We wait for the root directory as a proxy for the whole run setup.
+        root_run_dir_async = anyio.Path(root_run_dir)
         for attempt in range(10):
             try:
                 # Resolve dynamically inside the loop to catch late-arriving symlinks/mounts
-                module_run_dir = await raw_module_run_dir.resolve()
-                if await module_run_dir.is_dir():
+                resolved_root = await root_run_dir_async.resolve()
+                if await resolved_root.is_dir():
                     break
             except (OSError, FileNotFoundError):
-                # Resolve can fail on missing paths in some environments
                 pass
 
             if attempt < 9:
                 self.logger.debug(
-                    f"GenerateManifest: Path {raw_module_run_dir} not found/resolved, "
+                    f"GenerateManifest: Root path {root_run_dir} not found/resolved, "
                     f"retrying in 500ms... (attempt {attempt+1}/10)"
                 )
                 await asyncio.sleep(0.5)
         else:
-            msg = f"GenerateManifest: Module run directory not found after 5s: {raw_module_run_dir}"
+            msg = f"GenerateManifest: Root run directory not found after 5s: {root_run_dir}"
             self.logger.warning(msg)
             return daq_control_pb2.GenerateManifestResponse(
                 success=False,
                 message=msg,
             )
 
-        # compute_manifest takes a pathlib.Path
-        result = await compute_manifest(Path(str(module_run_dir)), vreq.include_patterns, vreq.algorithm)
+        # Compute a single manifest for all source directories.
+        # compute_manifest handles list of source dirs and saves to output_dir.
+        result = await compute_manifest(
+            source_dirs,
+            root_run_dir,
+            vreq.include_patterns,
+            vreq.algorithm
+        )
         all_entries.extend(result.entries)
         manifest_path = str(result.manifest_path)
         # Type narrowing for MyPy literal compatibility
@@ -698,61 +702,73 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
     @grpc_error_handler
     async def GetManifest(
-        self, request: daq_control_pb2.GetManifestRequest, context: grpc.ServicerContext
-    ) -> AsyncGenerator[daq_control_pb2.ManifestEntry]:
+        self, request: daq_control_pb2.GetManifestRequest, context: grpc.aio.ServicerContext
+    ) -> AsyncGenerator[daq_control_pb2.ManifestEntry, None]:
         self.logger.info("GetManifest called...")
 
         # ASYNC240: Use anyio.Path for non-blocking path resolution in async generator
         data_dir = await anyio.Path(request.data_dir).resolve()
-        run_dir_path = await (data_dir / f"module_{request.module_id}" / request.run_dir).resolve()
-
-        if not run_dir_path.is_relative_to(data_dir):
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "run_dir escapes data_dir")
-            return
-
-        # Auto-detect manifest file by trying known algorithm suffixes
+        
+        # Manifest can now be in the root run dir or module run dir.
+        root_run_dir = data_dir / request.run_dir
+        module_run_dirs = [data_dir / f"module_{mid}" / request.run_dir for mid in request.module_id]
+        
+        # Resilience: Highly persistent retry (5s total) to outlast any VirtioFS lag.
         manifest_path: anyio.Path | None = None
-        for suffix in ("blake3", "xxh3_128", "sha256"):
-            candidate = run_dir_path / f"manifest.{suffix}"
-            if await candidate.is_file():
-                manifest_path = candidate
-                break
+        for attempt in range(10):
+            # Check for new format in root run dir: dp_manifest.node_<hostname>.algo_<algo>.txt
+            if await root_run_dir.is_dir():
+                async for entry in root_run_dir.glob("dp_manifest.node_*.algo_*.txt"):
+                    if await entry.is_file():
+                        manifest_path = entry
+                        break
+                if manifest_path:
+                    break
 
+            # Fallback: check for legacy format in module run dirs: manifest.<algo>
+            for mdir in module_run_dirs:
+                if await mdir.is_dir():
+                    for suffix in ("blake3", "xxh3_128", "sha256"):
+                        candidate = mdir / f"manifest.{suffix}"
+                        if await candidate.is_file():
+                            manifest_path = candidate
+                            break
+                if manifest_path:
+                    break
+            
+            if attempt < 9:
+                await asyncio.sleep(0.5)
+        
         if manifest_path is None:
-            context.abort(grpc.StatusCode.NOT_FOUND, f"No manifest file found in {run_dir_path}")
+            await context.abort(
+                grpc.StatusCode.NOT_FOUND, 
+                f"No manifest file found for run {request.run_dir}"
+            )
             return
 
-        async def _read_manifest(path: anyio.Path) -> list[daq_control_pb2.ManifestEntry]:
-            entries = []
-            async with await path.open() as f:
-                async for line in f:
-                    line = line.rstrip("\n")
-                    if not line:
-                        continue
-                    # Parse: digest  size  mtime_ns  relpath (4 columns)
-                    # Backward compat: digest  size  relpath (3 columns, mtime_ns=0)
-                    parts = line.split("  ", 3)
-                    if len(parts) == 4:
-                        digest_hex, size_str, mtime_str, rel_path = parts
-                        mtime_ns = int(mtime_str)
-                    elif len(parts) == 3:
-                        digest_hex, size_str, rel_path = parts
-                        mtime_ns = 0
-                    else:
-                        continue
-                    entries.append(
-                        daq_control_pb2.ManifestEntry(
-                            relative_path=rel_path,
-                            digest_hex=digest_hex,
-                            size_bytes=int(size_str),
-                            mtime_ns=mtime_ns,
-                        )
-                    )
-            return entries
-
-        entries = await _read_manifest(manifest_path)
-        for entry in entries:
-            yield entry
+        async with await manifest_path.open() as f:
+            async for line in f:
+                line = line.rstrip("\n")
+                if not line:
+                    continue
+                # Parse: digest  size  mtime_ns  relpath (4 columns)
+                parts = line.split("  ", 3)
+                if len(parts) < 3:
+                    continue
+                
+                if len(parts) == 4:
+                    digest_hex, size_str, mtime_str, rel_path = parts
+                    mtime_ns = int(mtime_str)
+                else:
+                    digest_hex, size_str, rel_path = parts
+                    mtime_ns = 0
+                
+                yield daq_control_pb2.ManifestEntry(
+                    relative_path=rel_path,
+                    digest_hex=digest_hex,
+                    size_bytes=int(size_str),
+                    mtime_ns=mtime_ns,
+                )
 
     @grpc_error_handler
     async def GetTransferStatus(
@@ -775,6 +791,14 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         run_dirs: list[str] = []
         manifest_files: list[str] = []
         if request.run_dir:
+            # Check root run dir for new format
+            root_path = data_dir / request.run_dir
+            if root_path.is_dir():
+                run_dirs.append(str(root_path))
+                for mf in root_path.glob("dp_manifest.node_*.algo_*.txt"):
+                    manifest_files.append(str(mf))
+
+            # Check module dirs for legacy or new format
             for mod_dir in sorted(data_dir.glob("module_*")):
                 run_path = mod_dir / request.run_dir
                 if run_path.is_dir():
@@ -806,33 +830,61 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         """
         import hashlib as _hashlib
 
-        self.logger.info(
-            "GetManifestDigest called: data_dir=%s run_dir=%s module_id=%d",
-            request.data_dir, request.run_dir, request.module_id,
-        )
-        module_run_dir = Path(request.data_dir) / f"module_{request.module_id}" / request.run_dir
-        if not module_run_dir.is_dir():
+        self.logger.info("GetManifestDigest called...")
+
+        data_dir = await anyio.Path(request.data_dir).resolve()
+        root_run_dir = data_dir / request.run_dir
+        module_run_dirs = [data_dir / f"module_{mid}" / request.run_dir for mid in request.module_id]
+
+        manifest_path: anyio.Path | None = None
+        # Check new format
+        if await root_run_dir.is_dir():
+            async for entry in root_run_dir.glob("dp_manifest.node_*.algo_*.txt"):
+                if await entry.is_file():
+                    manifest_path = entry
+                    break
+        
+        # Check legacy format
+        if not manifest_path:
+            for mdir in module_run_dirs:
+                if await mdir.is_dir():
+                    for suffix in ("blake3", "xxh3_128", "sha256"):
+                        candidate = mdir / f"manifest.{suffix}"
+                        if await candidate.is_file():
+                            manifest_path = candidate
+                            break
+                if manifest_path:
+                    break
+
+        if manifest_path is None:
+            msg = f"No manifest file found for run {request.run_dir}"
+            self.logger.warning(msg)
             return daq_control_pb2.GetManifestDigestResponse(
-                success=False, message=f"Module run dir not found: {module_run_dir}"
+                success=False, message=msg
             )
 
-        for suffix in ("blake3", "xxh3_128", "sha256"):
-            mf = module_run_dir / f"manifest.{suffix}"
-            if mf.exists():
-                raw = await asyncio.to_thread(mf.read_bytes)
-                digest_hex = _hashlib.sha256(raw).hexdigest()
-                return daq_control_pb2.GetManifestDigestResponse(
-                    success=True,
-                    message="",
-                    digest_hex=digest_hex,
-                    algo_suffix=suffix,
-                    manifest_path=str(mf),
-                )
+        try:
+            raw = await manifest_path.read_bytes()
+            digest_hex = _hashlib.sha256(raw).hexdigest()
+            # Infer algo suffix for legacy or new format
+            name = manifest_path.name
+            if ".algo_" in name:
+                algo_suffix = name.split(".algo_")[1].split(".")[0]
+            else:
+                algo_suffix = manifest_path.suffix.lstrip(".")
 
-        return daq_control_pb2.GetManifestDigestResponse(
-            success=False,
-            message=f"No manifest file found in {module_run_dir}",
-        )
+            return daq_control_pb2.GetManifestDigestResponse(
+                success=True,
+                digest_hex=digest_hex,
+                algo_suffix=algo_suffix,
+                manifest_path=str(manifest_path),
+            )
+        except Exception as e:
+            msg = f"Error reading manifest: {e}"
+            self.logger.error(msg)
+            return daq_control_pb2.GetManifestDigestResponse(
+                success=False, message=msg
+            )
 
     @grpc_error_handler
     async def RetryFailedTransfer(
@@ -845,12 +897,13 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         """
         import hashlib as _hashlib
 
+        module_id = request.module_id[0] if request.module_id else 0
         self.logger.info(
             "RetryFailedTransfer called: data_dir=%s run_dir=%s module_id=%d file_path=%s",
-            request.data_dir, request.run_dir, request.module_id, request.file_path,
+            request.data_dir, request.run_dir, module_id, request.file_path,
         )
         data_dir = Path(request.data_dir).resolve()
-        module_run_dir = (data_dir / f"module_{request.module_id}" / request.run_dir).resolve()
+        module_run_dir = (data_dir / f"module_{module_id}" / request.run_dir).resolve()
 
         file_path = Path(request.file_path)
         if not file_path.is_absolute():
@@ -859,7 +912,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             file_path = file_path.resolve()
 
         if not file_path.is_relative_to(module_run_dir):
-            context.abort(
+            await context.abort(
                 grpc.StatusCode.INVALID_ARGUMENT,
                 f"file_path escapes module run dir: {request.file_path}",
             )

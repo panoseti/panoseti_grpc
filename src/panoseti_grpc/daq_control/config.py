@@ -77,6 +77,8 @@ class CleanupDataModel(BaseModel):
 class GenerateManifestModel(BaseModel):
     data_dir: Path = Field(...)
     run_dir: str = Field(..., min_length=1)
-    module_id: Uint8
+    module_id: list[Uint8] = Field(default_factory=list)
     algorithm: Literal["blake3", "xxh3_128"] = "blake3"
-    include_patterns: list[str] = Field(default=["*.pff"], min_length=1)
+    include_patterns: list[str] = Field(
+        default=["*.pff", "*.json", "*.log", "*.toml", "*.config"], min_length=1
+    )
