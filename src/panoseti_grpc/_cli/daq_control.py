@@ -25,7 +25,7 @@ def _make_channel() -> grpc.Channel:
     return grpc.insecure_channel(f"{state.host}:{state.port}")
 
 
-@app.command(name="status")
+@app.command(name="stat")
 def daq_control_status(
     data_dir: Annotated[str, typer.Option(help="Root data directory on the DAQ node")] = "/tmp",
     hashpipe: Annotated[bool, typer.Option(help="Check if Hashpipe process is running")] = True,

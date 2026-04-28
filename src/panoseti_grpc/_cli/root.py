@@ -45,8 +45,8 @@ def get_reflected_services() -> set[str]:
         return set()
 
 
-@app.command()
-def status(
+@app.command("stat")
+def stat(
     timeout: Annotated[float | None, typer.Option(help="Individual RPC timeout in seconds")] = None,
 ) -> None:
     """Probe all services and print a connectivity summary."""
