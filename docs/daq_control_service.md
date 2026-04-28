@@ -153,6 +153,8 @@ Queries the state of this DAQ node. All checks are opt-in via boolean flags.
 
 Deletes run data from DAQ node directories. **Blocked while Hashpipe is running.**
 
+Cleanup is **idempotent**: requesting to clean a directory that has already been deleted or never existed returns `success=True`.
+
 Supports two cleanup modes controlled by the `mode` field:
 
 #### `CLEANUP_FULL` (default, legacy-compatible)
@@ -174,34 +176,23 @@ Walks the run directory and deletes only files matching any `delete_patterns` gl
 | `mode` | `CleanupMode` | `CLEANUP_FULL` (0, default) or `CLEANUP_SELECTIVE` (1) |
 | `delete_patterns` | `repeated string` | Glob patterns to delete in selective mode (e.g. `["*.pff"]`) |
 | `preserve_patterns` | `repeated string` | Glob patterns that take precedence over delete (e.g. `["*.json", "*.log"]`) |
+| `manifest_digest` | `bytes` | SHA-256 of the manifest file; required for `CLEANUP_SELECTIVE` integrity check |
 
 **Response fields**
 
 | Field | Type | Description |
 |---|---|---|
-| `success` | `bool` | `true` if cleanup completed without errors |
+| `success` | `bool` | `true` if cleanup completed (or path already gone) |
 | `message` | `string` | Error description on failure |
 | `deleted_count` | `uint32` | Number of files deleted (selective mode) |
 | `freed_bytes` | `uint64` | Bytes freed (selective mode) |
 | `preserved_paths` | `repeated string` | Relative paths of files that were preserved (audit trail) |
 
-**Typical Transfer Daemon usage:**
-```python
-client.CleanupData({
-    "data_dir": "/app/data",
-    "run_dir": "start_2026-01-01T120000Z.pffd",
-    "module_id": [224, 225],
-    "mode": "CLEANUP_SELECTIVE",
-    "delete_patterns": ["*.pff"],
-    "preserve_patterns": ["*.json", "*.log", "*.toml"],
-})
-```
-
 ---
 
 ### `GenerateManifest`
 
-Computes a cryptographic checksum manifest for files in a module's run directory. Manifests are written atomically to the DAQ node and can be streamed back via `GetManifest`.
+Computes a cryptographic checksum manifest covering both the root run directory (configuration) and all specified module subdirectories (science data). Manifests are written atomically to the root run directory.
 
 **Request fields**
 
@@ -209,9 +200,9 @@ Computes a cryptographic checksum manifest for files in a module's run directory
 |---|---|---|
 | `data_dir` | `string` | Root data directory |
 | `run_dir` | `string` | Run subdirectory |
-| `module_id` | `repeated uint32` | Module ID(s) to generate manifests for |
-| `algorithm` | `string` | Hash algorithm: `"blake3"` (default) → `"xxh3_128"` → `"sha256"` fallback chain |
-| `include_patterns` | `repeated string` | Glob patterns for files to include (default: `["*.pff"]`) |
+| `module_id` | `repeated uint32` | Module ID(s) whose science data to include |
+| `algorithm` | `string` | Hash algorithm: `"blake3"` (default) or `"xxh3_128"` |
+| `include_patterns` | `repeated string` | Glob patterns for files (default: `["*.pff", "*.json", "*.log", "*.toml", "*.config"]`) |
 
 **Response fields**
 
@@ -223,15 +214,18 @@ Computes a cryptographic checksum manifest for files in a module's run directory
 | `file_count` | `uint32` | Number of files hashed |
 | `total_bytes` | `uint64` | Total bytes of hashed files |
 | `elapsed_seconds` | `double` | Wall-clock time for hashing |
-| `algorithm` | `string` | Algorithm actually used (may differ from request if fallback triggered) |
+| `algorithm` | `string` | Algorithm actually used |
+
+**Manifest naming convention** (`Data-file-names.md` compliant):
+`dp_manifest.node_<hostname>.algo_<algo>.txt`
+(e.g., `dp_manifest.node_pseti-daqnode-0.algo_blake3.txt`)
 
 **Manifest file format** (4-column, newline-delimited):
 ```
-{digest_hex}  {size_bytes}  {mtime_ns}  {relative_path}
+{digest_hex}  {size_bytes}  {mtime_ns}  {filename}
 ```
-Written atomically via `tempfile.mkstemp` + `os.replace`. Compatible with `b3sum --check` when using blake3.
 
-**Implementation:** `manifest.py` — `async def compute_manifest(run_dir, patterns, algo)`. Uses `asyncio.to_thread` for blocking I/O. Algorithm fallback chain: blake3 → xxhash → sha256.
+**Implementation:** `manifest.py` — `async def compute_manifest(source_dirs, output_dir, patterns, algo)`. Enforces algorithm consistency: fails loudly if the requested hashing library is missing. Includes a 5s retry loop to outlast VirtioFS consistency lag.
 
 ---
 
@@ -245,18 +239,55 @@ Server-streaming RPC. Reads a previously generated manifest and yields one `Mani
 |---|---|---|
 | `data_dir` | `string` | Root data directory |
 | `run_dir` | `string` | Run subdirectory |
-| `module_id` | `uint32` | Module ID whose manifest to stream |
+| `module_id` | `repeated uint32` | Module ID(s) associated with the run |
 
 **Streamed `ManifestEntry` fields**
 
 | Field | Type | Description |
 |---|---|---|
-| `relative_path` | `string` | Path relative to the module run directory |
+| `relative_path` | `string` | Filename (globally unique per run) |
 | `digest_hex` | `string` | Hex-encoded checksum |
 | `size_bytes` | `uint64` | File size in bytes |
-| `mtime_ns` | `int64` | Modification time in nanoseconds since epoch |
+| `mtime_ns` | `int64` | Modification time in nanoseconds |
 
-The server guards against path traversal: any entry with `..` in its path is skipped and logged as a warning.
+The server automatically locates the manifest by checking the root run directory for the new unique naming format, falling back to legacy module-specific manifests if necessary.
+
+---
+
+### `GetManifestDigest`
+
+Returns the SHA-256 hex digest of the manifest file itself. Used by the Transfer Daemon to populate the `manifest_digest` field in `CleanupData` to satisfy the integrity precondition.
+
+**Request fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `data_dir` | `string` | Root data directory |
+| `run_dir` | `string` | Run subdirectory |
+| `module_id` | `repeated uint32` | Module ID(s) associated with the run |
+
+**Response fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `success` | `bool` | `true` if manifest was found and hashed |
+| `digest_hex` | `string` | SHA-256 of the manifest file content |
+| `algo_suffix` | `string` | Algorithm used for entries (e.g. `blake3`) |
+
+---
+
+### `RetryFailedTransfer`
+
+Re-computes and returns the digest for a single specific file. Used for reconciliation when a single file fails transfer without re-rsyncing the entire run.
+
+**Request fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `data_dir` | `string` | Root data directory |
+| `run_dir` | `string` | Run subdirectory |
+| `module_id` | `repeated uint32` | Module IDs |
+| `file_path` | `string` | Absolute or relative path to the file on the DAQ node |
 
 ---
 
@@ -300,10 +331,10 @@ Request parameters are validated server-side via [Pydantic v2](https://docs.pyda
 | Model | Used by | Key constraints |
 |---|---|---|
 | `StartDaqModel` | `StartDaq` | `data_dir` auto-created; `module_id` values in 0–255; `obs`/`bindhost` 1–16 chars |
-| `StopDaqModel` | `StopDaq` | `run_dir` must already exist under `data_dir` |
+| `StopDaqModel` | `StopDaq` | `run_dir` resolution handled asynchronously with retry |
 | `StatusDaqModel` | `StatusDaq` | `data_dir` must exist |
-| `CleanupDataModel` | `CleanupData` | `run_dir` must exist; `CLEANUP_SELECTIVE` requires non-empty `delete_patterns` |
-| `GenerateManifestModel` | `GenerateManifest` | `algorithm` must be `"blake3"`, `"xxh3_128"`, or `"sha256"`; `include_patterns` non-empty |
+| `CleanupDataModel` | `CleanupData` | `run_dir` resolution handled asynchronously; `CLEANUP_SELECTIVE` requires patterns |
+| `GenerateManifestModel` | `GenerateManifest` | `algorithm` must be `"blake3"` or `"xxh3_128"`; `module_id` is a list |
 
 ---
 
@@ -314,7 +345,7 @@ Request parameters are validated server-side via [Pydantic v2](https://docs.pyda
 | Server log | `/var/log/panoseti/daq_control_server.log` | Service lifecycle events, RPC results |
 | Hashpipe stdout | `{data_dir}/{run_dir}/hp_stdout.log` | Per-run Hashpipe standard output |
 | Hashpipe stderr | `{data_dir}/{run_dir}/hp_stderr.log` | Per-run Hashpipe standard error |
-| Manifest | `{data_dir}/module_{id}/{run_dir}/manifest.{algo}` | Per-module checksum manifest |
+| Manifest | `{data_dir}/{run_dir}/dp_manifest.node_<hostname>.algo_<algo>.txt` | Node-wide checksum manifest |
 
 All logs are also forwarded to Loki via the Telemetry gRPC logger when the Telemetry service is reachable.
 
