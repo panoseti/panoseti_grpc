@@ -29,7 +29,7 @@ class GrpcLazyGroup(BaseLazyGroup):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         lazy_mapping = {
-            "status": ("panoseti_grpc._cli.root", "status", "Probe all services and print a summary."),
+            "stat": ("panoseti_grpc._cli.root", "stat", "Probe all services and print a summary."),
             "reflect": ("panoseti_grpc._cli.root", "reflect", "List all services via gRPC reflection."),
             "telemetry": ("panoseti_grpc._cli.telemetry", "app", "Telemetry service operations."),
             "daq-data": ("panoseti_grpc._cli.daq_data", "app", "DAQ Data service operations."),
