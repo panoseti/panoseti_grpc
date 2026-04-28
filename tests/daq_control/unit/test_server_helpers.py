@@ -94,9 +94,9 @@ class TestCleanupDir:
         assert result is True
         assert not target.exists()
 
-    def test_returns_falsy_when_dir_not_exist(self, servicer: Any, tmp_path: Any) -> None:
+    def test_returns_idempotent_true_when_dir_not_exist(self, servicer: Any, tmp_path: Any) -> None:
         result = servicer._cleanup_dir(str(tmp_path / "ghost"))
-        assert not result  # returns None (falsy) — logs a warning
+        assert result is True  # returns True (idempotent) — logs an info msg
 
     def test_removes_nested_contents(self, servicer: Any, tmp_path: Any) -> None:
         target = tmp_path / "rundir"

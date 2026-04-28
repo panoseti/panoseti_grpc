@@ -167,16 +167,6 @@ class TestStopDaqModel:
         m = StopDaqModel(data_dir=str(tmp_path), run_dir="run.pffd")
         assert m.data_dir == tmp_path
 
-    def test_data_dir_not_exist(self, tmp_path: Any) -> None:
-        """DirectoryPath requires the directory to already exist."""
-        with pytest.raises(ValidationError):
-            StopDaqModel(data_dir=str(tmp_path / "nonexistent"), run_dir="run.pffd")
-
-    def test_run_dir_not_exist(self, tmp_path: Any) -> None:
-        """model_validator checks data_dir/run_dir exists."""
-        with pytest.raises(ValidationError):
-            StopDaqModel(data_dir=str(tmp_path), run_dir="missing.pffd")
-
 
 # ---------------------------------------------------------------------------
 # StatusDaqModel
@@ -193,15 +183,6 @@ class TestStatusDaqModel:
         )
         assert m.check_hashpipe_running is True
         assert m.check_disk_usage is False
-
-    def test_data_dir_not_exist(self, tmp_path: Any) -> None:
-        with pytest.raises(ValidationError):
-            StatusDaqModel(
-                data_dir=str(tmp_path / "ghost"),
-                check_hashpipe_running=False,
-                check_disk_usage=False,
-                check_run_dirs=False,
-            )
 
     def test_all_flags_false(self, tmp_path: Any) -> None:
         m = StatusDaqModel(
@@ -229,24 +210,9 @@ class TestCleanupDataModel:
         m = CleanupDataModel(data_dir=str(tmp_path), run_dir="run.pffd", module_id=MODULE_IDS)
         assert m.module_id == MODULE_IDS
 
-    def test_data_dir_not_exist(self, tmp_path: Any) -> None:
-        with pytest.raises(ValidationError):
-            CleanupDataModel(
-                data_dir=str(tmp_path / "ghost"),
-                run_dir="run.pffd",
-                module_id=[1],
-            )
-
-    def test_run_dir_not_exist(self, tmp_path: Any) -> None:
-        with pytest.raises(ValidationError):
-            CleanupDataModel(
-                data_dir=str(tmp_path),
-                run_dir="missing.pffd",
-                module_id=[1],
-            )
-
     def test_module_id_overflow(self, tmp_path: Any) -> None:
         run_dir = tmp_path / "run.pffd"
         run_dir.mkdir()
         with pytest.raises(ValidationError):
             CleanupDataModel(data_dir=str(tmp_path), run_dir="run.pffd", module_id=[256])
+

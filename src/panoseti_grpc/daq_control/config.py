@@ -6,7 +6,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, DirectoryPath, Field, IPvAnyAddress, model_validator
+from pydantic import BaseModel, Field, IPvAnyAddress, model_validator
 
 
 class DaqControlServerConfig(BaseModel):
@@ -34,7 +34,7 @@ class StartDaqModel(BaseModel):
     force: bool = False
 
     @model_validator(mode="after")
-    def create_run_dir(self) -> StartDaqModel:
+    def create_run_dir(self) -> "StartDaqModel":
         self.data_dir.mkdir(parents=True, exist_ok=True)
         full_path = self.data_dir / self.run_dir
         full_path.mkdir(parents=True, exist_ok=True)
@@ -44,13 +44,6 @@ class StartDaqModel(BaseModel):
 class StopDaqModel(BaseModel):
     data_dir: Path = Field(...)
     run_dir: str = Field(..., min_length=1)
-
-    @model_validator(mode="after")
-    def check_run_dir(self) -> StopDaqModel:
-        full_path = self.data_dir / self.run_dir
-        if not full_path.is_dir():
-            raise ValueError("{full_path} not exist.")
-        return self
 
 
 class StatusDaqModel(BaseModel):
@@ -75,22 +68,15 @@ class CleanupDataModel(BaseModel):
     preserve_patterns: list[str] = []
 
     @model_validator(mode="after")
-    def check_selective_requires_patterns(self) -> CleanupDataModel:
+    def check_selective_requires_patterns(self) -> "CleanupDataModel":
         if self.mode == CleanupMode.CLEANUP_SELECTIVE and not self.delete_patterns:
             raise ValueError("CLEANUP_SELECTIVE requires at least one delete_pattern")
         return self
 
 
 class GenerateManifestModel(BaseModel):
-    data_dir: DirectoryPath
+    data_dir: Path = Field(...)
     run_dir: str = Field(..., min_length=1)
     module_id: Uint8
     algorithm: Literal["blake3", "xxh3_128"] = "blake3"
     include_patterns: list[str] = Field(default=["*.pff"], min_length=1)
-
-    @model_validator(mode="after")
-    def check_run_dir(self) -> GenerateManifestModel:
-        full_path = self.data_dir / f"module_{self.module_id}" / self.run_dir
-        if not full_path.is_dir():
-            raise ValueError(f"'{full_path}' does not exist")
-        return self

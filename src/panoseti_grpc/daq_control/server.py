@@ -539,6 +539,15 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         run_dir_path = f"{datadir}/{rundir}"
         module_dir_paths = [f"{datadir}/module_{id}/{rundir}" for id in module_id]
         cleanup_paths = [run_dir_path, *module_dir_paths]
+        self.logger.info(f"CleanupData: Validating paths: {cleanup_paths}")
+
+        # Async Path Validation: Ensure all paths exist and are directories
+        for cp in cleanup_paths:
+            cp_async = anyio.Path(cp)
+            if not await cp_async.is_dir():
+                msg = f"Cleanup path not found or not a directory: {cp}"
+                self.logger.warning(msg)
+                return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
 
         # Manifest-digest precondition: when CLEANUP_SELECTIVE is requested with a
         # non-empty manifest_digest, the server re-reads each manifest file, hashes
@@ -636,18 +645,38 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
         all_entries = []
         t0 = asyncio.get_event_loop().time()
-        module_run_dir = vreq.data_dir / f"module_{vreq.module_id}" / vreq.run_dir
+        # Ensure we use absolute resolution to avoid any relative path ambiguity.
+        # ASYNC240: Use anyio.Path for non-blocking resolution and checks in async method.
+        raw_module_run_dir = anyio.Path(vreq.data_dir / f"module_{vreq.module_id}" / vreq.run_dir)
+        
+        # Resilience: Highly persistent retry (5s total) to outlast any VirtioFS lag
+        module_run_dir = raw_module_run_dir
+        for attempt in range(10):
+            try:
+                # Resolve dynamically inside the loop to catch late-arriving symlinks/mounts
+                module_run_dir = await raw_module_run_dir.resolve()
+                if await module_run_dir.is_dir():
+                    break
+            except (OSError, FileNotFoundError):
+                # Resolve can fail on missing paths in some environments
+                pass
 
-        # ASYNC240: Use anyio.Path for non-blocking directory checks in async method
-        module_run_dir_async = anyio.Path(module_run_dir)
-        if not await module_run_dir_async.is_dir():
-            self.logger.warning(f"Module dir not found: {module_run_dir}")
+            if attempt < 9:
+                self.logger.debug(
+                    f"GenerateManifest: Path {raw_module_run_dir} not found/resolved, "
+                    f"retrying in 500ms... (attempt {attempt+1}/10)"
+                )
+                await asyncio.sleep(0.5)
+        else:
+            msg = f"GenerateManifest: Module run directory not found after 5s: {raw_module_run_dir}"
+            self.logger.warning(msg)
             return daq_control_pb2.GenerateManifestResponse(
                 success=False,
-                message=f"Module dir not found: {module_run_dir}",
+                message=msg,
             )
 
-        result = await compute_manifest(module_run_dir, vreq.include_patterns, vreq.algorithm)
+        # compute_manifest takes a pathlib.Path
+        result = await compute_manifest(Path(str(module_run_dir)), vreq.include_patterns, vreq.algorithm)
         all_entries.extend(result.entries)
         manifest_path = str(result.manifest_path)
         # Type narrowing for MyPy literal compatibility

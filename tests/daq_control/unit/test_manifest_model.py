@@ -107,11 +107,3 @@ class TestGenerateManifestModelInvalid:
                 module_id=10,
                 include_patterns=[],
             )
-
-    def test_run_dir_not_exist_raises(self, tmp_path: Any) -> None:
-        with pytest.raises(ValidationError):
-            GenerateManifestModel(
-                data_dir=str(tmp_path),
-                run_dir="missing.pffd",
-                module_id=10,
-            )

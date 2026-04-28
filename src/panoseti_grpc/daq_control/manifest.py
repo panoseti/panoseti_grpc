@@ -123,6 +123,8 @@ def _compute_manifest_sync(
             for entry in entries:
                 f.write(f"{entry.digest_hex}  {entry.size_bytes}  {entry.mtime_ns}  {entry.relative_path}\n")
         os.replace(tmp_path, manifest_path)
+        # Ensure rsync (non-root) can read the manifest created by the root gRPC server
+        os.chmod(manifest_path, 0o666)
     except Exception:
         with contextlib.suppress(OSError):
             os.unlink(tmp_path)

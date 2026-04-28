@@ -46,7 +46,8 @@ dependencies = [
     "pydantic>=2.12",
     "typer",
     "requests",
-    "GitPython"
+    "GitPython",
+    "blake3",
 ]
 
 [project.optional-dependencies]
