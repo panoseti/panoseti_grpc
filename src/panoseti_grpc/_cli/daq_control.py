@@ -81,7 +81,7 @@ def daq_control_status(
 @app.command(name="get-manifest")
 def daq_control_get_manifest(
     run_dir: Annotated[str, typer.Option(help="Target run directory")],
-    module_id: Annotated[int, typer.Option(help="Target module ID")],
+    module_id: Annotated[list[int], typer.Option(help="Target module ID(s)")],
     data_dir: Annotated[str, typer.Option(help="Root data directory")] = "/tmp",
 ) -> None:
     """Stream manifest entries for a module's run data."""
