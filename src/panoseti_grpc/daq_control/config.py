@@ -34,7 +34,7 @@ class StartDaqModel(BaseModel):
     force: bool = False
 
     @model_validator(mode="after")
-    def create_run_dir(self) -> "StartDaqModel":
+    def create_run_dir(self) -> StartDaqModel:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         full_path = self.data_dir / self.run_dir
         full_path.mkdir(parents=True, exist_ok=True)
@@ -68,7 +68,7 @@ class CleanupDataModel(BaseModel):
     preserve_patterns: list[str] = []
 
     @model_validator(mode="after")
-    def check_selective_requires_patterns(self) -> "CleanupDataModel":
+    def check_selective_requires_patterns(self) -> CleanupDataModel:
         if self.mode == CleanupMode.CLEANUP_SELECTIVE and not self.delete_patterns:
             raise ValueError("CLEANUP_SELECTIVE requires at least one delete_pattern")
         return self
@@ -79,6 +79,4 @@ class GenerateManifestModel(BaseModel):
     run_dir: str = Field(..., min_length=1)
     module_id: list[Uint8] = Field(default_factory=list)
     algorithm: Literal["blake3", "xxh3_128"] = "blake3"
-    include_patterns: list[str] = Field(
-        default=["*.pff", "*.json", "*.log", "*.toml", "*.config"], min_length=1
-    )
+    include_patterns: list[str] = Field(default=["*.pff", "*.json", "*.log", "*.toml", "*.config"], min_length=1)

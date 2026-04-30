@@ -119,7 +119,7 @@ class BaseLazyGroup(TyperGroup):
             if is_help_mode and not is_targeting_this and not getattr(ctx, "resilient_parsing", False):
                 return click.Command(name, help=help_str)
 
-            # Inject paths if needed (e.g. for control/ci or grpc/src)
+            # Inject paths if needed (e.g. for control/src/ci or grpc/src)
             if self.path_injector:
                 self.path_injector(name)
 

@@ -113,15 +113,17 @@ async def test_cleanupdata_failed_precondition_raises_typed_error() -> None:
     client = mock_client_with_stub(stub)
 
     with pytest.raises(FailedPreconditionError) as exc_info:
-        await client.CleanupData({
-            "data_dir": "/data",
-            "run_dir": "run.pffd",
-            "module_id": [250],
-            "mode": "CLEANUP_SELECTIVE",
-            "delete_patterns": ["*.pff"],
-            "preserve_patterns": ["*.json"],
-            "manifest_digest": "wrong_digest",
-        })
+        await client.CleanupData(
+            {
+                "data_dir": "/data",
+                "run_dir": "run.pffd",
+                "module_id": [250],
+                "mode": "CLEANUP_SELECTIVE",
+                "delete_patterns": ["*.pff"],
+                "preserve_patterns": ["*.json"],
+                "manifest_digest": "wrong_digest",
+            }
+        )
 
     assert "FAILED_PRECONDITION" in str(exc_info.value)
 
@@ -135,18 +137,18 @@ async def test_cleanupdata_failed_precondition_raises_typed_error() -> None:
 async def test_generatemanifest_deadline_raises_deadline_error() -> None:
     """GenerateManifest timeout raises DeadlineExceededError."""
     stub = MagicMock()
-    stub.GenerateManifest = AsyncMock(
-        side_effect=make_rpc_error(grpc.StatusCode.DEADLINE_EXCEEDED)
-    )
+    stub.GenerateManifest = AsyncMock(side_effect=make_rpc_error(grpc.StatusCode.DEADLINE_EXCEEDED))
     client = mock_client_with_stub(stub)
 
     with pytest.raises(DeadlineExceededError):
-        await client.GenerateManifest({
-            "data_dir": "/data",
-            "run_dir": "run.pffd",
-            "module_id": [250],
-            "algorithm": "blake3",
-        })
+        await client.GenerateManifest(
+            {
+                "data_dir": "/data",
+                "run_dir": "run.pffd",
+                "module_id": [250],
+                "algorithm": "blake3",
+            }
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -174,9 +176,7 @@ async def test_grpc_call_does_not_suppress_cancelled_error() -> None:
 async def test_unavailable_error_carries_code_and_details() -> None:
     """UnavailableError.code and .details are populated from the original RPC error."""
     stub = MagicMock()
-    stub.StopDaq = AsyncMock(
-        side_effect=make_rpc_error(grpc.StatusCode.UNAVAILABLE, "connection refused")
-    )
+    stub.StopDaq = AsyncMock(side_effect=make_rpc_error(grpc.StatusCode.UNAVAILABLE, "connection refused"))
     client = mock_client_with_stub(stub)
 
     with pytest.raises(UnavailableError) as exc_info:
@@ -203,10 +203,12 @@ async def test_startdaq_invalid_module_id_raises_validation_error() -> None:
     client = mock_client_with_stub(stub)
 
     with pytest.raises(ValidationError):
-        await client.StartDaq({
-            **_START_DAQ_PARAMS,
-            "module_id": "not_a_list",  # wrong type
-        })
+        await client.StartDaq(
+            {
+                **_START_DAQ_PARAMS,
+                "module_id": "not_a_list",  # wrong type
+            }
+        )
 
     stub.StartDaq.assert_not_called()
 
@@ -221,10 +223,12 @@ async def test_cleanupdata_missing_required_field_raises_validation_error() -> N
     client = mock_client_with_stub(stub)
 
     with pytest.raises(ValidationError):
-        await client.CleanupData({
-            # missing data_dir
-            "run_dir": "run.pffd",
-            "module_id": [250],
-        })
+        await client.CleanupData(
+            {
+                # missing data_dir
+                "run_dir": "run.pffd",
+                "module_id": [250],
+            }
+        )
 
     stub.CleanupData.assert_not_called()

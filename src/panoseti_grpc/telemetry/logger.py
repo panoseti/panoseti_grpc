@@ -224,7 +224,7 @@ class PanosetiLogFactory:
     @staticmethod
     def configure_logger(cfg: LoggerConfig, reset_handlers: bool = True) -> logging.Logger:
         logger = logging.getLogger(cfg.service_name)
-        
+
         # Idempotency: skip if already configured with our standard handlers
         if not reset_handlers and any(isinstance(h, RichHandler) for h in logger.handlers):
             return logger

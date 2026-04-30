@@ -37,9 +37,9 @@ import grpc
 from google.protobuf.json_format import MessageToDict
 
 from panoseti_grpc.generated import daq_control_pb2, daq_control_pb2_grpc
+from panoseti_grpc.panoseti_util.control_utils import kill_hk_recorder
 from panoseti_grpc.telemetry.logger import get_logger
 from panoseti_grpc.util.error_handling import grpc_error_handler
-from panoseti_grpc.panoseti_util.control_utils import kill_hk_recorder
 
 from .config import CleanupDataModel, CleanupMode, GenerateManifestModel, StartDaqModel, StatusDaqModel
 from .manifest import compute_manifest
@@ -703,7 +703,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     @grpc_error_handler
     async def GetManifest(
         self, request: daq_control_pb2.GetManifestRequest, context: grpc.aio.ServicerContext
-    ) -> AsyncGenerator[daq_control_pb2.ManifestEntry, None]:
+    ) -> AsyncGenerator[daq_control_pb2.ManifestEntry]:
         self.logger.info("GetManifest called...")
 
         # ASYNC240: Use anyio.Path for non-blocking path resolution in async generator

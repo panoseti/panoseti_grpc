@@ -215,4 +215,3 @@ class TestCleanupDataModel:
         run_dir.mkdir()
         with pytest.raises(ValidationError):
             CleanupDataModel(data_dir=str(tmp_path), run_dir="run.pffd", module_id=[256])
-

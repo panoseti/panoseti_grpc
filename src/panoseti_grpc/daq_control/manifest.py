@@ -12,12 +12,11 @@ import fnmatch
 import hashlib
 import logging
 import os
+import socket
 import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-
-import socket
 
 _manifest_logger = logging.getLogger(__name__)
 
@@ -36,9 +35,7 @@ except ImportError:
 
     def _digest_bytes(data: bytes, algo: str) -> str:
         if algo == "blake3":
-            raise ValueError(
-                "Algorithm 'blake3' requested but 'blake3' library is not installed."
-            )
+            raise ValueError("Algorithm 'blake3' requested but 'blake3' library is not installed.")
         return _digest_xxh3(data)
 
 
@@ -60,15 +57,11 @@ def _effective_algo(algo: str) -> str:
     """Return the actual algorithm used (fails if library unavailable)."""
     if algo == "blake3":
         if not _HAS_BLAKE3:
-            raise ValueError(
-                "Algorithm 'blake3' requested but 'blake3' library is not installed."
-            )
+            raise ValueError("Algorithm 'blake3' requested but 'blake3' library is not installed.")
         return "blake3"
     if algo == "xxh3_128":
         if not _HAS_XXHASH:
-            raise ValueError(
-                "Algorithm 'xxh3_128' requested but 'xxhash' library is not installed."
-            )
+            raise ValueError("Algorithm 'xxh3_128' requested but 'xxhash' library is not installed.")
         return "xxh3_128"
     return algo
 
