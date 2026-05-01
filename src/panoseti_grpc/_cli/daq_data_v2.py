@@ -13,7 +13,6 @@ from panoseti_grpc.generated import (
     daq_data_v2_pb2,
     daq_data_v2_pb2_grpc,
 )
-from panoseti_grpc.telemetry.logger import get_logger
 
 from .state import state
 
@@ -38,6 +37,7 @@ def daq_data_ping() -> None:
             latency_ms = (time.monotonic() - t0) * 1000
         if state.json:
             import json
+
             print(json.dumps({"host": state.host, "port": state.port, "latency_ms": round(latency_ms, 2)}))
         else:
             console.print(f"[green]✓[/green] DaqDataV2 Ping OK — {target} — {latency_ms:.1f} ms")

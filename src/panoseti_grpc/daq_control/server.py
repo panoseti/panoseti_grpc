@@ -124,7 +124,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 cmdline = proc.info["cmdline"]
                 if cmdline and "panoseti_grpc.daq_data_v2.forwarder" in " ".join(cmdline):
                     pids.append(proc.info["pid"])
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
+            except psutil.NoSuchProcess, psutil.AccessDenied:
                 continue
         return pids
 
@@ -344,7 +344,11 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             self.logger.info("Create subprocess...")
             self.logger.info(f"cmd: {cmdstr}")
             proc = await asyncio.create_subprocess_exec(
-                *cmd, cwd=datadir, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=True
+                *cmd,
+                cwd=datadir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
             )
             self.logger.debug("Subprocess created...")
             # monitor stdout/stderr in background — routes to run_dir log files and gRPC
@@ -359,21 +363,24 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 if forwarder_pids:
                     self.logger.warning(f"Cleaning up {len(forwarder_pids)} zombie forwarder(s): {forwarder_pids}")
                     self.kill_processes(forwarder_pids)
-                
+
                 self.logger.info("Starting DaqData v2 Forwarder...")
                 forwarder_cmd = [
-                    "python", "-m", "panoseti_grpc.daq_data_v2.forwarder",
-                    "--headnode", vreq.headnode_target,
+                    "python",
+                    "-m",
+                    "panoseti_grpc.daq_data_v2.forwarder",
+                    "--headnode",
+                    vreq.headnode_target,
                 ]
                 try:
                     self.v2_forwarder_proc = await asyncio.create_subprocess_exec(
-                        *forwarder_cmd, 
-                        stdout=asyncio.subprocess.PIPE, 
+                        *forwarder_cmd,
+                        stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
-                        start_new_session=True
+                        start_new_session=True,
                     )
                     self.logger.info(f"DaqData v2 Forwarder started with PID: {self.v2_forwarder_proc.pid}")
-                    
+
                     # Drain pipes to prevent blocking
                     if self.v2_forwarder_proc.stdout:
                         asyncio.create_task(_read_stream(self.v2_forwarder_proc.stdout, self.logger.info))
@@ -425,7 +432,9 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 _, remaining_pids = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
                 if not remaining_pids:
                     break
-                self.logger.info(f"Waiting for {len(remaining_pids)} HASHPIPE process(es) to exit gracefully... ({int(elapsed)}s)")
+                self.logger.info(
+                    f"Waiting for {len(remaining_pids)} HASHPIPE process(es) to exit gracefully... ({int(elapsed)}s)"
+                )
                 await asyncio.sleep(POLL_INTERVAL)
                 elapsed += POLL_INTERVAL
 
@@ -433,7 +442,9 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             _, final_pids = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
             killed_count = 0
             if final_pids:
-                self.logger.warning(f"{len(final_pids)} process(es) refused SIGINT. Escalating to SIGKILL: {final_pids}")
+                self.logger.warning(
+                    f"{len(final_pids)} process(es) refused SIGINT. Escalating to SIGKILL: {final_pids}"
+                )
                 for pid in final_pids:
                     try:
                         p = psutil.Process(pid)
@@ -446,7 +457,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
             # 5. Cleanup sidecars (HK recorder and v2 Forwarder)
             await asyncio.to_thread(kill_hk_recorder)
-            
+
             # Robust Forwarder Cleanup
             if self.v2_forwarder_proc:
                 self.logger.info("Stopping DaqData v2 Forwarder...")
@@ -457,7 +468,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 try:
                     await asyncio.wait_for(self.v2_forwarder_proc.wait(), timeout=5.0)
                     self.logger.info("DaqData v2 Forwarder stopped gracefully.")
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     self.logger.warning("DaqData v2 Forwarder did not stop gracefully. Killing.")
                     try:
                         self.v2_forwarder_proc.kill()
@@ -476,11 +487,12 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             # 6. Final verification
             n_remaining, _ = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
             self.hashpipe_pid = -1
-            
-            success = (n_remaining == 0)
+
+            success = n_remaining == 0
             status_msg = (
-                f"Successfully stopped {n_initial} processes." if success else
-                f"Failed to stop all processes. {n_remaining} still active."
+                f"Successfully stopped {n_initial} processes."
+                if success
+                else f"Failed to stop all processes. {n_remaining} still active."
             )
             if killed_count > 0:
                 status_msg += f" ({killed_count} required SIGKILL escalation)."
@@ -508,7 +520,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             self.logger.debug("Checking HASHPIPE status...")
             # Consistency Fix: check for ANY running hashpipe process, not just the tracked one.
             n, pids = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
-            hashpipe_running = (n > 0)
+            hashpipe_running = n > 0
             if n > 0:
                 hashpipe_pid = pids[0]
             # Update tracked pid if exactly one found and we didn't have one
@@ -541,7 +553,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             hashpipe_running=hashpipe_running,
             disk_usage=disk_usage_struct,
             run_dirs=run_dirs,
-            hashpipe_pid=hashpipe_pid
+            hashpipe_pid=hashpipe_pid,
         )
 
     @grpc_error_handler
@@ -567,10 +579,10 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         pid_alive = False
         uncertain = False
         parsed_pid = -1
-        
+
         try:
             parsed_pid = int(self.hashpipe_pid)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             if self.hashpipe_pid != -1:
                 uncertain = True
 
@@ -604,10 +616,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         elif parsed_pid > 0 and not force:
             # pid_alive is False and not uncertain: process is dead (orphaned)
             # but caller did not pass force=True.
-            msg = (
-                f"Orphaned HASHPIPE pid[{parsed_pid}] (process dead). "
-                "Use force=True to override and clean up."
-            )
+            msg = f"Orphaned HASHPIPE pid[{parsed_pid}] (process dead). Use force=True to override and clean up."
             self.logger.warning(msg)
             return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
         elif parsed_pid > 0:
@@ -719,7 +728,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         # failing validation with an empty string.
         if not dreq.get("algorithm"):
             dreq.pop("algorithm", None)
-        
+
         # Pop empty include_patterns so Pydantic default takes over.
         # Check explicitly for empty list (what gRPC yields for unset repeated field).
         if "include_patterns" in dreq and not dreq["include_patterns"]:
@@ -734,11 +743,11 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
         all_entries = []
         t0 = asyncio.get_event_loop().time()
-        
+
         # Identify all directories to be hashed
         # 1. Root run directory (configuration files)
         root_run_dir = Path(vreq.data_dir) / vreq.run_dir
-        
+
         # 2. Module directories (science files)
         source_dirs = [root_run_dir]
         for mid in vreq.module_id:
@@ -753,13 +762,13 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 resolved_root = await root_run_dir_async.resolve()
                 if await resolved_root.is_dir():
                     break
-            except (OSError, FileNotFoundError):
+            except OSError, FileNotFoundError:
                 pass
 
             if attempt < 9:
                 self.logger.debug(
                     f"GenerateManifest: Root path {root_run_dir} not found/resolved, "
-                    f"retrying in 500ms... (attempt {attempt+1}/10)"
+                    f"retrying in 500ms... (attempt {attempt + 1}/10)"
                 )
                 await asyncio.sleep(0.5)
         else:
@@ -772,12 +781,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
         # Compute a single manifest for all source directories.
         # compute_manifest handles list of source dirs and saves to output_dir.
-        result = await compute_manifest(
-            source_dirs,
-            root_run_dir,
-            vreq.include_patterns,
-            vreq.algorithm
-        )
+        result = await compute_manifest(source_dirs, root_run_dir, vreq.include_patterns, vreq.algorithm)
         all_entries.extend(result.entries)
         manifest_path = str(result.manifest_path)
         # Type narrowing for MyPy literal compatibility
@@ -805,11 +809,11 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
         # ASYNC240: Use anyio.Path for non-blocking path resolution in async generator
         data_dir = await anyio.Path(request.data_dir).resolve()
-        
+
         # Manifest can now be in the root run dir or module run dir.
         root_run_dir = data_dir / request.run_dir
         module_run_dirs = [data_dir / f"module_{mid}" / request.run_dir for mid in request.module_id]
-        
+
         # Resilience: Highly persistent retry (5s total) to outlast any VirtioFS lag.
         manifest_path: anyio.Path | None = None
         for attempt in range(10):
@@ -832,15 +836,12 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                             break
                 if manifest_path:
                     break
-            
+
             if attempt < 9:
                 await asyncio.sleep(0.5)
-        
+
         if manifest_path is None:
-            await context.abort(
-                grpc.StatusCode.NOT_FOUND, 
-                f"No manifest file found for run {request.run_dir}"
-            )
+            await context.abort(grpc.StatusCode.NOT_FOUND, f"No manifest file found for run {request.run_dir}")
             return
 
         async with await manifest_path.open() as f:
@@ -852,14 +853,14 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 parts = line.split("  ", 3)
                 if len(parts) < 3:
                     continue
-                
+
                 if len(parts) == 4:
                     digest_hex, size_str, mtime_str, rel_path = parts
                     mtime_ns = int(mtime_str)
                 else:
                     digest_hex, size_str, rel_path = parts
                     mtime_ns = 0
-                
+
                 yield daq_control_pb2.ManifestEntry(
                     relative_path=rel_path,
                     digest_hex=digest_hex,
@@ -875,9 +876,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         self.logger.info("GetTransferStatus called for run_dir=%s", request.run_dir)
         data_dir = Path(request.data_dir)
         if not data_dir.is_dir():
-            return daq_control_pb2.GetTransferStatusResponse(
-                success=False, message=f"data_dir not found: {data_dir}"
-            )
+            return daq_control_pb2.GetTransferStatusResponse(success=False, message=f"data_dir not found: {data_dir}")
 
         hashpipe_running = self.hashpipe_pid > 0 and is_hashpipe_running(self.hashpipe_pid)
 
@@ -940,7 +939,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 if await entry.is_file():
                     manifest_path = entry
                     break
-        
+
         # Check legacy format
         if not manifest_path:
             for mdir in module_run_dirs:
@@ -956,9 +955,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         if manifest_path is None:
             msg = f"No manifest file found for run {request.run_dir}"
             self.logger.warning(msg)
-            return daq_control_pb2.GetManifestDigestResponse(
-                success=False, message=msg
-            )
+            return daq_control_pb2.GetManifestDigestResponse(success=False, message=msg)
 
         try:
             raw = await manifest_path.read_bytes()
@@ -979,9 +976,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         except Exception as e:
             msg = f"Error reading manifest: {e}"
             self.logger.error(msg)
-            return daq_control_pb2.GetManifestDigestResponse(
-                success=False, message=msg
-            )
+            return daq_control_pb2.GetManifestDigestResponse(success=False, message=msg)
 
     @grpc_error_handler
     async def RetryFailedTransfer(
@@ -997,7 +992,10 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         module_id = request.module_id[0] if request.module_id else 0
         self.logger.info(
             "RetryFailedTransfer called: data_dir=%s run_dir=%s module_id=%d file_path=%s",
-            request.data_dir, request.run_dir, module_id, request.file_path,
+            request.data_dir,
+            request.run_dir,
+            module_id,
+            request.file_path,
         )
         data_dir = Path(request.data_dir).resolve()
         module_run_dir = (data_dir / f"module_{module_id}" / request.run_dir).resolve()
@@ -1016,9 +1014,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             return daq_control_pb2.RetryFailedTransferResponse(success=False, message="")
 
         if not file_path.is_file():
-            return daq_control_pb2.RetryFailedTransferResponse(
-                success=False, message=f"File not found: {file_path}"
-            )
+            return daq_control_pb2.RetryFailedTransferResponse(success=False, message=f"File not found: {file_path}")
 
         raw = await asyncio.to_thread(file_path.read_bytes)
         digest_hex = _hashlib.sha256(raw).hexdigest()

@@ -72,14 +72,14 @@ python -m panoseti_grpc                           # equivalent to panoseti-serve
 
 Observatory CLI (`pseti-grpc`) for a running server:
 ```bash
-pseti-grpc status                      # probe all services and print table
+pseti-grpc stat                        # probe all services and print health table
 pseti-grpc reflect                     # list services via gRPC reflection
 pseti-grpc telemetry log --message '{"event":"test"}'
 pseti-grpc daq-data ping
-pseti-grpc daq-data init-sim           # init simulation mode
-pseti-grpc daq-data stream --seconds 5
+pseti-grpc daq-data-v2 ping            # ping next-gen aggregator
+pseti-grpc daq-data-v2 stream --seconds 5
 pseti-grpc daq-control status
-pseti-grpc --host mynode --port 50051 status  # connect to remote
+pseti-grpc --host mynode --port 50051 stat   # connect to remote
 ```
 
 Individual service entry points (standalone):
@@ -89,6 +89,7 @@ panoseti-daq-control
 panoseti-telemetry
 # or via python -m:
 python -m panoseti_grpc.daq_data.server
+python -m panoseti_grpc.daq_data_v2.server
 python -m panoseti_grpc.daq_control.server
 python -m panoseti_grpc.telemetry.server
 ```
@@ -100,7 +101,8 @@ python -m panoseti_grpc.telemetry.server
 | Service | Status | Purpose |
 |---------|--------|---------|
 | `daq_data` | Production | Streams real-time science images from Hashpipe shared memory |
-| `daq_control` | Production | Start/stop Hashpipe, generate manifests, selective cleanup with integrity precondition |
+| `daq_data_v2` | 🟡 Experimental | Centralized aggregator using the "Push Forwarder" model |
+| `daq_control` | Production | Start/stop Hashpipe, manage forwarder sidecars, selective cleanup |
 | `telemetry` | Beta | Device status → Redis/InfluxDB; log shipping via Grafana Alloy → Loki (shadow period) |
 | `ublox_control` | 🔴 Deprecated | GNSS chip control — disabled by default; removed in next major release |
 
@@ -112,13 +114,19 @@ Each service lives under `src/panoseti_grpc/<service>/` and follows the pattern:
 ### Proto → Generated Code Flow
 `.proto` files in `protos/` → `python scripts/compile_protos.py` → `src/panoseti_grpc/generated/`. Never edit generated files directly.
 
-### DAQ Data Service
+### DAQ Data Service (v1)
 Bridges Hashpipe (C/C++ hardware pipeline) to gRPC streams via Unix Domain Sockets (UDS) — the sole supported data path. Key abstractions:
 - `data_sources.py` — `UdsDataSource`: acts as a UDS server; one instance per data product (`img8`, `img16`, `ph256`, `ph1024`). Hashpipe connects as a UDS client and sends `[2-byte big-endian module_id][PFF frame]` tuples.
 - `hp_io_manager.py` — `HpIoManager`: drains the central `asyncio.Queue(maxsize=500)`, assigns monotonic `frame_id`s, discovers module IDs dynamically from the stream, and writes to `latest_data_cache[module_id]['ph'|'movie']`.
 - `simulate.py` — `UdsStrategy`: the test simulation connects to the server's UDS sockets as a Hashpipe stand-in and replays archived PFF frames. `SimulationManager` must be started **after** `HpIoManager` (sockets must exist first).
 - `managers.py` — `HpIoTaskManager` owns the task lifecycle; `ClientManager` manages reader slots and the writer lock. The writer lock is acquired by `InitHpIo` and cancels all active `StreamImages` readers before reconfiguring.
 - `state.py` — `ReaderState` tracks per-client cursor (`last_sent_movie_id`, `last_sent_ph_id`); `StreamImages` polls `latest_data_cache` and only sends frames with a higher `frame_id` than what the client last received.
+
+### DAQ Data v2 Service (Next-Gen)
+Adopts a **Push Forwarder** model for scalability and bandwidth optimization.
+- **Aggregator:** Runs on the Headnode. Hosts `UploadImages` (receiving pushed streams from DAQ nodes) and `StreamImages` (serving clients). Main cache is a `module_id` keyed dict of `CachedImage` objects.
+- **Forwarder:** Lightweight script (`forwarder.py`) on each DAQ node. Acts as a UDS server for Hashpipe and pushes frames to the central Aggregator via client-side streaming.
+- **Simulator:** Standalone tool (`simulator.py`) for replaying PFF frames into UDS sockets to test the pipeline without hardware.
 
 **Pub/sub model:** `latest_data_cache` is a shared dict (not per-reader queues). Each `StreamImages` reader polls at its `update_interval_seconds` and sends any frame whose `frame_id > last_sent_id`. Fast producers overwrite slow producers — no frame queuing per reader.
 
@@ -162,10 +170,11 @@ grpc_health_probe -addr=daqnode-1:50051 -service=panoseti.daq_control
 | Profile | Services | Machine |
 |---------|----------|---------|
 | `default` (`server.toml`) | telemetry + daq_data + daq_control | Single-machine dev/test |
-| `daq_node` (`server_daq_node.toml`) | daq_data + daq_control | Each DAQ compute node |
-| `headnode` (`server_headnode.toml`) | telemetry | Observatory head node |
+| `daq_node` (`server_daq_node.toml`) | daq_control | Each DAQ compute node |
+| `headnode` (`server_headnode.toml`) | telemetry + daq_data_v2 | Observatory head node |
 
-**Initialization order** (`INIT_ORDER = ["telemetry", "daq_data", "daq_control"]`): telemetry servicer is registered and the port is live before other servicers are created, so their `get_logger(..., grpc_enabled=True)` calls can connect to the telemetry endpoint immediately. On a DAQ node (telemetry=false), `grpc_logging=true` means logs go to `HEADNODE_IP:HEADNODE_GRPC_PORT` via `AsyncGrpcHandler`'s existing remote connection — no code change needed.
+**Initialization order** (`INIT_ORDER = ["telemetry", "daq_data", "daq_data_v2", "daq_control"]`): telemetry servicer is registered and the port is live before other servicers are created, so their `get_logger(..., grpc_enabled=True)` calls can connect to the telemetry endpoint immediately.
+ On a DAQ node (telemetry=false), `grpc_logging=true` means logs go to `HEADNODE_IP:HEADNODE_GRPC_PORT` via `AsyncGrpcHandler`'s existing remote connection — no code change needed.
 
 **Adding a new service (5-step checklist):**
 1. Implement servicer and proto; run `python scripts/compile_protos.py`
@@ -185,13 +194,13 @@ No changes to `PanosetiServer` itself are needed.
 ### DAQ Control Service
 Manages the Hashpipe process lifecycle on each DAQ node. `DaqControlServicer` tracks the hashpipe PID (`self.hashpipe_pid`). Key behaviors:
 - `StartDaq` fails immediately if a Hashpipe process is already running (guards against double-start).
-- `StopDaq` sends `SIGINT` and blocks until the process exits; returns `success=True` if already stopped.
+- **Forwarder Management:** Conditionally spawns the `daq_data_v2.forwarder` sidecar script when `enable_v2_forwarder=True`.
+- **Robustness:** Uses an `asyncio.Lock` to serialize all `StartDaq`, `StopDaq`, and `CleanupData` operations. Automatically cleans up zombie forwarder processes via `psutil` before starting new instances.
+- **Isolation:** Forwards subprocess `stdout`/`stderr` to the server's logging system and ensures pipes are drained to prevent event loop blocking.
+- `StopDaq` sends `SIGINT` and blocks until the process exits; returns `success=True` if already stopped. Robustly handles already-terminated forwarders.
 - `CleanupData` is blocked while `hashpipe_pid > 0`. Supports two modes via `CleanupMode` enum:
-  - `CLEANUP_FULL` (0, default) — legacy `rmtree` behavior; wire-compatible with old clients.
-  - `CLEANUP_SELECTIVE` (1) — deletes only files matching `delete_patterns` not covered by `preserve_patterns`. **Requires `manifest_digest`** (SHA-256 of the manifest file content): the server recomputes the digest of its local manifest and aborts with `FAILED_PRECONDITION` if values differ. This guarantees no `.pff` data is deleted without head-node integrity confirmation.
-- `GenerateManifest` — computes blake3/xxhash/sha256 checksums for run files; writes a 4-column manifest atomically (`{digest}  {size}  {mtime_ns}  {relpath}`); implemented in `manifest.py` using `asyncio.to_thread` for blocking I/O.
-- `GetManifest` — server-streaming RPC that yields `ManifestEntry` per line of the manifest file; path-traversal guarded.
-- Hashpipe stdout/stderr are streamed to per-run log files under `{data_dir}/{run_dir}/hp_stdout.log` and `hp_stderr.log`.
+  - `CLEANUP_FULL` (0, default) — legacy `rmtree` behavior.
+  - `CLEANUP_SELECTIVE` (1) — deletes only files matching `delete_patterns`. **Requires `manifest_digest`** verification for safety.
 
 **Client methods** (`AsyncDaqControlClient` / `DaqControlClient`) are all decorated with `@grpc_call` from `grpc_utils.decorators`, which maps `grpc.RpcError → PanosetiRpcError` subclasses and never suppresses `asyncio.CancelledError`. Callers catch typed exceptions instead of raw `grpc.RpcError`:
 ```python

@@ -5,20 +5,19 @@ Simplified client that connects to the centralized DaqDataV2 aggregator.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import AsyncIterator, Generator
-from typing import Any
 
 import grpc
 from google.protobuf.empty_pb2 import Empty
-from google.protobuf.json_format import MessageToDict
 
 from panoseti_grpc.generated import daq_data_v2_pb2, daq_data_v2_pb2_grpc
 from panoseti_grpc.telemetry.logger import get_logger
 
+
 class DaqDataV2Client:
     """Synchronous client for DaqDataV2."""
+
     def __init__(self, target: str, log_level: int = logging.INFO):
         self.target = target
         self.logger = get_logger("daq_data_v2.client", level=log_level)
@@ -44,7 +43,7 @@ class DaqDataV2Client:
         stream_ph: bool = True,
         update_interval: float = 1.0,
         module_ids: list[int] | None = None,
-    ) -> Generator[daq_data_v2_pb2.StreamImagesResponse, None, None]:
+    ) -> Generator[daq_data_v2_pb2.StreamImagesResponse]:
         request = daq_data_v2_pb2.StreamImagesRequest(
             stream_movie_data=stream_movie,
             stream_pulse_height_data=stream_ph,
@@ -53,8 +52,10 @@ class DaqDataV2Client:
         )
         yield from self.stub.StreamImages(request)
 
+
 class AioDaqDataV2Client:
     """Asynchronous client for DaqDataV2."""
+
     def __init__(self, target: str, log_level: int = logging.INFO):
         self.target = target
         self.logger = get_logger("daq_data_v2.client", level=log_level)

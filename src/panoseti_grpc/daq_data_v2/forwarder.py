@@ -7,10 +7,9 @@ to the centralized DaqDataV2 aggregator on the Headnode.
 import asyncio
 import logging
 import signal
-import struct
+from collections.abc import AsyncIterator
 from io import BytesIO
 from json import loads
-from typing import AsyncIterator
 
 import grpc
 from google.protobuf.json_format import ParseDict
@@ -27,6 +26,7 @@ DATA_PRODUCTS = {
     "ph256": {"shape": (16, 16), "bpp": 2, "is_ph": True},
     "ph1024": {"shape": (32, 32), "bpp": 2, "is_ph": True},
 }
+
 
 class Forwarder:
     def __init__(
@@ -47,18 +47,16 @@ class Forwarder:
         """Handles a single client connection on a UDS socket."""
         client_info = writer.get_extra_info("peername")
         self.logger.info(f"New UDS client connection for {dp_name} from {client_info}")
-        
+
         dp_cfg = DATA_PRODUCTS[dp_name]
         bytes_per_image = dp_cfg["shape"][0] * dp_cfg["shape"][1] * dp_cfg["bpp"]
         pano_type = (
-            daq_data_v2_pb2.PanoImage.Type.PULSE_HEIGHT 
-            if dp_cfg["is_ph"] 
-            else daq_data_v2_pb2.PanoImage.Type.MOVIE
+            daq_data_v2_pb2.PanoImage.Type.PULSE_HEIGHT if dp_cfg["is_ph"] else daq_data_v2_pb2.PanoImage.Type.MOVIE
         )
 
         header_size = None
         frame_count = 0
-        
+
         try:
             while not self.stop_event.is_set():
                 # Read module_id (2 bytes)
@@ -72,7 +70,7 @@ class Forwarder:
                     self.logger.info(f"Discovered header size {header_size} for {dp_name}")
                 else:
                     header_with_sep = await reader.readexactly(header_size)
-                
+
                 header = loads(header_with_sep[:-2].decode())
 
                 # Read image data (1 byte '*' separator + pixels)
@@ -93,14 +91,14 @@ class Forwarder:
                     frame_number=frame_count,
                     module_id=module_id,
                 )
-                
+
                 try:
                     self.queue.put_nowait(pano_image)
                     if frame_count % 100 == 0:
                         self.logger.info(f"Forwarder pushed frame {frame_count} for {dp_name} to queue")
                 except asyncio.QueueFull:
                     pass
-                
+
                 frame_count += 1
         except asyncio.IncompleteReadError:
             self.logger.warning(f"UDS {dp_name} client {client_info} disconnected")
@@ -113,35 +111,36 @@ class Forwarder:
     async def _read_uds(self, dp_name: str):
         """Starts a UDS server for a single data product."""
         socket_path = self.socket_path_template.format(dp_name=dp_name)
-        
+
         # Clean up stale socket
         import os
+
         if os.path.exists(socket_path):
             os.unlink(socket_path)
 
         self.logger.info(f"Starting UDS server for {dp_name} on {socket_path}")
-        server = await asyncio.start_unix_server(
-            lambda r, w: self._handle_client(r, w, dp_name),
-            path=socket_path
-        )
-        
+        server = await asyncio.start_unix_server(lambda r, w: self._handle_client(r, w, dp_name), path=socket_path)
+
         async with server:
             await self.stop_event.wait()
 
     async def _push_to_headnode(self):
         """Streams images from the queue to the Headnode."""
+
         async def request_generator() -> AsyncIterator[daq_data_v2_pb2.UploadImageRequest]:
             self.logger.info("Request generator started")
             while not self.stop_event.is_set():
                 try:
                     pano_image = await asyncio.wait_for(self.queue.get(), timeout=1.0)
-                    self.logger.info(f"Yielding frame {pano_image.frame_number} module {pano_image.module_id} to aggregator")
+                    self.logger.info(
+                        f"Yielding frame {pano_image.frame_number} module {pano_image.module_id} to aggregator"
+                    )
                     try:
                         req = daq_data_v2_pb2.UploadImageRequest(pano_image=pano_image)
                         yield req
                     except Exception as e:
                         self.logger.error(f"Error yielding request: {e}")
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     continue
                 except Exception as e:
                     self.logger.error(f"Error in request generator: {e}", exc_info=True)
@@ -166,14 +165,16 @@ class Forwarder:
         """Starts all UDS readers and the push task."""
         tasks = [asyncio.create_task(self._read_uds(dp)) for dp in self.data_products]
         tasks.append(asyncio.create_task(self._push_to_headnode()))
-        
+
         await self.stop_event.wait()
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
+
 async def main():
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--headnode", default="localhost:50051")
     parser.add_argument("--socket-template", default="/tmp/hashpipe_grpc.dp_{dp_name}.sock")
@@ -191,6 +192,7 @@ async def main():
         loop.add_signal_handler(sig, stop)
 
     await forwarder.run()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

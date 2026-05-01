@@ -41,6 +41,12 @@ def grpc_error_handler[F: Callable[..., Any]](func: F) -> F:
             return await func(self, request, context)
         except asyncio.CancelledError:
             raise
+        except RuntimeError as e:
+            if "Server already stopped" in str(e):
+                # Graceful shutdown during active stream — not a real error.
+                return
+            logging.exception(f"Runtime error in {func.__name__}: {e!s}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Internal server error: {e!s}")
         except Exception as e:
             logging.exception(f"Error in {func.__name__}: {e!s}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Internal server error: {e!s}")

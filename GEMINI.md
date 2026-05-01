@@ -7,8 +7,9 @@ PANOSETI gRPC Services is a microservice-based control and data acquisition laye
 
 ### Architecture
 - **Unified Server**: Multiple services co-hosted on a single gRPC port (`panoseti_grpc.server.py`).
-- **Async-First Clients**: Native `AsyncDaqControlClient` and `AsyncDaqDataClient` using `grpc.aio` for non-blocking coordination.
+- **Async-First Clients**: Native `AsyncDaqControlClient`, `AsyncDaqDataClient`, and the new `AsyncDaqDataV2Client` using `grpc.aio` for non-blocking coordination.
 - **Model-Driven Requests**: Dedicated `client_models.py` for each service provide client-side parameter validation decoupled from server-side filesystem checks.
+- **Centralized Aggregation (v2)**: The `daq_data_v2` service adopts a "Push Forwarder" model where DAQ nodes run lightweight sidecars that push data to a central Headnode aggregator, optimizing network bandwidth and DAQ node CPU.
 
 ---
 
@@ -30,6 +31,7 @@ pseti test grpc all
 # Run specific tasks
 pseti test grpc lint               # Ruff (lint/format) + MyPy
 pseti test grpc daq-control        # Individual test suite
+pseti test grpc daq-data-v2        # New aggregator v2 tests
 ```
 Configuration is driven by `tests/qa.toml`. Unique project names (`-p pseti-grpc-NAME`) MUST be used for Docker isolation.
 
@@ -47,10 +49,16 @@ Configuration is driven by `tests/qa.toml`. Unique project names (`-p pseti-grpc
 - **Type Safety**: Always generate `.pyi` stubs.
 - **Async Clients**: MUST implement `__aenter__` and `__aexit__` for channel lifecycle management.
 
+### Subprocess Isolation
+- **Forwarder Sidecars**: When managing sidecar scripts (like the v2 forwarder), use `asyncio.subprocess` for CPU isolation.
+- **Robust Management**: Always implement zombie process cleanup (via `psutil`) and ensure pipe draining (`stdout`/`stderr`) to prevent subprocess blocking.
+
 ### Testing Conventions
 - **Isolation**: Integration tests MUST NOT bind to host ports. Use bridge networks for inter-container communication.
+- **Testcontainers**: Prefer `testcontainers` for orchestrating dynamic, isolated environments in `grpc/tests/`.
 - **Project Scope**: Each test suite MUST use a unique Docker Compose project name to prevent network/container collisions during concurrent runs.
 - **Async**: Use `pytest-asyncio` with `asyncio_mode = "auto"`.
+- **Tier 5 Scaling**: Large-scale integration tests (multiple clients, real Hashpipe replay) are handled in the `control/` repository using the static Docker Compose stack.
 
 ---
 

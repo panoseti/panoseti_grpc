@@ -23,7 +23,7 @@ from panoseti_grpc.server import (
 def test_all_three_services_registered() -> None:
     """All three built-in services are registered at module import time."""
     names = set(ServiceRegistry.all().keys())
-    assert names == {"telemetry", "daq_data", "daq_control"}
+    assert names == {"telemetry", "daq_data", "daq_control", "daq_data_v2"}
 
 
 def test_init_order_telemetry_first() -> None:
