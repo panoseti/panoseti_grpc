@@ -37,6 +37,8 @@ message StartDaqRequest {
     string  obs = 7;
     /* each daq node may support more that one telescopes */
     repeated uint32  module_id = 8 [packed=true];
+    bool    enable_v2_forwarder = 9;
+    string  headnode_target = 10;
 }
 
 message StartDaqResponse {

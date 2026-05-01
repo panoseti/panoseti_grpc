@@ -14,6 +14,7 @@ from panoseti_grpc.generated import (
     daq_control_pb2,
     daq_control_pb2_grpc,
     daq_data_pb2_grpc,
+    daq_data_v2_pb2_grpc,
 )
 from panoseti_grpc.telemetry.client import TelemetryClient
 from panoseti_grpc.telemetry.logger import get_logger
@@ -82,6 +83,19 @@ def stat(
             add_result("daq_data", "[yellow]— disabled[/yellow]", "UNIMPLEMENTED (service not hosted)", True)
         else:
             add_result("daq_data", "[red]✗ FAIL[/red]", f"{code.name}: {e.details()}", False)
+
+    # --- DaqDataV2: Ping RPC ---
+    try:
+        with _make_channel() as ch:
+            daq_data_v2_stub = daq_data_v2_pb2_grpc.DaqDataV2Stub(ch)
+            daq_data_v2_stub.Ping(Empty(), timeout=state.timeout, wait_for_ready=False)
+        add_result("daq_data_v2", "[green]✓ OK[/green]", "Ping responded", True)
+    except grpc.RpcError as e:
+        code = e.code()
+        if code == grpc.StatusCode.UNIMPLEMENTED:
+            add_result("daq_data_v2", "[yellow]— disabled[/yellow]", "UNIMPLEMENTED (service not hosted)", True)
+        else:
+            add_result("daq_data_v2", "[red]✗ FAIL[/red]", f"{code.name}: {e.details()}", False)
 
     # --- DaqControl: StatusDaq RPC ---
     try:

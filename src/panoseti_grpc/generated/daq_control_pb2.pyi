@@ -49,6 +49,8 @@ class StartDaqRequest(_message.Message):
     RUN_DIR_FIELD_NUMBER: _builtins.int
     OBS_FIELD_NUMBER: _builtins.int
     MODULE_ID_FIELD_NUMBER: _builtins.int
+    ENABLE_V2_FORWARDER_FIELD_NUMBER: _builtins.int
+    HEADNODE_TARGET_FIELD_NUMBER: _builtins.int
     data_dir: _builtins.str
     """daq_ip_addr is not necessary"""
     daq_ip_addr: _builtins.str
@@ -58,6 +60,8 @@ class StartDaqRequest(_message.Message):
     group_ph_frames: _builtins.bool
     run_dir: _builtins.str
     obs: _builtins.str
+    enable_v2_forwarder: _builtins.bool
+    headnode_target: _builtins.str
     @_builtins.property
     def module_id(self) -> _containers.RepeatedScalarFieldContainer[_builtins.int]:
         """each daq node may support more that one telescopes"""
@@ -73,8 +77,10 @@ class StartDaqRequest(_message.Message):
         run_dir: _builtins.str = ...,
         obs: _builtins.str = ...,
         module_id: _abc.Iterable[_builtins.int] | None = ...,
+        enable_v2_forwarder: _builtins.bool = ...,
+        headnode_target: _builtins.str = ...,
     ) -> None: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["bindhost", b"bindhost", "daq_ip_addr", b"daq_ip_addr", "data_dir", b"data_dir", "group_ph_frames", b"group_ph_frames", "max_file_size_mb", b"max_file_size_mb", "module_id", b"module_id", "obs", b"obs", "run_dir", b"run_dir"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["bindhost", b"bindhost", "daq_ip_addr", b"daq_ip_addr", "data_dir", b"data_dir", "enable_v2_forwarder", b"enable_v2_forwarder", "group_ph_frames", b"group_ph_frames", "headnode_target", b"headnode_target", "max_file_size_mb", b"max_file_size_mb", "module_id", b"module_id", "obs", b"obs", "run_dir", b"run_dir"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
 
 Global___StartDaqRequest: _TypeAlias = StartDaqRequest  # noqa: Y015

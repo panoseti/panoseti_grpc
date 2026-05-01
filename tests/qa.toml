@@ -47,6 +47,11 @@ service = "test_runner"
 test_dir = "tests/unified_server/"
 pytest_args = ["--timeout=90"]
 
+[suites.daq_data_v2]
+description = "DAQ Data v2 service integration tests"
+type = "test"
+raw_command = "export PYTHONPATH=src && pytest -v -s tests/daq_data_v2/test_integration.py"
+
 [suites.hashpipe_daq_data]
 description = "Hashpipe DAQ Data integration tests (requires real/simulated hardware)"
 type = "test"

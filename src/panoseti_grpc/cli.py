@@ -33,6 +33,7 @@ class GrpcLazyGroup(BaseLazyGroup):
             "reflect": ("panoseti_grpc._cli.root", "reflect", "List all services via gRPC reflection."),
             "telemetry": ("panoseti_grpc._cli.telemetry", "app", "Telemetry service operations."),
             "daq-data": ("panoseti_grpc._cli.daq_data", "app", "DAQ Data service operations."),
+            "daq-data-v2": ("panoseti_grpc._cli.daq_data_v2", "app", "DAQ Data v2 service operations."),
             "daq-control": ("panoseti_grpc._cli.daq_control", "app", "DAQ Control service operations."),
             "server": ("panoseti_grpc._cli.server", "app", "Manage and run the unified gRPC server."),
         }
