@@ -90,6 +90,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         )
         self.logger.info("DaqControlServicer initialized")
         self.logger.info("DaqControl Server Online")
+        self.v2_forwarder_proc: asyncio.subprocess.Process | None = None
         # This is used for recording the hashpipe pid
         n, hashpipe_pids = self._get_pids_by_name(PROCESS)
         if n == 0:
@@ -331,6 +332,24 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         # get the hashpipe pid
         self.hashpipe_pid = proc.pid
 
+        # 4. Optional: Start DaqData v2 Forwarder
+        if vreq.enable_v2_forwarder:
+            self.logger.info("Starting DaqData v2 Forwarder...")
+            forwarder_cmd = [
+                "python", "-m", "panoseti_grpc.daq_data_v2.forwarder",
+                "--headnode", vreq.headnode_target,
+            ]
+            try:
+                self.v2_forwarder_proc = await asyncio.create_subprocess_exec(
+                    *forwarder_cmd, 
+                    stdout=asyncio.subprocess.PIPE, 
+                    stderr=asyncio.subprocess.PIPE,
+                    start_new_session=True
+                )
+                self.logger.info(f"DaqData v2 Forwarder started with PID: {self.v2_forwarder_proc.pid}")
+            except Exception as e:
+                self.logger.error(f"Failed to start DaqData v2 Forwarder: {e}")
+
         WAIT_TIMEOUT = 5  # seconds
         POLL_INTERVAL = 0.05  # seconds
         success = False
@@ -393,8 +412,18 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             # Brief wait for OS to reap
             await asyncio.sleep(1.0)
 
-        # 5. Cleanup sidecars (HK recorder)
+        # 5. Cleanup sidecars (HK recorder and v2 Forwarder)
         await asyncio.to_thread(kill_hk_recorder)
+        if self.v2_forwarder_proc and self.v2_forwarder_proc.returncode is None:
+            self.logger.info("Stopping DaqData v2 Forwarder...")
+            self.v2_forwarder_proc.terminate()
+            try:
+                await asyncio.wait_for(self.v2_forwarder_proc.wait(), timeout=5.0)
+                self.logger.info("DaqData v2 Forwarder stopped gracefully.")
+            except asyncio.TimeoutError:
+                self.logger.warning("DaqData v2 Forwarder did not stop gracefully. Killing.")
+                self.v2_forwarder_proc.kill()
+            self.v2_forwarder_proc = None
 
         # 6. Final verification
         n_remaining, _ = await asyncio.to_thread(self._get_pids_by_name, PROCESS)

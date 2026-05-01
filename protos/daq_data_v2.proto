@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package panoseti.daq_data_v2;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// The DaqDataV2 service definition.
+// This is the next-gen centralized aggregator service.
+service DaqDataV2 {
+  // Stream images to end-user clients.
+  // The server multiplexes data from all connected forwarders.
+  rpc StreamImages(StreamImagesRequest) returns (stream StreamImagesResponse) {}
+
+  // Upload images from DAQ node forwarders.
+  // Each DAQ node forwarder pushes its own module's data.
+  rpc UploadImages(stream UploadImageRequest) returns (google.protobuf.Empty) {}
+
+  // Ping server health.
+  rpc Ping(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+}
+
+// Image represents a panoseti movie-mode or pulse-height image and associated header metadata
+message PanoImage {
+  enum Type {
+    UNDEFINED = 0;
+    PULSE_HEIGHT = 1;
+    MOVIE = 2;
+  }
+  Type type = 1;
+  // image metadata struct
+  google.protobuf.Struct header = 2;
+  // array of 1-byte or 2-byte data.
+  repeated uint32 image_array = 3 [packed=true];
+  // image shape. Expect [16, 16] or [32, 32]
+  repeated uint32 shape = 4 [packed=true];
+  int32 bytes_per_pixel = 5;
+  string file = 6;
+  uint32 frame_number = 7;
+  uint32 module_id = 8;
+}
+
+// StreamImagesResponse contains one PanoImage (movie or pulse-height)
+message StreamImagesResponse {
+  string name = 1;
+  // UTC timestamp when this message was sent from the aggregator node
+  google.protobuf.Timestamp timestamp = 2;
+  // optional message for errors and other details
+  string message = 3;
+  // a panoseti image + self-describing metadata
+  PanoImage pano_image = 4;
+}
+
+// A StreamImagesRequest specifies which image types to stream.
+message StreamImagesRequest {
+  // Stream movie-mode panoseti images iff True
+  bool stream_movie_data = 1;
+  // Stream pulse-height panoseti images iff True
+  bool stream_pulse_height_data = 2;
+  // Desired update rate in seconds.
+  double update_interval_seconds = 3;
+  // If empty, data from all modules is streamed.
+  // If non-empty, only data from specified module_ids are streamed.
+  repeated uint32 module_ids = 4 [packed=true];
+}
+
+message UploadImageRequest {
+  PanoImage pano_image = 1;
+}

@@ -12,6 +12,7 @@ Each service operates independently. Click the links below for detailed API docu
 | Service | Description                                            | Status        | Documentation |
 | :--- |:-------------------------------------------------------|:--------------| :--- |
 | **DAQ Data** | Streams real-time science data directly from Hashpipe. | 🟢 Production | [**Read Docs**](./docs/daq_data_service.md) |
+| **DAQ Data v2** | Next-gen centralized data aggregator. | 🟡 Experimental | [**Read Docs**](./docs/daq_data_v2_service.md) |
 | **DAQ Control** | Manages Hashpipe lifecycle on DAQ nodes (start/stop/status). | 🟢 Production | [**Read Docs**](./docs/daq_control_service.md) |
 | **U-blox Control** | Controls and configures GNSS chips (F9T/F9P).          | 🔴 Deprecated | [**Read Docs**](./src/panoseti_grpc/ublox_control/README.md) |
 | **Telemetry** | Collects metadata from remote Linux machines.          | 🟢 Production  | [**Read Docs**](./docs/telemetry_service.md) |
@@ -90,8 +91,8 @@ panoseti-server --list-services
 | Profile | Services | Machine |
 |---------|----------|---------|
 | `default` | telemetry + daq_data + daq_control | Single-machine dev / test |
-| `daq_node` | daq_data + daq_control | Each DAQ compute node |
-| `headnode` | telemetry | Observatory head node |
+| `daq_node` | daq_control | Each DAQ compute node |
+| `headnode` | telemetry + daq_data_v2 | Observatory head node |
 
 On DAQ nodes (`telemetry = false`), services configured with `grpc_logging = true` automatically forward logs to the head node's telemetry endpoint via the `HEADNODE_IP` / `HEADNODE_GRPC_PORT` environment variables.
 

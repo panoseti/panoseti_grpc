@@ -51,6 +51,7 @@ from pydantic import BaseModel, Field
 # Per-service config models
 from panoseti_grpc.daq_control.config import DaqControlServerConfig
 from panoseti_grpc.daq_data.config import DaqDataServerConfig
+from panoseti_grpc.daq_data_v2.config import DaqDataV2ServerConfig
 
 # Protobuf-generated descriptors and registration functions
 from panoseti_grpc.generated import (
@@ -58,6 +59,8 @@ from panoseti_grpc.generated import (
     daq_control_pb2_grpc,
     daq_data_pb2,
     daq_data_pb2_grpc,
+    daq_data_v2_pb2,
+    daq_data_v2_pb2_grpc,
     telemetry_pb2,
     telemetry_pb2_grpc,
 )
@@ -127,6 +130,7 @@ class ServiceToggles(BaseModel):
     telemetry: bool = True
     daq_data: bool = True
     daq_control: bool = True
+    daq_data_v2: bool = False
 
 
 class PanosetiServerConfig(BaseModel):
@@ -162,6 +166,7 @@ class PanosetiServerConfig(BaseModel):
     daq_control: DaqControlServerConfig = Field(
         default_factory=lambda: DaqControlServerConfig(grpc_port=50051, shutdown_grace_period=5.0, log_level="INFO")
     )
+    daq_data_v2: DaqDataV2ServerConfig = Field(default_factory=DaqDataV2ServerConfig)
 
     model_config = {"extra": "ignore"}
 
@@ -260,6 +265,18 @@ async def _make_daq_control_servicer(
     return servicer, []
 
 
+async def _make_daq_data_v2_servicer(
+    cfg: DaqDataV2ServerConfig, shutdown_event: asyncio.Event
+) -> tuple[Any, list[Coroutine[Any, Any, None]]]:
+    from panoseti_grpc.daq_data_v2.server import DaqDataV2Servicer
+    from panoseti_grpc.telemetry.logger import LoggerConfig, get_logger
+
+    level = LoggerConfig.normalize_level(cfg.log_level)
+    logger = get_logger("daq_data_v2.server", level=level)
+    servicer = DaqDataV2Servicer(logger)
+    return servicer, []
+
+
 # Register core services
 ServiceRegistry.register(
     ServiceDescriptor(
@@ -291,13 +308,23 @@ ServiceRegistry.register(
     )
 )
 
+ServiceRegistry.register(
+    ServiceDescriptor(
+        name="daq_data_v2",
+        servicer_factory=_make_daq_data_v2_servicer,
+        add_to_server_fn=daq_data_v2_pb2_grpc.add_DaqDataV2Servicer_to_server,
+        service_names_for_reflection=[daq_data_v2_pb2.DESCRIPTOR.services_by_name["DaqDataV2"].full_name],
+        config_field="daq_data_v2",
+    )
+)
+
 
 # ---------------------------------------------------------------------------
 # PanosetiServer
 # ---------------------------------------------------------------------------
 
 # Services are started in this order.
-INIT_ORDER = ["telemetry", "daq_data", "daq_control"]
+INIT_ORDER = ["telemetry", "daq_data", "daq_data_v2", "daq_control"]
 
 
 class PanosetiServer:

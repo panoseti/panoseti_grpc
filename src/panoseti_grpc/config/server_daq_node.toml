@@ -19,10 +19,11 @@ grpc_logging = true
 
 [server.services]
 telemetry    = false   # telemetry runs on headnode; logs forwarded via HEADNODE_IP env var
-daq_data     = true
+daq_data     = false
 daq_control  = true
 # DEPRECATED: ublox_control is in maintenance-only mode; will be removed in next major release.
 ublox_control = false
+daq_data_v2  = false   # aggregator only runs on headnode
 
 # -------------------------------------------------------
 # DAQ Data service settings (production — real hardware)

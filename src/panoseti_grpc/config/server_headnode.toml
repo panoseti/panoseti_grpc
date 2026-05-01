@@ -16,6 +16,7 @@ shutdown_grace_period = 5.0
 telemetry   = true
 daq_data    = false
 daq_control = false
+daq_data_v2 = true
 
 # -------------------------------------------------------
 # Telemetry service settings
@@ -27,3 +28,9 @@ redis_db   = 0
 shutdown_grace_period = 5.0
 log_level  = "INFO"
 # telemetry_config_path = ""  # leave empty to use the bundled device registry
+
+# -------------------------------------------------------
+# Daq Data v2 service settings
+# -------------------------------------------------------
+[daq_data_v2]
+log_level = "INFO"
