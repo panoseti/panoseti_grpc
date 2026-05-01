@@ -18,6 +18,7 @@ import logging
 import os
 import shutil
 import signal
+import socket
 from collections.abc import AsyncGenerator, Callable
 from glob import glob
 from pathlib import Path
@@ -280,14 +281,15 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         self._setup_data_directories(datadir, run_dir, module_id)
         # create per-run loggers for hashpipe stdout and stderr
         run_dir_path = str(Path(datadir) / run_dir)
+        hostname = socket.gethostname()
         hp_stdout_logger = get_logger(
-            "hp_stdout",
+            f"hp_stdout_{hostname}",
             log_dir=run_dir_path,
             grpc_enabled=True,
             console=False,
         )
         hp_stderr_logger = get_logger(
-            "hp_stderr",
+            f"hp_stderr_{hostname}",
             log_dir=run_dir_path,
             grpc_enabled=True,
             console=False,
@@ -549,27 +551,38 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             import hashlib as _hashlib
 
             provided_digest = request.manifest_digest.hex()
+            hostname = socket.gethostname()
+
             for cp in cleanup_paths:
                 cp_path = Path(cp)
-                for algo_suffix in ("blake3", "xxh3_128", "sha256"):
-                    mf = cp_path / f"manifest.{algo_suffix}"
-                    if mf.exists():
-                        raw = mf.read_bytes()
-                        actual = _hashlib.sha256(raw).hexdigest()
-                        if actual != provided_digest:
-                            self.logger.error(
-                                "Manifest digest mismatch for %s: provided=%s..., actual=%s...",
-                                cp,
-                                provided_digest[:16],
-                                actual[:16],
-                            )
-                            context.abort(
-                                grpc.StatusCode.FAILED_PRECONDITION,
-                                f"Manifest digest mismatch for {cp}: "
-                                f"expected {provided_digest[:16]}…, got {actual[:16]}…. "
-                                "Cleanup refused — verify the transfer before retrying.",
-                            )
-                        break
+                # 1. Check new format: dp_manifest.node_<hostname>.algo_<algo>.txt
+                manifest_files = list(cp_path.glob(f"dp_manifest.node_{hostname}.algo_*.txt"))
+                # 2. Fall back to legacy format: manifest.<algo>
+                if not manifest_files:
+                    for suffix in ("blake3", "xxh3_128", "sha256"):
+                        candidate = cp_path / f"manifest.{suffix}"
+                        if candidate.exists():
+                            manifest_files.append(candidate)
+                            break
+
+                for mf in manifest_files:
+                    raw = mf.read_bytes()
+                    actual = _hashlib.sha256(raw).hexdigest()
+                    if actual != provided_digest:
+                        self.logger.error(
+                            "Manifest digest mismatch for %s: provided=%s..., actual=%s...",
+                            mf,
+                            provided_digest[:16],
+                            actual[:16],
+                        )
+                        context.abort(
+                            grpc.StatusCode.FAILED_PRECONDITION,
+                            f"Manifest digest mismatch for {mf.name}: "
+                            f"expected {provided_digest[:16]}…, got {actual[:16]}…. "
+                            "Cleanup refused — verify the transfer before retrying.",
+                        )
+                    # If we found a manifest and it matched, we are satisfied for this path
+                    break
 
         if vreq.mode == CleanupMode.CLEANUP_SELECTIVE:
             dry_run: bool = bool(request.dry_run)
@@ -628,6 +641,12 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         # failing validation with an empty string.
         if not dreq.get("algorithm"):
             dreq.pop("algorithm", None)
+        
+        # Pop empty include_patterns so Pydantic default takes over.
+        # Check explicitly for empty list (what gRPC yields for unset repeated field).
+        if "include_patterns" in dreq and not dreq["include_patterns"]:
+            dreq.pop("include_patterns")
+
         try:
             vreq = GenerateManifestModel(**dreq)
         except Exception as e:
