@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator, Generator
+from typing import Any
 
 import grpc
 from google.protobuf.empty_pb2 import Empty
@@ -28,7 +29,7 @@ class DaqDataV2Client:
     def __enter__(self) -> DaqDataV2Client:
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any | None) -> None:
         self.channel.close()
 
     def ping(self, timeout: float = 1.0) -> bool:
@@ -66,12 +67,14 @@ class AioDaqDataV2Client:
     async def __aenter__(self) -> AioDaqDataV2Client:
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any | None
+    ) -> None:
         await self.channel.close()
 
-    async def ping(self, timeout: float = 1.0) -> bool:
+    async def ping(self) -> bool:
         try:
-            async with asyncio.timeout(timeout):
+            async with asyncio.timeout(1.0):
                 await self.stub.Ping(Empty())
             return True
         except Exception:

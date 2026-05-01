@@ -134,7 +134,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             try:
                 p = psutil.Process(pid)
                 p.send_signal(signal.SIGINT)
-            except psutil.NoSuchProcess:
+            except psutil.NoSuchProcess, psutil.AccessDenied:
                 continue
 
     def _create_module_config(self, datadir: str | Path, module_id: list[int]) -> None:
@@ -1008,19 +1008,19 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         module_run_dir = await (data_dir / f"module_{module_id}" / request.run_dir).resolve()
 
         file_path = anyio.Path(request.file_path)
-        if not await file_path.is_absolute():
+        if not file_path.is_absolute():
             file_path = await (module_run_dir / request.file_path).resolve()
         else:
             file_path = await file_path.resolve()
 
-        if not file_path.is_relative_to(module_run_dir):
-            await context.abort(
+        if not str(file_path).startswith(str(module_run_dir)):
+            context.abort(
                 grpc.StatusCode.INVALID_ARGUMENT,
                 f"file_path escapes module run dir: {request.file_path}",
             )
             return daq_control_pb2.RetryFailedTransferResponse(success=False, message="")
 
-        if not await file_path.is_file():
+        if not cast(Any, file_path).is_file():
             return daq_control_pb2.RetryFailedTransferResponse(success=False, message=f"File not found: {file_path}")
 
         raw = await file_path.read_bytes()

@@ -50,31 +50,27 @@ class DaqDataV2Servicer(daq_data_v2_pb2_grpc.DaqDataV2Servicer):
     ) -> Empty:
         """Receives images from forwarders and updates the central cache."""
         peer = context.peer().replace("[", "(").replace("]", ")")
-        self.logger.info(f"New forwarder connection from {peer}")
+        self.logger.info(f"UploadImages called from {peer}")
         count = 0
         try:
             async for request in request_iterator:
                 img = request.pano_image
                 count += 1
                 if count == 1 or count % 100 == 0:
-                    self.logger.info(f"Received frame {img.frame_number} from {peer} (total for this conn: {count})")
+                    self.logger.info(f"Received frame {img.frame_number} from {peer}. Total frames: {count}")
 
                 async with self.cache_lock:
                     self.frame_id_counter += 1
                     cached = CachedImage(self.frame_id_counter, img)
-                    # Support UNDEFINED/MOVIE mapping
-                    is_ph = img.type == daq_data_v2_pb2.PanoImage.Type.PULSE_HEIGHT
-                    key = "ph" if is_ph else "movie"
+                    key = "ph" if img.type == daq_data_v2_pb2.PanoImage.Type.PULSE_HEIGHT else "movie"
                     self.cache[img.module_id][key] = cached
+
             self.logger.info(f"Forwarder {peer} stream ended normally after {count} frames")
         except asyncio.CancelledError:
             self.logger.info(f"Forwarder {peer} stream cancelled after {count} frames")
         except Exception as e:
-            if "Server already stopped" in str(e):
-                self.logger.info(f"Forwarder {peer} stream stopped due to server shutdown after {count} frames")
-            else:
-                self.logger.error(f"Error in UploadImages from {peer}: {e}")
-                raise
+            self.logger.error(f"Error in UploadImages from {peer}: {e}")
+            raise
         return Empty()
 
     @grpc_error_handler

@@ -8,15 +8,13 @@ import asyncio
 import logging
 import signal
 from importlib import resources
+from typing import Any
 
 from panoseti_grpc.panoseti_util import pff
 from panoseti_grpc.telemetry.logger import get_logger
 
 # Shared anchored package
 ANCHOR_PACKAGE = "panoseti_grpc"
-
-
-from typing import Any
 
 # ... (rest of imports)
 
@@ -109,14 +107,22 @@ async def main() -> None:
     sim_configs: list[dict[str, Any]] = [
         {
             "dp_name": "img16",
-            "pff_path": "daq_data/simulated_data_dir/obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd/start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_0.debug_TRUNCATED.pff",
+            "pff_path": (
+                "daq_data/simulated_data_dir/"
+                "obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd/"
+                "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_0.debug_TRUNCATED.pff"
+            ),
             "module_id": 1,
             "bpp": 2,
             "shape": (32, 32),
         },
         {
             "dp_name": "ph256",
-            "pff_path": "daq_data/simulated_data_dir/obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd/start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_3.seqno_0.debug_TRUNCATED.pff",
+            "pff_path": (
+                "daq_data/simulated_data_dir/"
+                "obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd/"
+                "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_3.seqno_0.debug_TRUNCATED.pff"
+            ),
             "module_id": 3,
             "bpp": 2,
             "shape": (16, 16),

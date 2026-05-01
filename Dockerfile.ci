@@ -145,6 +145,19 @@ CMD ["python", "-m", "pytest", "-v", "-s", "--maxfail=2", "tests/daq_data_hashpi
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Stage: daq-data-v2-test
+# Test runner for DaqData v2 (pure Python, uses subprocess for sim/fwd).
+# ═══════════════════════════════════════════════════════════════════════════
+FROM base AS daq-data-v2-test
+
+# Install project source code
+COPY . .
+RUN uv sync --all-extras
+
+CMD ["python", "-m", "pytest", "-v", "-s", "tests/daq_data_v2/test_integration.py"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Stage: daq-control-test
 # Test runner for the daq_control service (requires hashpipe binary).
 # ═══════════════════════════════════════════════════════════════════════════

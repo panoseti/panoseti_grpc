@@ -80,7 +80,7 @@ class GenerateManifestModel(BaseModel):
     data_dir: Path = Field(...)
     run_dir: str = Field(..., min_length=1)
     module_id: list[Uint8] = Field(default_factory=list)
-    algorithm: Literal["blake3", "xxh3_128"] = "blake3"
+    algorithm: Literal["blake3", "xxh3_128", "sha256", "xxhash"] = "blake3"
     include_patterns: list[str] = Field(
         default=["*.pff", "*.json", "*.jsonl", "*.log", "*.toml", "*.config"], min_length=1
     )

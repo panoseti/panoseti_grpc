@@ -151,6 +151,8 @@ class DaqDataClient:
                 port = daq_node["port_forwarding"].get("grpc_port", self.GRPC_PORT)
                 self.logger.info(f'Using port forwarding: "{daq_cfg_ip=}:{port}" --> "{real_ip=}:{port}"')
                 daq_host = f"{real_ip}:{port}"
+            elif daq_cfg_ip.startswith("unix://"):
+                daq_host = daq_cfg_ip
             else:
                 daq_host = f"{daq_cfg_ip}:{self.GRPC_PORT}"
             self.daq_nodes[daq_host] = {"config": daq_node}
@@ -588,6 +590,8 @@ class AioDaqDataClient:
                 port = daq_node["port_forwarding"].get("grpc_port", self.GRPC_PORT)
                 self.logger.info(f'Using port forwarding: "{daq_cfg_ip=}:{port}" --> "{real_ip=}:{port}"')
                 daq_host = f"{real_ip}:{port}"
+            elif daq_cfg_ip.startswith("unix://"):
+                daq_host = daq_cfg_ip
             else:
                 daq_host = f"{daq_cfg_ip}:{self.GRPC_PORT}"
             self.daq_nodes[daq_host] = {"config": daq_node}

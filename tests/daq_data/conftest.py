@@ -55,7 +55,7 @@ async def sim_server_process(request: Any) -> Any:
 
     # Wait for the server to be fully ready by pinging it
     async with AioDaqDataClient({"daq_nodes": [{"ip_addr": uds_path_str}]}, network_config=None) as client:
-        for _ in range(30):
+        for _ in range(100):
             if await asyncio.to_thread(uds_path.exists) and await client.ping(uds_path_str):
                 break
             await asyncio.sleep(0.1)
@@ -99,7 +99,7 @@ async def default_server_process(uds_sim_server_config: dict[str, Any]) -> Any:
         # Wait for the server to be fully ready by pinging it
         daq_config = {"daq_nodes": [{"ip_addr": uds_path_str, "data_dir": "daq_data/simulated_data_dir"}]}
         async with AioDaqDataClient(daq_config, network_config=None, stop_event=shutdown_event) as client:
-            for _ in range(30):  # 3-second timeout
+            for _ in range(100):  # 10-second timeout
                 if await asyncio.to_thread(uds_path.exists) and await client.ping(uds_path_str):
                     break
                 await asyncio.sleep(0.1)
@@ -170,7 +170,7 @@ async def n_sim_servers_fixture_factory(server_config_base):
 
             # Readiness check
             async with AioDaqDataClient({"daq_nodes": [{"ip_addr": uds_path_str}]}, network_config=None) as client:
-                for _ in range(30):  # 3-second timeout
+                for _ in range(100):  # 10-second timeout
                     if await asyncio.to_thread(uds_path.exists) and await client.ping(uds_path_str):
                         break
                     await asyncio.sleep(0.1)

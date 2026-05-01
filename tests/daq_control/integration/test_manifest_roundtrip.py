@@ -268,6 +268,7 @@ def test_get_manifest_digest_matches_sha256_when_algorithm_is_sha256(manifest_se
             "data_dir": str(data_root),
             "run_dir": run_dir,
             "module_id": [MODULE_ID],
+            "algorithm": "sha256",
             "include_patterns": ["*.pff"],
         }
     )

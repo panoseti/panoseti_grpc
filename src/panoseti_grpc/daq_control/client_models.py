@@ -61,7 +61,7 @@ class GenerateManifestParameters(BaseModel):
     data_dir: str = Field(..., min_length=1)
     run_dir: str = Field(..., min_length=1)
     module_id: list[Uint8] = Field(...)
-    algorithm: Literal["blake3", "xxh3_128"] = "blake3"
+    algorithm: Literal["blake3", "xxh3_128", "sha256", "xxhash"] = "blake3"
     include_patterns: list[str] = Field(default=["*.pff"], min_length=1)
 
 

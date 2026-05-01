@@ -84,6 +84,28 @@ class TestGenerateManifestModelValid:
         )
         assert m.include_patterns == ["*.pff", "*.log"]
 
+    def test_sha256_algorithm(self, tmp_path: Any) -> None:
+        run_dir = tmp_path / "run.pffd"
+        run_dir.mkdir()
+        m = GenerateManifestModel(
+            data_dir=str(tmp_path),
+            run_dir="run.pffd",
+            module_id=[10],
+            algorithm="sha256",
+        )
+        assert m.algorithm == "sha256"
+
+    def test_xxhash_algorithm(self, tmp_path: Any) -> None:
+        run_dir = tmp_path / "run.pffd"
+        run_dir.mkdir()
+        m = GenerateManifestModel(
+            data_dir=str(tmp_path),
+            run_dir="run.pffd",
+            module_id=[10],
+            algorithm="xxhash",
+        )
+        assert m.algorithm == "xxhash"
+
 
 class TestGenerateManifestModelInvalid:
     def test_invalid_algorithm_raises(self, tmp_path: Any) -> None:
@@ -95,17 +117,6 @@ class TestGenerateManifestModelInvalid:
                 run_dir="run.pffd",
                 module_id=[10],
                 algorithm="md5",
-            )
-
-    def test_sha256_algorithm_raises(self, tmp_path: Any) -> None:
-        run_dir = tmp_path / "run.pffd"
-        run_dir.mkdir()
-        with pytest.raises(ValidationError):
-            GenerateManifestModel(
-                data_dir=str(tmp_path),
-                run_dir="run.pffd",
-                module_id=[10],
-                algorithm="sha256",
             )
 
     def test_empty_include_patterns_raises(self, tmp_path: Any) -> None:
