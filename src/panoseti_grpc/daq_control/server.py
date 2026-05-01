@@ -53,14 +53,18 @@ SERVER_LOG_DIR = "/var/log/panoseti"
 
 
 async def _read_stream(stream: asyncio.StreamReader, log_method: Callable[[str], None]) -> None:
-    """Read lines from a subprocess stream and forward each line to a logger method."""
-    while True:
-        line = await stream.readline()
-        if not line:
-            break
-        message = line.decode("utf-8", errors="replace").strip()
-        if message:
-            log_method(message)
+    """Read lines from a subprocess stream and forward to a logger. Robust against errors."""
+    try:
+        while True:
+            line = await stream.readline()
+            if not line:
+                break
+            message = line.decode("utf-8", errors="replace").strip()
+            if message:
+                log_method(message)
+    except Exception as e:
+        # Never propagate exceptions from background log monitoring
+        logging.error(f"Background stream reader error: {e}")
 
 
 async def _monitor_hashpipe(
@@ -91,6 +95,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         self.logger.info("DaqControlServicer initialized")
         self.logger.info("DaqControl Server Online")
         self.v2_forwarder_proc: asyncio.subprocess.Process | None = None
+        self._lifecycle_lock = asyncio.Lock()
         # This is used for recording the hashpipe pid
         n, hashpipe_pids = self._get_pids_by_name(PROCESS)
         if n == 0:
@@ -111,10 +116,25 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 pids.append(proc.info["pid"])
         return len(pids), pids
 
+    def _get_forwarder_pids(self) -> list[int]:
+        """Find any processes running the daq_data_v2 forwarder."""
+        pids = []
+        for proc in psutil.process_iter(["pid", "cmdline"]):
+            try:
+                cmdline = proc.info["cmdline"]
+                if cmdline and "panoseti_grpc.daq_data_v2.forwarder" in " ".join(cmdline):
+                    pids.append(proc.info["pid"])
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return pids
+
     def kill_processes(self, pids: list[int]) -> None:
         for pid in pids:
-            p = psutil.Process(pid)
-            p.send_signal(signal.SIGINT)
+            try:
+                p = psutil.Process(pid)
+                p.send_signal(signal.SIGINT)
+            except psutil.NoSuchProcess:
+                continue
 
     def _create_module_config(self, datadir: str | Path, module_id: list[int]) -> None:
         mconfig = f"{datadir}/module.config"
@@ -244,201 +264,229 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     async def StartDaq(
         self, request: daq_control_pb2.StartDaqRequest, context: grpc.aio.ServicerContext
     ) -> daq_control_pb2.StartDaqResponse:
-        self.logger.info("Starting HASHPIPE instance...")
-        # 1. check if we already have HASHPIPE running
-        n, pids = self._get_pids_by_name(PROCESS)
-        if n > 0:
-            msg = f"Found {n} HASHPIPE instances running. pids: {pids}"
-            self.logger.warning(msg)
-            return daq_control_pb2.StartDaqResponse(success=False, message=msg)
-        # 2. validate request
-        try:
-            dreq = self._request_to_dict(request)
-            vreq = StartDaqModel(**dreq)
-        except ValidationError as e:
-            msg = f"Validation Error: {e}"
-            self.logger.error(msg)
-            return daq_control_pb2.StartDaqResponse(success=False, message=msg)
-
-        vreq_dict = vreq.model_dump(mode="json", exclude_unset=True)
-        # 3. get the parameters
-        datadir = vreq.data_dir
-        run_dir = vreq.run_dir
-        bindhost = vreq.bindhost
-        max_file_size_mb = vreq.max_file_size_mb
-        group_ph_frames = vreq.group_ph_frames
-        obs = vreq.obs
-        module_id = vreq.module_id
-        # get the full path for hashpipe.so, rundir and module.config
-        hashpipe_so = f"{datadir}/hashpipe.so"
-        if not os.path.exists(hashpipe_so) and os.path.exists("/usr/local/lib/panoseti_hashpipe.so"):
-            hashpipe_so = "/usr/local/lib/panoseti_hashpipe.so"
-            self.logger.info(f"Using baked-in Hashpipe plugin: {hashpipe_so}")
-
-        configfn = f"{datadir}/module.config"
-        # create module.config
-        self._create_module_config(datadir, module_id)
-        # setup data directories
-        self._setup_data_directories(datadir, run_dir, module_id)
-        # create per-run loggers for hashpipe stdout and stderr
-        run_dir_path = str(Path(datadir) / run_dir)
-        hostname = socket.gethostname()
-        hp_stdout_logger = get_logger(
-            f"hp_stdout_{hostname}",
-            log_dir=run_dir_path,
-            grpc_enabled=True,
-            console=False,
-        )
-        hp_stderr_logger = get_logger(
-            f"hp_stderr_{hostname}",
-            log_dir=run_dir_path,
-            grpc_enabled=True,
-            console=False,
-        )
-        # create cmdline for start HASHPIPE
-        self.logger.info(f"Starting HASHPIPE for run_dir: {run_dir}")
-        cmd = [
-            "hashpipe",
-            "-p",
-            hashpipe_so,
-            "-I",
-            "0",
-            "-o",
-            f"BINDHOST={bindhost}",
-            "-o",
-            f"MAXFILESIZE={max_file_size_mb}",
-            "-o",
-            f"GROUPPHFRAMES={group_ph_frames}",
-            "-o",
-            f"RUNDIR={run_dir}",
-            "-o",
-            f"CONFIG={configfn}",
-            "-o",
-            f"OBS={obs}",
-            "net_thread",
-            "compute_thread",
-            "output_thread",
-        ]
-        # log the cmd
-        cmdstr = " ".join(cmd)
-        self.logger.info("Create subprocess...")
-        self.logger.info(f"cmd: {cmdstr}")
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, cwd=datadir, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=True
-        )
-        self.logger.debug("Subprocess created...")
-        # monitor stdout/stderr in background — routes to run_dir log files and gRPC
-        self._monitor_task = asyncio.create_task(_monitor_hashpipe(proc, hp_stdout_logger, hp_stderr_logger))
-        # get the hashpipe pid
-        self.hashpipe_pid = proc.pid
-
-        # 4. Optional: Start DaqData v2 Forwarder
-        if vreq.enable_v2_forwarder:
-            self.logger.info("Starting DaqData v2 Forwarder...")
-            forwarder_cmd = [
-                "python", "-m", "panoseti_grpc.daq_data_v2.forwarder",
-                "--headnode", vreq.headnode_target,
-            ]
+        async with self._lifecycle_lock:
+            self.logger.info("Starting HASHPIPE instance...")
+            # 1. check if we already have HASHPIPE running
+            n, pids = self._get_pids_by_name(PROCESS)
+            if n > 0:
+                msg = f"Found {n} HASHPIPE instances running. pids: {pids}"
+                self.logger.warning(msg)
+                return daq_control_pb2.StartDaqResponse(success=False, message=msg)
+            # 2. validate request
             try:
-                self.v2_forwarder_proc = await asyncio.create_subprocess_exec(
-                    *forwarder_cmd, 
-                    stdout=asyncio.subprocess.PIPE, 
-                    stderr=asyncio.subprocess.PIPE,
-                    start_new_session=True
-                )
-                self.logger.info(f"DaqData v2 Forwarder started with PID: {self.v2_forwarder_proc.pid}")
-            except Exception as e:
-                self.logger.error(f"Failed to start DaqData v2 Forwarder: {e}")
+                dreq = self._request_to_dict(request)
+                vreq = StartDaqModel(**dreq)
+            except ValidationError as e:
+                msg = f"Validation Error: {e}"
+                self.logger.error(msg)
+                return daq_control_pb2.StartDaqResponse(success=False, message=msg)
 
-        WAIT_TIMEOUT = 5  # seconds
-        POLL_INTERVAL = 0.05  # seconds
-        success = False
-        for _ in range(int(WAIT_TIMEOUT / POLL_INTERVAL)):
-            success = is_hashpipe_running(self.hashpipe_pid)
-            if success:
-                break
-            await asyncio.sleep(POLL_INTERVAL)
-        self.logger.info(f"HASHPIPE instance status: {success}; PID: {self.hashpipe_pid}")
-        msg = f"HASHPIPE start failed. \n{vreq_dict=} \n{cmd=}" if not success else ""
-        return daq_control_pb2.StartDaqResponse(success=success, message=msg)
+            vreq_dict = vreq.model_dump(mode="json", exclude_unset=True)
+            # 3. get the parameters
+            datadir = vreq.data_dir
+            run_dir = vreq.run_dir
+            bindhost = vreq.bindhost
+            max_file_size_mb = vreq.max_file_size_mb
+            group_ph_frames = vreq.group_ph_frames
+            obs = vreq.obs
+            module_id = vreq.module_id
+            # get the full path for hashpipe.so, rundir and module.config
+            hashpipe_so = f"{datadir}/hashpipe.so"
+            if not os.path.exists(hashpipe_so) and os.path.exists("/usr/local/lib/panoseti_hashpipe.so"):
+                hashpipe_so = "/usr/local/lib/panoseti_hashpipe.so"
+                self.logger.info(f"Using baked-in Hashpipe plugin: {hashpipe_so}")
+
+            configfn = f"{datadir}/module.config"
+            # create module.config
+            self._create_module_config(datadir, module_id)
+            # setup data directories
+            self._setup_data_directories(datadir, run_dir, module_id)
+            # create per-run loggers for hashpipe stdout and stderr
+            run_dir_path = str(Path(datadir) / run_dir)
+            hp_stdout_logger = get_logger(
+                "hp_stdout",
+                log_dir=run_dir_path,
+                grpc_enabled=True,
+                console=False,
+            )
+            hp_stderr_logger = get_logger(
+                "hp_stderr",
+                log_dir=run_dir_path,
+                grpc_enabled=True,
+                console=False,
+            )
+            # create cmdline for start HASHPIPE
+            self.logger.info(f"Starting HASHPIPE for run_dir: {run_dir}")
+            cmd = [
+                "hashpipe",
+                "-p",
+                hashpipe_so,
+                "-I",
+                "0",
+                "-o",
+                f"BINDHOST={bindhost}",
+                "-o",
+                f"MAXFILESIZE={max_file_size_mb}",
+                "-o",
+                f"GROUPPHFRAMES={group_ph_frames}",
+                "-o",
+                f"RUNDIR={run_dir}",
+                "-o",
+                f"CONFIG={configfn}",
+                "-o",
+                f"OBS={obs}",
+                "net_thread",
+                "compute_thread",
+                "output_thread",
+            ]
+            # log the cmd
+            cmdstr = " ".join(cmd)
+            self.logger.info("Create subprocess...")
+            self.logger.info(f"cmd: {cmdstr}")
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, cwd=datadir, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=True
+            )
+            self.logger.debug("Subprocess created...")
+            # monitor stdout/stderr in background — routes to run_dir log files and gRPC
+            self._monitor_task = asyncio.create_task(_monitor_hashpipe(proc, hp_stdout_logger, hp_stderr_logger))
+            # get the hashpipe pid
+            self.hashpipe_pid = proc.pid
+
+            # 4. Optional: Start DaqData v2 Forwarder
+            if vreq.enable_v2_forwarder:
+                # Zombie cleanup
+                forwarder_pids = self._get_forwarder_pids()
+                if forwarder_pids:
+                    self.logger.warning(f"Cleaning up {len(forwarder_pids)} zombie forwarder(s): {forwarder_pids}")
+                    self.kill_processes(forwarder_pids)
+                
+                self.logger.info("Starting DaqData v2 Forwarder...")
+                forwarder_cmd = [
+                    "python", "-m", "panoseti_grpc.daq_data_v2.forwarder",
+                    "--headnode", vreq.headnode_target,
+                ]
+                try:
+                    self.v2_forwarder_proc = await asyncio.create_subprocess_exec(
+                        *forwarder_cmd, 
+                        stdout=asyncio.subprocess.PIPE, 
+                        stderr=asyncio.subprocess.PIPE,
+                        start_new_session=True
+                    )
+                    self.logger.info(f"DaqData v2 Forwarder started with PID: {self.v2_forwarder_proc.pid}")
+                    
+                    # Drain pipes to prevent blocking
+                    if self.v2_forwarder_proc.stdout:
+                        asyncio.create_task(_read_stream(self.v2_forwarder_proc.stdout, self.logger.info))
+                    if self.v2_forwarder_proc.stderr:
+                        asyncio.create_task(_read_stream(self.v2_forwarder_proc.stderr, self.logger.info))
+                except Exception as e:
+                    self.logger.error(f"Failed to start DaqData v2 Forwarder: {e}")
+
+            WAIT_TIMEOUT = 5  # seconds
+            POLL_INTERVAL = 0.05  # seconds
+            success = False
+            for _ in range(int(WAIT_TIMEOUT / POLL_INTERVAL)):
+                success = is_hashpipe_running(self.hashpipe_pid)
+                if success:
+                    break
+                await asyncio.sleep(POLL_INTERVAL)
+            self.logger.info(f"HASHPIPE instance status: {success}; PID: {self.hashpipe_pid}")
+            msg = f"HASHPIPE start failed. \n{vreq_dict=} \n{cmd=}" if not success else ""
+            return daq_control_pb2.StartDaqResponse(success=success, message=msg)
 
     @grpc_error_handler
     async def StopDaq(
         self, request: daq_control_pb2.StopDaqRequest, context: grpc.ServicerContext
     ) -> daq_control_pb2.StopDaqResponse:
-        self.logger.info("Stop HASHPIPE instance(s)...")
+        async with self._lifecycle_lock:
+            self.logger.info("Stop HASHPIPE instance(s)...")
 
-        # 1. Identify all hashpipe processes (Non-blocking)
-        n_initial, pids = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
-        if n_initial == 0:
-            self.logger.info("No HASHPIPE instance is running.")
-            self.hashpipe_pid = -1
-            return daq_control_pb2.StopDaqResponse(success=True, message="No processes found.")
+            # 1. Identify all hashpipe processes (Non-blocking)
+            n_initial, pids = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
+            if n_initial == 0:
+                self.logger.info("No HASHPIPE instance is running.")
+                self.hashpipe_pid = -1
+            else:
+                self.logger.info(f"Found {n_initial} HASHPIPE process(es): {pids}")
 
-        self.logger.info(f"Found {n_initial} HASHPIPE process(es): {pids}")
+                # 2. Tier 1: SIGINT to all detected instances
+                for pid in pids:
+                    try:
+                        p = psutil.Process(pid)
+                        p.send_signal(signal.SIGINT)
+                    except psutil.NoSuchProcess:
+                        continue
 
-        # 2. Tier 1: SIGINT to all detected instances
-        for pid in pids:
-            try:
-                p = psutil.Process(pid)
-                p.send_signal(signal.SIGINT)
-            except psutil.NoSuchProcess:
-                continue
+            # 3. Graceful Wait Loop (up to 60s)
+            WAIT_TIMEOUT = 60.0
+            POLL_INTERVAL = 2.0
+            elapsed = 0.0
+            while elapsed < WAIT_TIMEOUT:
+                _, remaining_pids = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
+                if not remaining_pids:
+                    break
+                self.logger.info(f"Waiting for {len(remaining_pids)} HASHPIPE process(es) to exit gracefully... ({int(elapsed)}s)")
+                await asyncio.sleep(POLL_INTERVAL)
+                elapsed += POLL_INTERVAL
 
-        # 3. Graceful Wait Loop (up to 60s)
-        WAIT_TIMEOUT = 60.0
-        POLL_INTERVAL = 2.0
-        elapsed = 0.0
-        while elapsed < WAIT_TIMEOUT:
-            _, remaining_pids = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
-            if not remaining_pids:
-                break
-            self.logger.info(f"Waiting for {len(remaining_pids)} HASHPIPE process(es) to exit gracefully... ({int(elapsed)}s)")
-            await asyncio.sleep(POLL_INTERVAL)
-            elapsed += POLL_INTERVAL
+            # 4. Tier 2: Escalation to SIGKILL for survivors
+            _, final_pids = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
+            killed_count = 0
+            if final_pids:
+                self.logger.warning(f"{len(final_pids)} process(es) refused SIGINT. Escalating to SIGKILL: {final_pids}")
+                for pid in final_pids:
+                    try:
+                        p = psutil.Process(pid)
+                        p.kill()
+                        killed_count += 1
+                    except psutil.NoSuchProcess:
+                        continue
+                # Brief wait for OS to reap
+                await asyncio.sleep(1.0)
 
-        # 4. Tier 2: Escalation to SIGKILL for survivors
-        _, final_pids = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
-        killed_count = 0
-        if final_pids:
-            self.logger.warning(f"{len(final_pids)} process(es) refused SIGINT. Escalating to SIGKILL: {final_pids}")
-            for pid in final_pids:
+            # 5. Cleanup sidecars (HK recorder and v2 Forwarder)
+            await asyncio.to_thread(kill_hk_recorder)
+            
+            # Robust Forwarder Cleanup
+            if self.v2_forwarder_proc:
+                self.logger.info("Stopping DaqData v2 Forwarder...")
                 try:
-                    p = psutil.Process(pid)
-                    p.kill()
-                    killed_count += 1
-                except psutil.NoSuchProcess:
-                    continue
-            # Brief wait for OS to reap
-            await asyncio.sleep(1.0)
+                    self.v2_forwarder_proc.terminate()
+                except ProcessLookupError:
+                    pass
+                try:
+                    await asyncio.wait_for(self.v2_forwarder_proc.wait(), timeout=5.0)
+                    self.logger.info("DaqData v2 Forwarder stopped gracefully.")
+                except asyncio.TimeoutError:
+                    self.logger.warning("DaqData v2 Forwarder did not stop gracefully. Killing.")
+                    try:
+                        self.v2_forwarder_proc.kill()
+                    except ProcessLookupError:
+                        pass
+                except Exception as e:
+                    self.logger.error(f"Unexpected error stopping v2 forwarder: {e}")
+                self.v2_forwarder_proc = None
 
-        # 5. Cleanup sidecars (HK recorder and v2 Forwarder)
-        await asyncio.to_thread(kill_hk_recorder)
-        if self.v2_forwarder_proc and self.v2_forwarder_proc.returncode is None:
-            self.logger.info("Stopping DaqData v2 Forwarder...")
-            self.v2_forwarder_proc.terminate()
-            try:
-                await asyncio.wait_for(self.v2_forwarder_proc.wait(), timeout=5.0)
-                self.logger.info("DaqData v2 Forwarder stopped gracefully.")
-            except asyncio.TimeoutError:
-                self.logger.warning("DaqData v2 Forwarder did not stop gracefully. Killing.")
-                self.v2_forwarder_proc.kill()
-            self.v2_forwarder_proc = None
+            # Fallback Zombie Cleanup for Forwarder
+            forwarder_pids = self._get_forwarder_pids()
+            if forwarder_pids:
+                self.logger.warning(f"Sweeping {len(forwarder_pids)} orphaned forwarder(s): {forwarder_pids}")
+                self.kill_processes(forwarder_pids)
 
-        # 6. Final verification
-        n_remaining, _ = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
-        self.hashpipe_pid = -1
-        
-        success = (n_remaining == 0)
-        status_msg = (
-            f"Successfully stopped {n_initial} processes." if success else
-            f"Failed to stop all processes. {n_remaining} still active."
-        )
-        if killed_count > 0:
-            status_msg += f" ({killed_count} required SIGKILL escalation)."
+            # 6. Final verification
+            n_remaining, _ = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
+            self.hashpipe_pid = -1
+            
+            success = (n_remaining == 0)
+            status_msg = (
+                f"Successfully stopped {n_initial} processes." if success else
+                f"Failed to stop all processes. {n_remaining} still active."
+            )
+            if killed_count > 0:
+                status_msg += f" ({killed_count} required SIGKILL escalation)."
 
-        self.logger.info(status_msg)
-        return daq_control_pb2.StopDaqResponse(success=success, message=status_msg)
+            self.logger.info(status_msg)
+            return daq_control_pb2.StopDaqResponse(success=success, message=status_msg)
 
     @grpc_error_handler
     async def StatusDaq(
@@ -500,8 +548,9 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     async def CleanupData(
         self, request: daq_control_pb2.CleanupDataRequest, context: grpc.ServicerContext
     ) -> daq_control_pb2.CleanupDataResponse:
-        self.logger.info("Cleanning up Data...")
-        creq = self._request_to_dict(request)
+        async with self._lifecycle_lock:
+            self.logger.info("Cleanning up Data...")
+            creq = self._request_to_dict(request)
         try:
             vreq = CleanupDataModel(**creq)
         except ValidationError as e:

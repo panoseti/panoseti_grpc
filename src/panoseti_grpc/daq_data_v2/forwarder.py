@@ -69,6 +69,7 @@ class Forwarder:
                 if header_size is None:
                     header_with_sep = await reader.readuntil(b"\n\n")
                     header_size = len(header_with_sep)
+                    self.logger.info(f"Discovered header size {header_size} for {dp_name}")
                 else:
                     header_with_sep = await reader.readexactly(header_size)
                 
@@ -96,7 +97,7 @@ class Forwarder:
                 try:
                     self.queue.put_nowait(pano_image)
                     if frame_count % 100 == 0:
-                        self.logger.info(f"Forwarder received frame {frame_count} for {dp_name}")
+                        self.logger.info(f"Forwarder pushed frame {frame_count} for {dp_name} to queue")
                 except asyncio.QueueFull:
                     pass
                 
@@ -104,7 +105,7 @@ class Forwarder:
         except asyncio.IncompleteReadError:
             self.logger.warning(f"UDS {dp_name} client {client_info} disconnected")
         except Exception as e:
-            self.logger.error(f"Error handling UDS {dp_name} client: {e}")
+            self.logger.error(f"Error handling UDS {dp_name} client: {e}", exc_info=True)
         finally:
             writer.close()
             await writer.wait_closed()
@@ -130,25 +131,35 @@ class Forwarder:
     async def _push_to_headnode(self):
         """Streams images from the queue to the Headnode."""
         async def request_generator() -> AsyncIterator[daq_data_v2_pb2.UploadImageRequest]:
+            self.logger.info("Request generator started")
             while not self.stop_event.is_set():
                 try:
                     pano_image = await asyncio.wait_for(self.queue.get(), timeout=1.0)
-                    yield daq_data_v2_pb2.UploadImageRequest(pano_image=pano_image)
+                    self.logger.info(f"Yielding frame {pano_image.frame_number} module {pano_image.module_id} to aggregator")
+                    try:
+                        req = daq_data_v2_pb2.UploadImageRequest(pano_image=pano_image)
+                        yield req
+                    except Exception as e:
+                        self.logger.error(f"Error yielding request: {e}")
                 except asyncio.TimeoutError:
                     continue
+                except Exception as e:
+                    self.logger.error(f"Error in request generator: {e}", exc_info=True)
+            self.logger.info("Request generator stopped")
 
         while not self.stop_event.is_set():
             try:
                 self.logger.info(f"Connecting to Headnode: {self.headnode_target}")
                 async with grpc.aio.insecure_channel(self.headnode_target) as channel:
                     stub = daq_data_v2_pb2_grpc.DaqDataV2Stub(channel)
-                    self.logger.info("Uploading images to Headnode...")
+                    self.logger.info("Calling UploadImages RPC...")
                     await stub.UploadImages(request_generator())
+                    self.logger.info("UploadImages RPC completed")
             except grpc.aio.AioRpcError as e:
                 self.logger.error(f"gRPC error pushing to headnode: {e}")
                 await asyncio.sleep(2.0)
             except Exception as e:
-                self.logger.error(f"Unexpected error pushing to headnode: {e}")
+                self.logger.error(f"Unexpected error pushing to headnode: {e}", exc_info=True)
                 await asyncio.sleep(2.0)
 
     async def run(self):

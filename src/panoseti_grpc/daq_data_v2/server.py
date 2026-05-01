@@ -51,19 +51,23 @@ class DaqDataV2Servicer(daq_data_v2_pb2_grpc.DaqDataV2Servicer):
         context: grpc.aio.ServicerContext
     ) -> Empty:
         """Receives images from forwarders and updates the central cache."""
-        self.logger.info(f"New forwarder connection from {context.peer()}")
+        peer = context.peer().replace("[", "(").replace("]", ")")
+        self.logger.info(f"New forwarder connection from {peer}")
         try:
             async for request in request_iterator:
                 img = request.pano_image
-                if img.frame_number % 10 == 0:
-                    self.logger.info(f"Received frame {img.frame_number} for module {img.module_id}")
+                if self.frame_id_counter % 100 == 0:
+                    self.logger.info(f"Received frame {img.frame_number} from {peer}")
                 async with self.cache_lock:
                     self.frame_id_counter += 1
                     cached = CachedImage(self.frame_id_counter, img)
                     key = "ph" if img.type == daq_data_v2_pb2.PanoImage.Type.PULSE_HEIGHT else "movie"
                     self.cache[img.module_id][key] = cached
+            self.logger.info(f"Forwarder {peer} stream ended normally")
         except asyncio.CancelledError:
-            self.logger.info(f"Forwarder {context.peer()} disconnected")
+            self.logger.info(f"Forwarder {peer} stream cancelled")
+        except Exception as e:
+            self.logger.error(f"Error in UploadImages from {peer}: {e}")
         return Empty()
 
     @grpc_error_handler
@@ -89,6 +93,9 @@ class DaqDataV2Servicer(daq_data_v2_pb2_grpc.DaqDataV2Servicer):
                     images_to_send = []
                     
                     async with self.cache_lock:
+                        if self.frame_id_counter > 0 and self.frame_id_counter % 10 == 0:
+                            self.logger.debug(f"Client {context.peer()} polling cache. Counter={self.frame_id_counter}")
+                        
                         target_modules = sub.module_ids if sub.module_ids else self.cache.keys()
                         for mid in target_modules:
                             module_data = self.cache.get(mid)
