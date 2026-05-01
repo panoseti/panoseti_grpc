@@ -73,7 +73,7 @@ class Simulator:
                     fnum += 1
                     await asyncio.sleep(0.1)  # 10Hz
 
-            except ConnectionRefusedError, FileNotFoundError:
+            except (ConnectionRefusedError, FileNotFoundError):
                 await asyncio.sleep(1.0)
             except Exception as e:
                 self.logger.error(f"Simulator error for {dp_name}: {e}")

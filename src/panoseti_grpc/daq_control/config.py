@@ -33,6 +33,10 @@ class StartDaqModel(BaseModel):
     module_id: list[Uint8] = Field(...)
     force: bool = False
 
+    # v2 forwarder integration
+    enable_v2_forwarder: bool = False
+    headnode_target: str = "headnode:50051"
+
     @model_validator(mode="after")
     def create_run_dir(self) -> StartDaqModel:
         self.data_dir.mkdir(parents=True, exist_ok=True)

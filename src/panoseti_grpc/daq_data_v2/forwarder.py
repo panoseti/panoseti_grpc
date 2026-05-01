@@ -93,7 +93,7 @@ class Forwarder:
                         self.queue.put_nowait(pano_image)
                         if frame_count % 100 == 0:
                             self.logger.warning(f"Queue full for {dp_name}. Evicted oldest frame.")
-                    except asyncio.QueueEmpty, asyncio.QueueFull:
+                    except (asyncio.QueueEmpty, asyncio.QueueFull):
                         pass
 
                 frame_count += 1

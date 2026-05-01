@@ -180,7 +180,16 @@ class PanosetiServerConfig(BaseModel):
         elif isinstance(data, list):
             return [cls._expand_env_vars(i) for i in data]
         elif isinstance(data, str):
-            return re.sub(r"\${(\w+)}", lambda m: os.getenv(m.group(1), m.group(0)), data)
+            # Support ${VAR} and ${VAR:-default}
+            def _replacer(match: re.Match) -> str:
+                name = match.group(1)
+                default = match.group(2)
+                val = os.getenv(name)
+                if val is not None:
+                    return val
+                return default if default is not None else match.group(0)
+
+            return re.sub(r"\${(\w+)(?::-(.*?))?}", _replacer, data)
         return data
 
     @classmethod
@@ -192,12 +201,22 @@ class PanosetiServerConfig(BaseModel):
         This method merges the ``[server]`` sub-dict into the top level so
         Pydantic can find ``port``, ``services``, etc. directly.
         """
+
+        def _deep_merge(base: dict, update: dict) -> dict:
+            for k, v in update.items():
+                if k in base and isinstance(base[k], dict) and isinstance(v, dict):
+                    _deep_merge(base[k], v)
+                else:
+                    base[k] = v
+            return base
+
         raw_copy = raw.copy()
         # Expand environment variables in the raw TOML data
         expanded = cls._expand_env_vars(raw_copy)
-        
+
         server_section = expanded.pop("server", {})
-        merged = {**server_section, **expanded}
+        merged = _deep_merge(expanded, server_section)
+        _logger.debug(f"Merged server configuration: {merged}")
         return cls.model_validate(merged)
 
     @classmethod
@@ -344,7 +363,7 @@ ServiceRegistry.register(
 # ---------------------------------------------------------------------------
 
 # Services are started in this order.
-INIT_ORDER = ["telemetry", "daq_data", "daq_data_v2", "daq_control"]
+INIT_ORDER = ["telemetry", "daq_data", "daq_control", "daq_data_v2"]
 
 
 class PanosetiServer:

@@ -25,6 +25,10 @@ class StartDaqParameters(BaseModel):
     module_id: list[Uint8] = Field(...)
     force: bool = False
 
+    # v2 forwarder integration
+    enable_v2_forwarder: bool = False
+    headnode_target: str = "headnode:50051"
+
 
 class StopDaqParameters(BaseModel):
     data_dir: str = Field(..., min_length=1)
