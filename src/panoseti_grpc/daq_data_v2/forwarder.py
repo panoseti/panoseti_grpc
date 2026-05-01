@@ -4,6 +4,8 @@ Reads real-time science data from Hashpipe UDS sockets and pushes it
 to the centralized DaqDataV2 aggregator on the Headnode.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import signal
@@ -18,22 +20,17 @@ from google.protobuf.struct_pb2 import Struct
 
 from panoseti_grpc.generated import daq_data_v2_pb2, daq_data_v2_pb2_grpc
 from panoseti_grpc.panoseti_util import pff
-from panoseti_grpc.telemetry.logger import get_logger
 
-from .config import DATA_PRODUCTS
+from .config import DATA_PRODUCTS, DaqDataV2ServerConfig
 
 
 class Forwarder:
     def __init__(
         self,
-        headnode_target: str,
-        socket_path_template: str,
-        data_products: list[str],
+        cfg: DaqDataV2ServerConfig,
         logger: logging.Logger,
     ):
-        self.headnode_target = headnode_target
-        self.socket_path_template = socket_path_template
-        self.data_products = data_products
+        self.cfg = cfg
         self.logger = logger
         self.queue: asyncio.Queue[daq_data_v2_pb2.PanoImage] = asyncio.Queue(maxsize=100)
         self.stop_event = asyncio.Event()
@@ -110,7 +107,7 @@ class Forwarder:
 
     async def _read_uds(self, dp_name: str) -> None:
         """Starts a UDS server for a single data product."""
-        socket_path = self.socket_path_template.format(dp_name=dp_name)
+        socket_path = self.cfg.socket_path_template.format(dp_name=dp_name)
         import anyio
 
         if await anyio.Path(socket_path).exists():
@@ -122,14 +119,12 @@ class Forwarder:
         async with server:
             await self.stop_event.wait()
 
-        # ...
-
     async def _push_to_headnode(self) -> None:
         """Streams images from the queue to the Headnode."""
         while not self.stop_event.is_set():
             try:
-                self.logger.info(f"Connecting to Headnode: {self.headnode_target}")
-                async with grpc.aio.insecure_channel(self.headnode_target) as channel:
+                self.logger.info(f"Connecting to Headnode: {self.cfg.headnode_target}")
+                async with grpc.aio.insecure_channel(self.cfg.headnode_target) as channel:
                     stub = daq_data_v2_pb2_grpc.DaqDataV2Stub(channel)
                     self.logger.info("Calling UploadImages RPC")
 
@@ -156,7 +151,7 @@ class Forwarder:
 
     async def run(self) -> None:
         """Starts all UDS readers and the push task."""
-        tasks: list[asyncio.Task[None]] = [asyncio.create_task(self._read_uds(dp)) for dp in self.data_products]
+        tasks: list[asyncio.Task[None]] = [asyncio.create_task(self._read_uds(dp)) for dp in self.cfg.data_products]
         tasks.append(asyncio.create_task(self._push_to_headnode()))
 
         await self.stop_event.wait()
@@ -168,14 +163,22 @@ class Forwarder:
 async def main() -> None:
     import argparse
 
+    from panoseti_grpc.telemetry.logger import get_logger
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--headnode", default="localhost:50051")
+    parser.add_argument("--headnode", default="headnode:50051")
     parser.add_argument("--socket-template", default="/tmp/hashpipe_grpc.dp_{dp_name}.sock")
     parser.add_argument("--data-products", nargs="+", default=["img16", "ph256"])
     args = parser.parse_args()
 
+    cfg = DaqDataV2ServerConfig(
+        headnode_target=args.headnode,
+        socket_path_template=args.socket_template,
+        data_products=args.data_products,
+    )
+
     logger = get_logger("daq_data_v2.forwarder")
-    forwarder = Forwarder(args.headnode, args.socket_template, args.data_products, logger)
+    forwarder = Forwarder(cfg, logger)
 
     def stop() -> None:
         forwarder.stop_event.set()

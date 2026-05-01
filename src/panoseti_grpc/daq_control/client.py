@@ -86,8 +86,6 @@ class AsyncDaqControlClient:
         request.run_dir = v_params.run_dir
         request.obs = v_params.obs
         request.module_id.extend(v_params.module_id)
-        request.enable_v2_forwarder = v_params.enable_v2_forwarder
-        request.headnode_target = v_params.headnode_target
         resp: daq_control_pb2.StartDaqResponse = await self.stub.StartDaq(request, timeout=timeout)
         if not resp.success:
             raise ValueError(f"Server rejected data: {resp.message}")
@@ -329,8 +327,6 @@ class DaqControlClient:
         request.run_dir = v_params.run_dir
         request.obs = v_params.obs
         request.module_id.extend(v_params.module_id)
-        request.enable_v2_forwarder = v_params.enable_v2_forwarder
-        request.headnode_target = v_params.headnode_target
         resp: daq_control_pb2.StartDaqResponse = self.stub.StartDaq(request, timeout=timeout)
         if not resp.success:
             raise ValueError(f"Server rejected data: {resp.message}")

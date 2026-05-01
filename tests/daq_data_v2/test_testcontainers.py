@@ -2,6 +2,7 @@ import asyncio
 import os
 import shutil
 import tempfile
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -15,21 +16,13 @@ async def aggregator_container():
     """Starts the DaqDataV2 aggregator in a testcontainer."""
     # Build context for the aggregator (Headnode role)
     # We use the standard pseti-daqnode image but run it in headnode mode
-    # For now, let's just use a simple python:3.14-slim and install dependencies
-    # or mount the local source.
 
-    grpc_src = os.path.abspath("src")
-    container = DockerContainer("python:3.14-slim")
-    container.with_volume_mapping(grpc_src, "/grpc/src", "rw")
+    host_grpc_src = str(Path("src").absolute())  # noqa: ASYNC240
+
+    container = DockerContainer("pseti-daqnode:latest")
+    container.with_volume_mapping(host_grpc_src, "/grpc/src", "rw")
     container.with_env("PYTHONPATH", "/grpc/src")
 
-    # Simple start command for the unified server in headnode profile
-    # We need to make sure dependencies are installed.
-    # In a real CI, we'd use a pre-built image.
-    # For this test, let's assume 'pip install' works or use the pseti-daqnode image.
-    # Let's try using pseti-daqnode:latest if it exists, as it should have deps.
-
-    container.image = "pseti-daqnode:latest"
     container.with_command("python -m panoseti_grpc.unified_main --profile headnode --services daq_data_v2")
     container.with_exposed_ports(50051)
 
@@ -55,21 +48,13 @@ async def aggregator_container():
 async def forwarder_container(aggregator_container):
     """Starts a forwarder in a testcontainer, pushing to the aggregator."""
     agg_target = aggregator_container
-    # On macOS, localhost inside container refers to the container itself.
-    # We need to use the bridge gateway IP to reach the host-mapped aggregator port.
-    # testcontainers handles this if we use a shared network, but let's keep it simple.
 
-    # Actually, if both are in the same Docker network, they can talk via container names.
-    # But testcontainers-python's network support is a bit different.
-
-    # Let's use the host's reachable IP from the aggregator_container.
-
-    grpc_src = os.path.abspath("src")
+    host_grpc_src = str(Path("src").absolute())  # noqa: ASYNC240
     socket_dir = tempfile.mkdtemp(prefix="v2_test_sockets_")
     os.chmod(socket_dir, 0o777)
 
     container = DockerContainer("pseti-daqnode:latest")
-    container.with_volume_mapping(grpc_src, "/grpc/src", "rw")
+    container.with_volume_mapping(host_grpc_src, "/grpc/src", "rw")
     container.with_volume_mapping(socket_dir, "/tmp/sockets", "rw")
     container.with_env("PYTHONPATH", "/grpc/src")
 
@@ -92,7 +77,6 @@ async def test_v2_container_data_flow(aggregator_container, forwarder_container)
     agg_target = aggregator_container
     fwd = forwarder_container
     host_socket_dir = fwd["socket_dir"]
-    socket_template = fwd["socket_template"]
 
     # Start a simulator on the HOST, writing to the mounted socket dir
     # so the forwarder container can read it.

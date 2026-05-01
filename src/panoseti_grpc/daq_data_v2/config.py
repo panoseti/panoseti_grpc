@@ -4,6 +4,8 @@ Configuration models for the DaqData v2 service.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -16,6 +18,12 @@ class DataProductConfig(BaseModel):
 class DaqDataV2ServerConfig(BaseModel):
     enabled: bool = False
     log_level: str = "INFO"
+
+    # New fields for unified server integration
+    mode: Literal["aggregator", "forwarder"] = "aggregator"
+    headnode_target: str = "headnode:50051"
+    socket_path_template: str = "/tmp/hashpipe_grpc.dp_{dp_name}.sock"
+    data_products: list[str] = ["img16", "ph256"]
 
 
 DATA_PRODUCTS: dict[str, DataProductConfig] = {

@@ -32,8 +32,6 @@ class StartDaqModel(BaseModel):
     obs: str = Field(..., min_length=1, max_length=16)
     module_id: list[Uint8] = Field(...)
     force: bool = False
-    enable_v2_forwarder: bool = False
-    headnode_target: str = "headnode:50051"
 
     @model_validator(mode="after")
     def create_run_dir(self) -> StartDaqModel:
@@ -84,3 +82,8 @@ class GenerateManifestModel(BaseModel):
     include_patterns: list[str] = Field(
         default=["*.pff", "*.json", "*.jsonl", "*.log", "*.toml", "*.config"], min_length=1
     )
+
+
+class GetManifestModel(BaseModel):
+    data_dir: str = Field(..., min_length=1)
+    run_dir: str = Field(..., min_length=1)

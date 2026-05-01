@@ -37,6 +37,8 @@ from __future__ import annotations
 import asyncio
 import importlib.resources as _importlib_resources
 import logging
+import os
+import re
 import signal
 import tomllib
 from collections.abc import Callable, Coroutine
@@ -171,6 +173,17 @@ class PanosetiServerConfig(BaseModel):
     model_config = {"extra": "ignore"}
 
     @classmethod
+    def _expand_env_vars(cls, data: Any) -> Any:
+        """Recursively expand ${ENV_VAR} strings in a nested structure."""
+        if isinstance(data, dict):
+            return {k: cls._expand_env_vars(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [cls._expand_env_vars(i) for i in data]
+        elif isinstance(data, str):
+            return re.sub(r"\${(\w+)}", lambda m: os.getenv(m.group(1), m.group(0)), data)
+        return data
+
+    @classmethod
     def _parse_toml_dict(cls, raw: dict[str, Any]) -> PanosetiServerConfig:
         """Validate a raw TOML dict.
 
@@ -180,8 +193,11 @@ class PanosetiServerConfig(BaseModel):
         Pydantic can find ``port``, ``services``, etc. directly.
         """
         raw_copy = raw.copy()
-        server_section = raw_copy.pop("server", {})
-        merged = {**server_section, **raw_copy}
+        # Expand environment variables in the raw TOML data
+        expanded = cls._expand_env_vars(raw_copy)
+        
+        server_section = expanded.pop("server", {})
+        merged = {**server_section, **expanded}
         return cls.model_validate(merged)
 
     @classmethod
@@ -273,8 +289,12 @@ async def _make_daq_data_v2_servicer(
 
     level = LoggerConfig.normalize_level(cfg.log_level)
     logger = get_logger("daq_data_v2.server", level=level)
-    servicer = DaqDataV2Servicer(logger)
-    return servicer, []
+    servicer = DaqDataV2Servicer(cfg, logger)
+
+    # Start initial task (forwarder loop) if in forwarder mode
+    initial_task = servicer.start_initial_task()
+    tasks = [initial_task] if initial_task else []
+    return servicer, tasks
 
 
 # Register core services

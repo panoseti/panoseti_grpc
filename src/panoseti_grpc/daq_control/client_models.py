@@ -24,8 +24,6 @@ class StartDaqParameters(BaseModel):
     obs: str = Field(..., min_length=1, max_length=16)
     module_id: list[Uint8] = Field(...)
     force: bool = False
-    enable_v2_forwarder: bool = False
-    headnode_target: str = "headnode:50051"
 
 
 class StopDaqParameters(BaseModel):

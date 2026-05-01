@@ -2,14 +2,21 @@
 DAQ Data v2 Servicer implementation.
 Centralized aggregator that receives data from DAQ node forwarders
 and fans it out to end-user clients.
+
+Supports two modes:
+1. aggregator: Runs the centralized cache and serves clients.
+2. forwarder: Runs the background sidecar to push local data.
 """
+
+from __future__ import annotations
 
 import asyncio
 import logging
 import time
 from collections import defaultdict
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Coroutine
 from dataclasses import dataclass, field
+from typing import Any
 
 import grpc
 from google.protobuf.empty_pb2 import Empty
@@ -17,6 +24,8 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 from panoseti_grpc.generated import daq_data_v2_pb2, daq_data_v2_pb2_grpc
 from panoseti_grpc.util.error_handling import grpc_error_handler
+
+from .config import DaqDataV2ServerConfig
 
 
 @dataclass
@@ -37,18 +46,41 @@ class ClientSubscription:
 
 
 class DaqDataV2Servicer(daq_data_v2_pb2_grpc.DaqDataV2Servicer):
-    def __init__(self, logger: logging.Logger):
+    def __init__(self, cfg: DaqDataV2ServerConfig, logger: logging.Logger):
+        self.cfg = cfg
         self.logger = logger
         # module_id -> {"movie": CachedImage, "ph": CachedImage}
         self.cache: dict[int, dict[str, CachedImage | None]] = defaultdict(lambda: {"movie": None, "ph": None})
         self.frame_id_counter = 0
         self.cache_lock = asyncio.Lock()
+        self.forwarder: Any | None = None
+
+    def start_initial_task(self) -> Coroutine[Any, Any, None] | None:
+        """Starts the forwarder task if configured in forwarder mode."""
+        if self.cfg.mode == "forwarder":
+            from .forwarder import Forwarder
+
+            self.logger.info("Starting DaqDataV2 in FORWARDER mode")
+            self.forwarder = Forwarder(self.cfg, self.logger)
+            return self.forwarder.run()
+        else:
+            self.logger.info("Starting DaqDataV2 in AGGREGATOR mode")
+            return None
+
+    async def shutdown(self) -> None:
+        """Gracefully stop the forwarder if it's running."""
+        if self.forwarder:
+            self.logger.info("Stopping DaqDataV2 Forwarder task")
+            self.forwarder.stop_event.set()
 
     @grpc_error_handler
     async def UploadImages(
         self, request_iterator: AsyncIterator[daq_data_v2_pb2.UploadImageRequest], context: grpc.aio.ServicerContext
     ) -> Empty:
         """Receives images from forwarders and updates the central cache."""
+        if self.cfg.mode != "aggregator":
+            await context.abort(grpc.StatusCode.FAILED_PRECONDITION, "Server is not in aggregator mode")
+
         peer = context.peer().replace("[", "(").replace("]", ")")
         self.logger.info(f"UploadImages called from {peer}")
         count = 0
@@ -62,6 +94,7 @@ class DaqDataV2Servicer(daq_data_v2_pb2_grpc.DaqDataV2Servicer):
                 async with self.cache_lock:
                     self.frame_id_counter += 1
                     cached = CachedImage(self.frame_id_counter, img)
+                    # Support mapping to PH or Movie cache
                     key = "ph" if img.type == daq_data_v2_pb2.PanoImage.Type.PULSE_HEIGHT else "movie"
                     self.cache[img.module_id][key] = cached
 
@@ -78,6 +111,9 @@ class DaqDataV2Servicer(daq_data_v2_pb2_grpc.DaqDataV2Servicer):
         self, request: daq_data_v2_pb2.StreamImagesRequest, context: grpc.aio.ServicerContext
     ) -> AsyncIterator[daq_data_v2_pb2.StreamImagesResponse]:
         """Fans out images from the cache to end-user clients."""
+        if self.cfg.mode != "aggregator":
+            await context.abort(grpc.StatusCode.FAILED_PRECONDITION, "Server is not in aggregator mode")
+
         self.logger.info(f"New client subscription from {context.peer()}")
 
         sub = ClientSubscription(
@@ -94,9 +130,6 @@ class DaqDataV2Servicer(daq_data_v2_pb2_grpc.DaqDataV2Servicer):
                     images_to_send = []
 
                     async with self.cache_lock:
-                        if self.frame_id_counter > 0 and self.frame_id_counter % 10 == 0:
-                            self.logger.debug(f"Client {context.peer()} polling cache. Counter={self.frame_id_counter}")
-
                         target_modules = sub.module_ids if sub.module_ids else self.cache.keys()
                         for mid in target_modules:
                             module_data = self.cache.get(mid)

@@ -2,6 +2,7 @@ import asyncio
 import os
 from pathlib import Path
 
+import anyio
 import pytest
 
 from panoseti_grpc.daq_control.client import AsyncDaqControlClient
@@ -99,4 +100,4 @@ async def test_generate_manifest_symlink_resilience(tmp_path: Path) -> None:
         assert resp["file_count"] == 1
         # The manifest path should be in the root run dir
         assert "dp_manifest.node_" in resp["manifest_path"]
-        assert os.path.exists(resp["manifest_path"])
+        assert await anyio.Path(resp["manifest_path"]).exists()

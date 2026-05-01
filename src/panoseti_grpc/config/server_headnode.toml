@@ -33,4 +33,5 @@ log_level  = "INFO"
 # Daq Data v2 service settings
 # -------------------------------------------------------
 [daq_data_v2]
+mode = "aggregator"
 log_level = "INFO"

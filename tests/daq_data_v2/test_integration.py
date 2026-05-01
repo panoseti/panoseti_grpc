@@ -1,11 +1,11 @@
 import asyncio
-import os
 import subprocess
 
 import grpc
 import pytest
 
 from panoseti_grpc.daq_data_v2.client import AioDaqDataV2Client
+from panoseti_grpc.daq_data_v2.config import DaqDataV2ServerConfig
 from panoseti_grpc.daq_data_v2.server import DaqDataV2Servicer
 from panoseti_grpc.generated import daq_data_v2_pb2_grpc
 
@@ -16,11 +16,11 @@ pytestmark = pytest.mark.asyncio
 async def v2_server():
     """Starts a standalone DaqDataV2 server for testing."""
     server = grpc.aio.server()
-    logger = asyncio.get_event_loop().run_in_executor(None, lambda: None)  # Mock logger
     import logging
 
     test_logger = logging.getLogger("test_v2_server")
-    servicer = DaqDataV2Servicer(test_logger)
+    cfg = DaqDataV2ServerConfig(mode="aggregator", log_level="DEBUG")
+    servicer = DaqDataV2Servicer(cfg, test_logger)
     daq_data_v2_pb2_grpc.add_DaqDataV2Servicer_to_server(servicer, server)
     port = server.add_insecure_port("[::]:0")
     await server.start()
@@ -30,14 +30,9 @@ async def v2_server():
 
 async def test_v2_data_flow(v2_server):
     """Verifies simulator -> forwarder -> server -> client flow."""
-    target, servicer = v2_server
+    target, _ = v2_server
 
     socket_template = "/tmp/test_v2_dp_{dp_name}.sock"
-    # Clean up stale sockets
-    for dp in ["img16", "ph256"]:
-        path = socket_template.format(dp_name=dp)
-        if os.path.exists(path):
-            os.unlink(path)
 
     # Start Simulator
     sim_proc = await asyncio.create_subprocess_exec(
@@ -97,7 +92,3 @@ async def test_v2_data_flow(v2_server):
                 print(f"Forwarder STDERR: {stderr.decode()}")
 
         await asyncio.gather(sim_proc.wait(), fwd_proc.wait())
-        for dp in ["img16", "ph256"]:
-            path = socket_template.format(dp_name=dp)
-            if os.path.exists(path):
-                os.unlink(path)
