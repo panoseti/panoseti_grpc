@@ -95,6 +95,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         self.logger.info("DaqControlServicer initialized")
         self.logger.info("DaqControl Server Online")
         self.v2_forwarder_proc: asyncio.subprocess.Process | None = None
+        self._forwarder_tasks: list[asyncio.Task[Any]] = []
         self._lifecycle_lock = asyncio.Lock()
         # This is used for recording the hashpipe pid
         n, hashpipe_pids = self._get_pids_by_name(PROCESS)
@@ -292,7 +293,10 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             module_id = vreq.module_id
             # get the full path for hashpipe.so, rundir and module.config
             hashpipe_so = f"{datadir}/hashpipe.so"
-            if not os.path.exists(hashpipe_so) and os.path.exists("/usr/local/lib/panoseti_hashpipe.so"):
+            if (
+                not await anyio.Path(hashpipe_so).exists()
+                and await anyio.Path("/usr/local/lib/panoseti_hashpipe.so").exists()
+            ):
                 hashpipe_so = "/usr/local/lib/panoseti_hashpipe.so"
                 self.logger.info(f"Using baked-in Hashpipe plugin: {hashpipe_so}")
 
@@ -383,9 +387,13 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
                     # Drain pipes to prevent blocking
                     if self.v2_forwarder_proc.stdout:
-                        asyncio.create_task(_read_stream(self.v2_forwarder_proc.stdout, self.logger.info))
+                        self._forwarder_tasks.append(
+                            asyncio.create_task(_read_stream(self.v2_forwarder_proc.stdout, self.logger.info))
+                        )
                     if self.v2_forwarder_proc.stderr:
-                        asyncio.create_task(_read_stream(self.v2_forwarder_proc.stderr, self.logger.info))
+                        self._forwarder_tasks.append(
+                            asyncio.create_task(_read_stream(self.v2_forwarder_proc.stderr, self.logger.info))
+                        )
                 except Exception as e:
                     self.logger.error(f"Failed to start DaqData v2 Forwarder: {e}")
 
@@ -461,19 +469,15 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             # Robust Forwarder Cleanup
             if self.v2_forwarder_proc:
                 self.logger.info("Stopping DaqData v2 Forwarder...")
-                try:
+                with contextlib.suppress(ProcessLookupError):
                     self.v2_forwarder_proc.terminate()
-                except ProcessLookupError:
-                    pass
                 try:
                     await asyncio.wait_for(self.v2_forwarder_proc.wait(), timeout=5.0)
                     self.logger.info("DaqData v2 Forwarder stopped gracefully.")
                 except TimeoutError:
                     self.logger.warning("DaqData v2 Forwarder did not stop gracefully. Killing.")
-                    try:
+                    with contextlib.suppress(ProcessLookupError):
                         self.v2_forwarder_proc.kill()
-                    except ProcessLookupError:
-                        pass
                 except Exception as e:
                     self.logger.error(f"Unexpected error stopping v2 forwarder: {e}")
                 self.v2_forwarder_proc = None
@@ -641,19 +645,21 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             hostname = socket.gethostname()
 
             for cp in cleanup_paths:
-                cp_path = Path(cp)
+                cp_path = anyio.Path(cp)
+                manifest_files: list[anyio.Path] = []
                 # 1. Check new format: dp_manifest.node_<hostname>.algo_<algo>.txt
-                manifest_files = list(cp_path.glob(f"dp_manifest.node_{hostname}.algo_*.txt"))
+                async for mf in cp_path.glob(f"dp_manifest.node_{hostname}.algo_*.txt"):
+                    manifest_files.append(mf)
                 # 2. Fall back to legacy format: manifest.<algo>
                 if not manifest_files:
                     for suffix in ("blake3", "xxh3_128", "sha256"):
                         candidate = cp_path / f"manifest.{suffix}"
-                        if candidate.exists():
+                        if await candidate.exists():
                             manifest_files.append(candidate)
                             break
 
                 for mf in manifest_files:
-                    raw = mf.read_bytes()
+                    raw = await mf.read_bytes()
                     actual = _hashlib.sha256(raw).hexdigest()
                     if actual != provided_digest:
                         self.logger.error(
@@ -874,13 +880,13 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     ) -> daq_control_pb2.GetTransferStatusResponse:
         """Return transfer readiness: hashpipe state, run dirs, free disk, manifest presence."""
         self.logger.info("GetTransferStatus called for run_dir=%s", request.run_dir)
-        data_dir = Path(request.data_dir)
-        if not data_dir.is_dir():
+        data_dir = anyio.Path(request.data_dir)
+        if not await data_dir.is_dir():
             return daq_control_pb2.GetTransferStatusResponse(success=False, message=f"data_dir not found: {data_dir}")
 
         hashpipe_running = self.hashpipe_pid > 0 and is_hashpipe_running(self.hashpipe_pid)
 
-        disk = shutil.disk_usage(str(data_dir))
+        disk = await asyncio.to_thread(shutil.disk_usage, str(data_dir))
         free_bytes = disk.free
         total_bytes = disk.total
 
@@ -889,21 +895,22 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         if request.run_dir:
             # Check root run dir for new format
             root_path = data_dir / request.run_dir
-            if root_path.is_dir():
+            if await root_path.is_dir():
                 run_dirs.append(str(root_path))
-                for mf in root_path.glob("dp_manifest.node_*.algo_*.txt"):
+                async for mf in root_path.glob("dp_manifest.node_*.algo_*.txt"):
                     manifest_files.append(str(mf))
 
             # Check module dirs for legacy or new format
-            for mod_dir in sorted(data_dir.glob("module_*")):
-                run_path = mod_dir / request.run_dir
-                if run_path.is_dir():
-                    run_dirs.append(str(run_path))
-                    for suffix in ("blake3", "xxh3_128", "sha256"):
-                        mf = run_path / f"manifest.{suffix}"
-                        if mf.exists():
-                            manifest_files.append(str(mf))
-                            break
+            async for mod_dir in data_dir.glob("module_*"):
+                if await mod_dir.is_dir():
+                    run_path = mod_dir / request.run_dir
+                    if await run_path.is_dir():
+                        run_dirs.append(str(run_path))
+                        for suffix in ("blake3", "xxh3_128", "sha256"):
+                            mf = run_path / f"manifest.{suffix}"
+                            if await mf.exists():
+                                manifest_files.append(str(mf))
+                                break
 
         return daq_control_pb2.GetTransferStatusResponse(
             success=True,
@@ -997,14 +1004,14 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             module_id,
             request.file_path,
         )
-        data_dir = Path(request.data_dir).resolve()
-        module_run_dir = (data_dir / f"module_{module_id}" / request.run_dir).resolve()
+        data_dir = await anyio.Path(request.data_dir).resolve()
+        module_run_dir = await (data_dir / f"module_{module_id}" / request.run_dir).resolve()
 
-        file_path = Path(request.file_path)
-        if not file_path.is_absolute():
-            file_path = (module_run_dir / request.file_path).resolve()
+        file_path = anyio.Path(request.file_path)
+        if not await file_path.is_absolute():
+            file_path = await (module_run_dir / request.file_path).resolve()
         else:
-            file_path = file_path.resolve()
+            file_path = await file_path.resolve()
 
         if not file_path.is_relative_to(module_run_dir):
             await context.abort(
@@ -1013,10 +1020,10 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             )
             return daq_control_pb2.RetryFailedTransferResponse(success=False, message="")
 
-        if not file_path.is_file():
+        if not await file_path.is_file():
             return daq_control_pb2.RetryFailedTransferResponse(success=False, message=f"File not found: {file_path}")
 
-        raw = await asyncio.to_thread(file_path.read_bytes)
+        raw = await file_path.read_bytes()
         digest_hex = _hashlib.sha256(raw).hexdigest()
         return daq_control_pb2.RetryFailedTransferResponse(
             success=True,

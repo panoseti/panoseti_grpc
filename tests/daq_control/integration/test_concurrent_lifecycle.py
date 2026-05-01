@@ -3,7 +3,6 @@ Integration tests to verify concurrent lifecycle request handling in DaqControl.
 """
 
 import asyncio
-import time
 from typing import Any
 
 import pytest
@@ -74,7 +73,7 @@ async def test_cleanup_lock_prevention(grpc_client: Any):
     assert res["success"] is False
 
     grpc_client.StopDaq({"data_dir": START_PARAMS["data_dir"], "run_dir": START_PARAMS["run_dir"]})
-    time.sleep(0.5)
+    await asyncio.sleep(0.5)
 
     # Now cleanup should work
     res = grpc_client.CleanupData(

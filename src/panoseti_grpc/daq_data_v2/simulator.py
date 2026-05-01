@@ -16,11 +16,16 @@ from panoseti_grpc.telemetry.logger import get_logger
 ANCHOR_PACKAGE = "panoseti_grpc"
 
 
+from typing import Any
+
+# ... (rest of imports)
+
+
 class Simulator:
     def __init__(
         self,
         socket_path_template: str,
-        sim_configs: list[dict],
+        sim_configs: list[dict[str, Any]],
         logger: logging.Logger,
     ):
         self.socket_path_template = socket_path_template
@@ -28,7 +33,7 @@ class Simulator:
         self.logger = logger
         self.stop_event = asyncio.Event()
 
-    async def _simulate_dp(self, dp_name: str, pff_path: str, module_id: int, bpp: int, shape: tuple[int, int]):
+    async def _simulate_dp(self, dp_name: str, pff_path: str, module_id: int, bpp: int, shape: tuple[int, int]) -> None:
         """Reads PFF and pushes to UDS in a loop."""
         socket_path = self.socket_path_template.format(dp_name=dp_name)
         bytes_per_image = shape[0] * shape[1] * bpp
@@ -76,8 +81,8 @@ class Simulator:
                 self.logger.error(f"Simulator error for {dp_name}: {e}")
                 await asyncio.sleep(1.0)
 
-    async def run(self):
-        tasks = []
+    async def run(self) -> None:
+        tasks: list[asyncio.Task[None]] = []
         for cfg in self.sim_configs:
             tasks.append(
                 asyncio.create_task(
@@ -91,7 +96,7 @@ class Simulator:
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-async def main():
+async def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -101,7 +106,7 @@ async def main():
     logger = get_logger("daq_data_v2.simulator")
 
     # Hardcoded test config for now, can be moved to JSON
-    sim_configs = [
+    sim_configs: list[dict[str, Any]] = [
         {
             "dp_name": "img16",
             "pff_path": "daq_data/simulated_data_dir/obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd/start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_0.debug_TRUNCATED.pff",
@@ -120,7 +125,7 @@ async def main():
 
     simulator = Simulator(args.socket_template, sim_configs, logger)
 
-    def stop():
+    def stop() -> None:
         simulator.stop_event.set()
 
     loop = asyncio.get_running_loop()

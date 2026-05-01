@@ -165,7 +165,7 @@ class DaqDataClient:
             DaqDataClient: The instance of the client.
         """
         for daq_host, daq_node in self.daq_nodes.items():
-            grpc_connection_target = daq_host if daq_host.startswith("unix:") else daq_host
+            grpc_connection_target = daq_host
             daq_node["connection_target"] = grpc_connection_target
             try:
                 channel = grpc.insecure_channel(grpc_connection_target)
@@ -598,7 +598,7 @@ class AioDaqDataClient:
     async def __aenter__(self) -> AioDaqDataClient:
         """Establishes async gRPC channels to all configured DAQ nodes."""
         for daq_host, daq_node in self.daq_nodes.items():
-            grpc_connection_target = daq_host if daq_host.startswith("unix:") else daq_host
+            grpc_connection_target = daq_host
             daq_node["connection_target"] = grpc_connection_target
             try:
                 channel = grpc.aio.insecure_channel(grpc_connection_target)  # Use async channel

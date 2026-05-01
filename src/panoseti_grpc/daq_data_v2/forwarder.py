@@ -97,7 +97,16 @@ class Forwarder:
                     if frame_count % 100 == 0:
                         self.logger.info(f"Forwarder pushed frame {frame_count} for {dp_name} to queue")
                 except asyncio.QueueFull:
-                    pass
+                    # Circular buffer: evict oldest frame to make room for the newest
+                    try:
+                        self.queue.get_nowait()
+                        self.queue.put_nowait(pano_image)
+                        if frame_count % 100 == 0:
+                            self.logger.warning(
+                                f"Queue full for {dp_name}. Evicted oldest frame to keep low-latency stream."
+                            )
+                    except asyncio.QueueEmpty, asyncio.QueueFull:
+                        pass  # Handle rare race conditions where queue state changes between calls
 
                 frame_count += 1
         except asyncio.IncompleteReadError:
@@ -113,10 +122,10 @@ class Forwarder:
         socket_path = self.socket_path_template.format(dp_name=dp_name)
 
         # Clean up stale socket
-        import os
+        import anyio
 
-        if os.path.exists(socket_path):
-            os.unlink(socket_path)
+        if await anyio.Path(socket_path).exists():
+            await anyio.Path(socket_path).unlink()
 
         self.logger.info(f"Starting UDS server for {dp_name} on {socket_path}")
         server = await asyncio.start_unix_server(lambda r, w: self._handle_client(r, w, dp_name), path=socket_path)

@@ -5,6 +5,7 @@ Simplified client that connects to the centralized DaqDataV2 aggregator.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Generator
 
@@ -70,9 +71,10 @@ class AioDaqDataV2Client:
 
     async def ping(self, timeout: float = 1.0) -> bool:
         try:
-            await self.stub.Ping(Empty(), timeout=timeout)
+            async with asyncio.timeout(timeout):
+                await self.stub.Ping(Empty())
             return True
-        except grpc.aio.AioRpcError:
+        except Exception:
             return False
 
     async def stream_images(
