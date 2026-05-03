@@ -12,12 +12,26 @@ def test_client_init_with_invalid_config_path() -> None:
 def test_client_init_with_malformed_config() -> None:
     """Test that client init fails if the daq_config dict is missing required keys."""
     # Missing 'daq_nodes' key entirely
-    with pytest.raises(ValueError, match="daq_nodes is missing"):
+    with pytest.raises(ValueError, match="daq_nodes"):
         DaqDataClient({}, None)
 
     # 'daq_nodes' is empty - now allowed for simulations/testing
-    DaqDataClient({"daq_nodes": []}, None)
+    DaqDataClient(
+        {
+            "head_node_data_dir": "/tmp",
+            "head_node_ip_addr": "127.0.0.1",
+            "daq_nodes": [],
+        },
+        None,
+    )
 
     # A node is missing its 'ip_addr'
-    with pytest.raises(ValueError, match="does not have an 'ip_addr' key"):
-        DaqDataClient({"daq_nodes": [{"user_name": "test"}]}, None)
+    with pytest.raises(ValueError, match="ip_addr"):
+        DaqDataClient(
+            {
+                "head_node_data_dir": "/tmp",
+                "head_node_ip_addr": "127.0.0.1",
+                "daq_nodes": [{"username": "test", "data_dir": "/tmp", "module_ids": [1]}],
+            },
+            None,
+        )

@@ -54,7 +54,19 @@ async def sim_server_process(request: Any) -> Any:
     server_task = asyncio.create_task(serve(config, shutdown_event, in_main_thread=False))
 
     # Wait for the server to be fully ready by pinging it
-    async with AioDaqDataClient({"daq_nodes": [{"ip_addr": uds_path_str}]}, network_config=None) as client:
+    daq_config = {
+        "head_node_data_dir": "/tmp",
+        "head_node_ip_addr": "127.0.0.1",
+        "daq_nodes": [
+            {
+                "ip_addr": uds_path_str,
+                "username": "test_user",
+                "data_dir": "/tmp",
+                "module_ids": [],
+            }
+        ],
+    }
+    async with AioDaqDataClient(daq_config, network_config=None) as client:
         for _ in range(30):
             if await asyncio.to_thread(uds_path.exists) and await client.ping(uds_path_str):
                 break
@@ -97,7 +109,18 @@ async def default_server_process(uds_sim_server_config: dict[str, Any]) -> Any:
 
     try:
         # Wait for the server to be fully ready by pinging it
-        daq_config = {"daq_nodes": [{"ip_addr": uds_path_str, "data_dir": "daq_data/simulated_data_dir"}]}
+        daq_config = {
+            "head_node_data_dir": "/tmp",
+            "head_node_ip_addr": "127.0.0.1",
+            "daq_nodes": [
+                {
+                    "ip_addr": uds_path_str,
+                    "data_dir": "daq_data/simulated_data_dir",
+                    "username": "test_user",
+                    "module_ids": [],
+                }
+            ],
+        }
         async with AioDaqDataClient(daq_config, network_config=None, stop_event=shutdown_event) as client:
             for _ in range(30):  # 3-second timeout
                 if await asyncio.to_thread(uds_path.exists) and await client.ping(uds_path_str):
@@ -169,7 +192,19 @@ async def n_sim_servers_fixture_factory(server_config_base):
             server_task = asyncio.create_task(serve(config, shutdown_event, in_main_thread=False))
 
             # Readiness check
-            async with AioDaqDataClient({"daq_nodes": [{"ip_addr": uds_path_str}]}, network_config=None) as client:
+            daq_config = {
+                "head_node_data_dir": "/tmp",
+                "head_node_ip_addr": "127.0.0.1",
+                "daq_nodes": [
+                    {
+                        "ip_addr": uds_path_str,
+                        "username": "test_user",
+                        "data_dir": "/tmp",
+                        "module_ids": [],
+                    }
+                ],
+            }
+            async with AioDaqDataClient(daq_config, network_config=None) as client:
                 for _ in range(30):  # 3-second timeout
                     if await asyncio.to_thread(uds_path.exists) and await client.ping(uds_path_str):
                         break
@@ -214,7 +249,16 @@ async def async_client(default_server_process):
     """Provides a connected AioDaqDataClient for API tests."""
 
     daq_config = {
-        "daq_nodes": [{"ip_addr": default_server_process["ip_addr"], "data_dir": default_server_process["data_dir"]}]
+        "head_node_data_dir": "/tmp",
+        "head_node_ip_addr": "127.0.0.1",
+        "daq_nodes": [
+            {
+                "ip_addr": default_server_process["ip_addr"],
+                "data_dir": default_server_process["data_dir"],
+                "username": "test_user",
+                "module_ids": [],
+            }
+        ],
     }
     async with AioDaqDataClient(
         daq_config, network_config=None, log_level=logging.DEBUG, stop_event=default_server_process["stop_event"]
@@ -226,7 +270,16 @@ async def async_client(default_server_process):
 def sync_client(default_server_process: Any) -> None:
     """Provides a connected DaqDataClient for API tests."""
     daq_config = {
-        "daq_nodes": [{"ip_addr": default_server_process["ip_addr"], "data_dir": default_server_process["data_dir"]}]
+        "head_node_data_dir": "/tmp",
+        "head_node_ip_addr": "127.0.0.1",
+        "daq_nodes": [
+            {
+                "ip_addr": default_server_process["ip_addr"],
+                "data_dir": default_server_process["data_dir"],
+                "username": "test_user",
+                "module_ids": [],
+            }
+        ],
     }
     with DaqDataClient(daq_config, network_config=None, log_level=logging.DEBUG) as client:
         yield client

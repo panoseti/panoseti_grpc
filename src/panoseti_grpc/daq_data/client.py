@@ -29,6 +29,7 @@ from google.protobuf.json_format import MessageToDict
 from grpc_reflection.v1alpha.proto_reflection_descriptor_database import (
     ProtoReflectionDescriptorDatabase,
 )
+from pydantic import ValidationError
 
 # protoc-generated marshalling / demarshalling code
 from panoseti_grpc.generated import (
@@ -45,7 +46,12 @@ from panoseti_grpc.panoseti_util import control_utils
 ## daq_data utils
 from panoseti_grpc.telemetry.logger import get_logger
 
-from .client_models import InitHpIoParameters, StreamImagesParameters
+from .client_models import (
+    DaqConfig,
+    InitHpIoParameters,
+    NetworkConfig,
+    StreamImagesParameters,
+)
 from .resources import format_stream_images_response, load_package_json, parse_pano_image
 
 hp_io_config_simulate: dict[str, Any] = load_package_json("panoseti_grpc.daq_data", "config/hp_io_config_simulate.json")
@@ -105,11 +111,12 @@ class DaqDataClient:
             raise ValueError(f"daq_config is not a str, Path, or dict: {daq_config=}")
 
         # validate daq_config
-        if "daq_nodes" not in daq_config_dict or daq_config_dict["daq_nodes"] is None:
-            raise ValueError(f"daq_nodes is missing: {daq_config_dict=}")
-        for daq_node in daq_config_dict["daq_nodes"]:
-            if "ip_addr" not in daq_node:
-                raise ValueError(f"daq_node={daq_node} does not have an 'ip_addr' key")
+        try:
+            daq_config_model = DaqConfig.model_validate(daq_config_dict)
+            daq_config_dict = daq_config_model.model_dump()
+        except ValidationError as e:
+            self.logger.error(f"Invalid daq_config: {e}")
+            raise ValueError(f"Invalid daq_config: {e}") from e
 
         # Validate network_config
         network_config_dict: dict[str, Any] | None = None
@@ -128,21 +135,29 @@ class DaqDataClient:
         else:
             raise ValueError(f"network_config is not a str, Path, or dict: {network_config=}")
 
-        # add port forwarding info to daq_config if network_config is specified
         if network_config_dict is not None:
-            if (
-                "daq_nodes" in network_config_dict
-                and network_config_dict["daq_nodes"] is not None
-                and len(network_config_dict["daq_nodes"]) > 0
-            ):
-                control_utils.attach_daq_config(daq_config_dict, network_config_dict)
+            try:
+                network_config_model = NetworkConfig.model_validate(network_config_dict)
+                network_config_dict = network_config_model.model_dump()
+            except ValidationError as e:
+                self.logger.error(f"Invalid network_config: {e}")
+                raise ValueError(f"Invalid network_config: {e}") from e
+
+        # add port forwarding info to daq_config if network_config is specified
+        if (
+            network_config_dict is not None
+            and "daq_nodes" in network_config_dict
+            and network_config_dict["daq_nodes"] is not None
+            and len(network_config_dict["daq_nodes"]) > 0
+        ):
+            control_utils.attach_daq_config(daq_config_dict, network_config_dict)
 
         # Parse real host ips for each daq node
         self.valid_daq_hosts: set[str] = set()
         self.daq_nodes: dict[str, Any] = {}
         for daq_node in daq_config_dict["daq_nodes"]:
             daq_cfg_ip = daq_node["ip_addr"]
-            if "port_forwarding" in daq_node:
+            if daq_node.get("port_forwarding") is not None:
                 real_ip = daq_node["port_forwarding"]["gw_ip"]
                 port = daq_node["port_forwarding"].get("grpc_port", self.GRPC_PORT)
                 self.logger.info(f'Using port forwarding: "{daq_cfg_ip=}:{port}" --> "{real_ip=}:{port}"')
@@ -562,11 +577,12 @@ class AioDaqDataClient:
             raise ValueError(f"daq_config is not a str, Path, or dict: {daq_config=}")
 
         # validate daq_config
-        if "daq_nodes" not in daq_config_dict or daq_config_dict["daq_nodes"] is None:
-            raise ValueError(f"daq_nodes is missing: {daq_config_dict=}")
-        for daq_node in daq_config_dict["daq_nodes"]:
-            if "ip_addr" not in daq_node:
-                raise ValueError(f"daq_node={daq_node} does not have an 'ip_addr' key")
+        try:
+            daq_config_model = DaqConfig.model_validate(daq_config_dict)
+            daq_config_dict = daq_config_model.model_dump()
+        except ValidationError as e:
+            self.logger.error(f"Invalid daq_config: {e}")
+            raise ValueError(f"Invalid daq_config: {e}") from e
 
         # Validate network_config
         network_config_dict: dict[str, Any] | None = None
@@ -585,21 +601,29 @@ class AioDaqDataClient:
         else:
             raise ValueError(f"network_config is not a str, Path, or dict: {network_config=}")
 
-        # add port forwarding info to daq_config if network_config is specified
         if network_config_dict is not None:
-            if (
-                "daq_nodes" in network_config_dict
-                and network_config_dict["daq_nodes"] is not None
-                and len(network_config_dict["daq_nodes"]) > 0
-            ):
-                control_utils.attach_daq_config(daq_config_dict, network_config_dict)
+            try:
+                network_config_model = NetworkConfig.model_validate(network_config_dict)
+                network_config_dict = network_config_model.model_dump()
+            except ValidationError as e:
+                self.logger.error(f"Invalid network_config: {e}")
+                raise ValueError(f"Invalid network_config: {e}") from e
+
+        # add port forwarding info to daq_config if network_config is specified
+        if (
+            network_config_dict is not None
+            and "daq_nodes" in network_config_dict
+            and network_config_dict["daq_nodes"] is not None
+            and len(network_config_dict["daq_nodes"]) > 0
+        ):
+            control_utils.attach_daq_config(daq_config_dict, network_config_dict)
 
         # Parse real host ips for each daq node
         self.valid_daq_hosts: set[str] = set()
         self.daq_nodes: dict[str, Any] = {}
         for daq_node in daq_config_dict["daq_nodes"]:
             daq_cfg_ip = daq_node["ip_addr"]
-            if "port_forwarding" in daq_node and daq_node["port_forwarding"] is not None:
+            if daq_node.get("port_forwarding") is not None:
                 real_ip = daq_node["port_forwarding"]["gw_ip"]
                 port = daq_node["port_forwarding"].get("grpc_port", self.GRPC_PORT)
                 self.logger.info(f'Using port forwarding: "{daq_cfg_ip=}:{port}" --> "{real_ip=}:{port}"')
