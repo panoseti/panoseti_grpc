@@ -146,3 +146,13 @@ class NetworkConfig(BaseStrictModel):
 
     modules: list[NetworkModule] = Field(default_factory=list)
     daq_nodes: list[NetworkDaqNode] = Field(default_factory=list)
+
+
+class DaqNodeRuntime(BaseModel):
+    """Internal runtime state for a single DAQ node."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    node: DaqNode
+    channel: Any | None = None
+    stub: Any | None = None
+    connection_target: str
