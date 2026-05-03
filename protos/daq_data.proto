@@ -20,6 +20,9 @@ service DaqData {
   // Initialize (or re-initialize) the hp_io thread.
   rpc InitHpIo(InitHpIoRequest) returns (InitHpIoResponse) {}
 
+  // Get the status of the DaqData service
+  rpc Status(google.protobuf.Empty) returns (StatusResponse) {}
+
   // Ping server
   rpc Ping(google.protobuf.Empty) returns (google.protobuf.Empty) {}
 
@@ -105,6 +108,11 @@ message InitHpIoRequest {
   // If empty, data from all detected active modules are streamed [experimental]
   // If at least one module_id is specified, only data from the specified module_ids in the given data_dir are tracked.
   repeated uint32 module_ids = 6;
+}
+
+message StatusResponse {
+  bool hp_io_initialized = 1;
+  string message = 2;
 }
 
 message InitHpIoResponse {

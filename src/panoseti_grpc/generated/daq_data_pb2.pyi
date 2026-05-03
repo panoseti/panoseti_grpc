@@ -251,6 +251,25 @@ class InitHpIoRequest(_message.Message):
 Global___InitHpIoRequest: _TypeAlias = InitHpIoRequest  # noqa: Y015
 
 @_typing.final
+class StatusResponse(_message.Message):
+    DESCRIPTOR: _descriptor.Descriptor
+
+    HP_IO_INITIALIZED_FIELD_NUMBER: _builtins.int
+    MESSAGE_FIELD_NUMBER: _builtins.int
+    hp_io_initialized: _builtins.bool
+    message: _builtins.str
+    def __init__(
+        self,
+        *,
+        hp_io_initialized: _builtins.bool = ...,
+        message: _builtins.str = ...,
+    ) -> None: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["hp_io_initialized", b"hp_io_initialized", "message", b"message"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+
+Global___StatusResponse: _TypeAlias = StatusResponse  # noqa: Y015
+
+@_typing.final
 class InitHpIoResponse(_message.Message):
     DESCRIPTOR: _descriptor.Descriptor
 

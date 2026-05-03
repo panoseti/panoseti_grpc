@@ -15,7 +15,7 @@ import logging
 import os
 from collections.abc import AsyncIterator, Generator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 ## gRPC imports
 import grpc
@@ -36,6 +36,7 @@ from panoseti_grpc.generated import (
 )
 from panoseti_grpc.generated.daq_data_pb2 import (
     InitHpIoRequest,
+    StatusResponse,
     StreamImagesRequest,
     StreamImagesResponse,
 )
@@ -151,6 +152,8 @@ class DaqDataClient:
                 port = daq_node["port_forwarding"].get("grpc_port", self.GRPC_PORT)
                 self.logger.info(f'Using port forwarding: "{daq_cfg_ip=}:{port}" --> "{real_ip=}:{port}"')
                 daq_host = f"{real_ip}:{port}"
+            elif daq_cfg_ip.startswith("unix:"):
+                daq_host = daq_cfg_ip
             else:
                 daq_host = f"{daq_cfg_ip}:{self.GRPC_PORT}"
             self.daq_nodes[daq_host] = {"config": daq_node}
@@ -165,7 +168,7 @@ class DaqDataClient:
             DaqDataClient: The instance of the client.
         """
         for daq_host, daq_node in self.daq_nodes.items():
-            grpc_connection_target = daq_host if daq_host.startswith("unix:") else daq_host
+            grpc_connection_target = daq_host
             daq_node["connection_target"] = grpc_connection_target
             try:
                 channel = grpc.insecure_channel(grpc_connection_target)
@@ -462,6 +465,29 @@ class DaqDataClient:
             init_successes.append(init_hp_io_response.success)
         return all(init_successes)
 
+    def status(self, host: str, timeout_sec: float = 1.0) -> StatusResponse | None:
+        """Queries the status of the DaqData service on a single host.
+
+        Args:
+            host (str): The DAQ host name or IP address.
+            timeout_sec (float): RPC timeout in seconds.
+
+        Returns:
+            StatusResponse | None: The status response if successful, None otherwise.
+        """
+        if host not in self.daq_nodes:
+            self.logger.warning(f"Host {host} not found in daq_nodes.")
+            return None
+        stub = self.daq_nodes[host]["stub"]
+        if stub is None:
+            self.logger.warning(f"Stub for {host} is not initialized.")
+            return None
+        try:
+            return cast(StatusResponse, stub.Status(Empty(), timeout=timeout_sec))
+        except Exception as e:
+            self.logger.warning(f"Status RPC failed for {host}: {e}")
+            return None
+
     def ping(self, host: str, timeout_sec: float = 0.3) -> bool:
         """
         Pings a DAQ host to check if its DaqData gRPC server is active and responsive.
@@ -588,6 +614,8 @@ class AioDaqDataClient:
                 port = daq_node["port_forwarding"].get("grpc_port", self.GRPC_PORT)
                 self.logger.info(f'Using port forwarding: "{daq_cfg_ip=}:{port}" --> "{real_ip=}:{port}"')
                 daq_host = f"{real_ip}:{port}"
+            elif daq_cfg_ip.startswith("unix:"):
+                daq_host = daq_cfg_ip
             else:
                 daq_host = f"{daq_cfg_ip}:{self.GRPC_PORT}"
             self.daq_nodes[daq_host] = {"config": daq_node}
@@ -598,7 +626,7 @@ class AioDaqDataClient:
     async def __aenter__(self) -> AioDaqDataClient:
         """Establishes async gRPC channels to all configured DAQ nodes."""
         for daq_host, daq_node in self.daq_nodes.items():
-            grpc_connection_target = daq_host if daq_host.startswith("unix:") else daq_host
+            grpc_connection_target = daq_host
             daq_node["connection_target"] = grpc_connection_target
             try:
                 channel = grpc.aio.insecure_channel(grpc_connection_target)  # Use async channel
@@ -941,6 +969,29 @@ class AioDaqDataClient:
         # Run all InitHpIo calls concurrently
         results = await asyncio.gather(*[_init_single_host(host) for host in valid_hosts])
         return all(results)
+
+    async def status(self, host: str, timeout_sec: float = 1.0) -> StatusResponse | None:
+        """Asynchronously queries the status of the DaqData service on a single host.
+
+        Args:
+            host (str): The DAQ host name or IP address.
+            timeout_sec (float): RPC timeout in seconds.
+
+        Returns:
+            StatusResponse | None: The status response if successful, None otherwise.
+        """
+        if host not in self.daq_nodes:
+            self.logger.warning(f"Host {host} not found in daq_nodes.")
+            return None
+        stub = self.daq_nodes[host]["stub"]
+        if stub is None:
+            self.logger.warning(f"Stub for {host} is not initialized.")
+            return None
+        try:
+            return cast(StatusResponse, await stub.Status(Empty(), timeout=timeout_sec))
+        except Exception as e:
+            self.logger.warning(f"Status RPC failed for {host}: {e}")
+            return None
 
     async def ping(self, host: str, timeout_sec: float = 0.3) -> bool:
         """Pings a DAQ host asynchronously to check if its server is responsive."""

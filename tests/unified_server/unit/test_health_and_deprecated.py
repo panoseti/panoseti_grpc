@@ -25,21 +25,22 @@ from panoseti_grpc.server import ServiceDescriptor, ServiceRegistry
 async def _wait_serving(
     client: HealthClient,
     service: str = "",
-    timeout: float = 5.0,
     poll_interval: float = 0.05,
 ) -> bool:
-    """Poll HealthClient.check() until it returns True or the timeout expires.
+    """Poll HealthClient.check() until it returns True or the timeout (5s) expires.
 
     Runs the synchronous check() in a thread so the aio server event loop
     can process incoming RPCs while we wait.
     """
-    deadline = asyncio.get_event_loop().time() + timeout
-    while asyncio.get_event_loop().time() < deadline:
-        result = await asyncio.to_thread(client.check, service)
-        if result:
-            return True
-        await asyncio.sleep(poll_interval)
-    return False
+    try:
+        async with asyncio.timeout(5.0):
+            while True:
+                result = await asyncio.to_thread(client.check, service)
+                if result:
+                    return True
+                await asyncio.sleep(poll_interval)
+    except TimeoutError:
+        return False
 
 
 # ---------------------------------------------------------------------------

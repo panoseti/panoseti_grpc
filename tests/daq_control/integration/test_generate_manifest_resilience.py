@@ -99,4 +99,4 @@ async def test_generate_manifest_symlink_resilience(tmp_path: Path) -> None:
         assert resp["file_count"] == 1
         # The manifest path should be in the root run dir
         assert "dp_manifest.node_" in resp["manifest_path"]
-        assert os.path.exists(resp["manifest_path"])
+        assert await asyncio.to_thread(os.path.exists, resp["manifest_path"])

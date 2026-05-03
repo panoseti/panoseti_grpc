@@ -103,25 +103,25 @@ class BaseLazyGroup(TyperGroup):
 
         return default_order
 
-    def get_command(self, ctx: click.Context, name: str) -> click.Command | None:
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
         # 1. Try standard command
-        cmd = super().get_command(ctx, name)
+        cmd = super().get_command(ctx, cmd_name)
         if cmd is not None:
             return cmd
 
         # 2. Try lazy command
-        if name in self.lazy_mapping:
-            module_path, attr_name, help_str = self.lazy_mapping[name]
+        if cmd_name in self.lazy_mapping:
+            module_path, attr_name, help_str = self.lazy_mapping[cmd_name]
 
             # Optimization: Skip loading if we just want the top-level help
             is_help_mode = any(arg in sys.argv for arg in ["--help", "-h"])
-            is_targeting_this = name in sys.argv
+            is_targeting_this = cmd_name in sys.argv
             if is_help_mode and not is_targeting_this and not getattr(ctx, "resilient_parsing", False):
-                return click.Command(name, help=help_str)
+                return click.Command(cmd_name, help=help_str)
 
             # Inject paths if needed (e.g. for control/src/ci or grpc/src)
             if self.path_injector:
-                self.path_injector(name)
+                self.path_injector(cmd_name)
 
             try:
                 mod = importlib.import_module(module_path)
@@ -135,7 +135,7 @@ class BaseLazyGroup(TyperGroup):
                 else:
                     # Wrap bare function in a Typer app
                     temp_app = typer.Typer()
-                    temp_app.command(name=name, help=help_str)(obj)
+                    temp_app.command(name=cmd_name, help=help_str)(obj)
                     click_cmd = typer.main.get_command(temp_app)
 
                 # Promote single-command groups to actual commands
@@ -146,15 +146,15 @@ class BaseLazyGroup(TyperGroup):
                         if actual_cmd:
                             if not actual_cmd.help:
                                 actual_cmd.help = click_cmd.help
-                            actual_cmd.name = name
+                            actual_cmd.name = cmd_name
                             return actual_cmd
 
-                click_cmd.name = name
+                click_cmd.name = cmd_name
                 if not click_cmd.help:
                     click_cmd.help = help_str
                 return click_cmd
 
             except Exception as e:
-                click.secho(f"Error loading command '{name}': {e}", fg="red", err=True)
+                click.secho(f"Error loading command '{cmd_name}': {e}", fg="red", err=True)
                 return None
         return None

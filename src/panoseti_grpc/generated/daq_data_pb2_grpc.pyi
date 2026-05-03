@@ -40,6 +40,8 @@ class DaqDataStub:
     """
     InitHpIo: _grpc.UnaryUnaryMultiCallable[_daq_data_pb2.InitHpIoRequest, _daq_data_pb2.InitHpIoResponse]
     """Initialize (or re-initialize) the hp_io thread."""
+    Status: _grpc.UnaryUnaryMultiCallable[_empty_pb2.Empty, _daq_data_pb2.StatusResponse]
+    """Get the status of the DaqData service"""
     Ping: _grpc.UnaryUnaryMultiCallable[_empty_pb2.Empty, _empty_pb2.Empty]
     """Ping server"""
     UploadImages: _grpc.StreamUnaryMultiCallable[_daq_data_pb2.UploadImageRequest, _empty_pb2.Empty]
@@ -56,6 +58,8 @@ class DaqDataAsyncStub(DaqDataStub):
     """
     InitHpIo: _aio.UnaryUnaryMultiCallable[_daq_data_pb2.InitHpIoRequest, _daq_data_pb2.InitHpIoResponse]  # type: ignore[assignment]
     """Initialize (or re-initialize) the hp_io thread."""
+    Status: _aio.UnaryUnaryMultiCallable[_empty_pb2.Empty, _daq_data_pb2.StatusResponse]  # type: ignore[assignment]
+    """Get the status of the DaqData service"""
     Ping: _aio.UnaryUnaryMultiCallable[_empty_pb2.Empty, _empty_pb2.Empty]  # type: ignore[assignment]
     """Ping server"""
     UploadImages: _aio.StreamUnaryMultiCallable[_daq_data_pb2.UploadImageRequest, _empty_pb2.Empty]  # type: ignore[assignment]
@@ -81,6 +85,14 @@ class DaqDataServicer(metaclass=_abc_1.ABCMeta):
         context: _ServicerContext,
     ) -> _typing.Union[_daq_data_pb2.InitHpIoResponse, _abc.Awaitable[_daq_data_pb2.InitHpIoResponse]]:
         """Initialize (or re-initialize) the hp_io thread."""
+
+    @_abc_1.abstractmethod
+    def Status(
+        self,
+        request: _empty_pb2.Empty,
+        context: _ServicerContext,
+    ) -> _typing.Union[_daq_data_pb2.StatusResponse, _abc.Awaitable[_daq_data_pb2.StatusResponse]]:
+        """Get the status of the DaqData service"""
 
     @_abc_1.abstractmethod
     def Ping(

@@ -29,6 +29,7 @@ from panoseti_grpc.generated import daq_data_pb2, daq_data_pb2_grpc
 from panoseti_grpc.generated.daq_data_pb2 import (
     InitHpIoResponse,
     PanoImage,
+    StatusResponse,
     StreamImagesResponse,
 )
 
@@ -243,6 +244,12 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                         self.logger.error("Failed to restore previous hp_io configuration. Server is now idle.")
 
             return InitHpIoResponse(success=success)
+
+    async def Status(self, request: Empty, context: grpc.aio.ServicerContext) -> StatusResponse:
+        """Returns the status of the DaqData service."""
+        is_initialized = self.task_manager.is_valid(verbose=False)
+        message = "hp_io task is initialized and valid." if is_initialized else "hp_io task is not initialized."
+        return StatusResponse(hp_io_initialized=is_initialized, message=message)
 
     async def Ping(self, request: Empty, context: grpc.aio.ServicerContext) -> Empty:
         """Returns Empty to verify client-server connection."""
