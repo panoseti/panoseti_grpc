@@ -15,9 +15,8 @@ def test_client_init_with_malformed_config() -> None:
     with pytest.raises(ValueError, match="daq_nodes is missing"):
         DaqDataClient({}, None)
 
-    # 'daq_nodes' is empty
-    with pytest.raises(ValueError, match="daq_nodes is empty"):
-        DaqDataClient({"daq_nodes": []}, None)
+    # 'daq_nodes' is empty - now allowed for simulations/testing
+    DaqDataClient({"daq_nodes": []}, None)
 
     # A node is missing its 'ip_addr'
     with pytest.raises(ValueError, match="does not have an 'ip_addr' key"):

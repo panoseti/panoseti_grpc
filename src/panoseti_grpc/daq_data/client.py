@@ -599,7 +599,7 @@ class AioDaqDataClient:
         self.daq_nodes: dict[str, Any] = {}
         for daq_node in daq_config_dict["daq_nodes"]:
             daq_cfg_ip = daq_node["ip_addr"]
-            if "port_forwarding" in daq_node:
+            if "port_forwarding" in daq_node and daq_node["port_forwarding"] is not None:
                 real_ip = daq_node["port_forwarding"]["gw_ip"]
                 port = daq_node["port_forwarding"].get("grpc_port", self.GRPC_PORT)
                 self.logger.info(f'Using port forwarding: "{daq_cfg_ip=}:{port}" --> "{real_ip=}:{port}"')

@@ -20,7 +20,6 @@ import shutil
 import signal
 import socket
 from collections.abc import AsyncGenerator, Callable
-from glob import glob
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -143,7 +142,11 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         return disk_usage
 
     def _check_run_dirs(self, datadir: str | Path) -> list[str]:
-        return glob(f"{datadir}/*.pffd")
+        """Returns a list of .pffd directories sorted by modification time, newest first."""
+        paths = list(Path(datadir).glob("*.pffd"))
+        # Sort by modification time, newest first
+        paths.sort(key=lambda x: x.stat().st_mtime if x.exists() else 0, reverse=True)
+        return [str(p) for p in paths]
 
     def _cleanup_dir(self, rundir: str | Path) -> bool:
         path = Path(rundir)
@@ -280,6 +283,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             hashpipe_so = baked_in_so
             self.logger.info(f"Using baked-in Hashpipe plugin: {hashpipe_so}")
 
+        hostname = socket.gethostname()
         configfn = f"{datadir}/module.config"
         # create module.config
         self._create_module_config(datadir, module_id)
@@ -287,7 +291,6 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         self._setup_data_directories(datadir, run_dir, module_id)
         # create per-run loggers for hashpipe stdout and stderr
         run_dir_path = str(Path(datadir) / run_dir)
-        hostname = socket.gethostname()
         hp_stdout_logger = get_logger(
             f"hp_stdout_{hostname}",
             log_dir=run_dir_path,
@@ -300,6 +303,10 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             grpc_enabled=True,
             console=False,
         )
+        # Force file creation by logging an initial message
+        hp_stdout_logger.info(f"--- HASHPIPE STDOUT LOG STARTED for run: {run_dir} ---")
+        hp_stderr_logger.info(f"--- HASHPIPE STDERR LOG STARTED for run: {run_dir} ---")
+
         # create cmdline for start HASHPIPE
         self.logger.info(f"Starting HASHPIPE for run_dir: {run_dir}")
         cmd = [

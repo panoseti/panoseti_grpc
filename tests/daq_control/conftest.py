@@ -2,7 +2,6 @@ import asyncio
 import multiprocessing
 import socket
 import time
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -17,11 +16,13 @@ from panoseti_grpc.daq_control.server import serve
 # ---------------------------------------------------------------------------
 
 
-def wait_for_file(path: Any, timeout: Any = 10.0, poll: Any = 0.1) -> bool:
-    """Return True once the file at `path` exists; False on timeout."""
+def wait_for_file(path_pattern: Any, timeout: Any = 10.0, poll: Any = 0.1) -> bool:
+    """Return True once a file matching `path_pattern` exists; False on timeout."""
+    import glob
+
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if Path(path).exists():
+        if glob.glob(str(path_pattern)):
             return True
         time.sleep(poll)
     return False

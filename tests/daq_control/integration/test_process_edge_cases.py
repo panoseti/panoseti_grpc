@@ -113,13 +113,12 @@ def test_log_files_written_to_correct_run_dir(grpc_client: Any) -> None:
     assert grpc_client.StartDaq(START_PARAMS) is True
 
     run_dir = Path(START_PARAMS["data_dir"]) / START_PARAMS["run_dir"]
-    stdout_log = run_dir / "hp_stdout.log"
-    stderr_log = run_dir / "hp_stderr.log"
+    stdout_log_pattern = run_dir / "hp_stdout*.log"
+    stderr_log_pattern = run_dir / "hp_stderr*.log"
 
     try:
-        assert wait_for_file(stdout_log), f"hp_stdout.log not created at {stdout_log}"
-        assert wait_for_file(stderr_log), f"hp_stderr.log not created at {stderr_log}"
-
+        assert wait_for_file(stdout_log_pattern), f"hp_stdout*.log not created at {stdout_log_pattern}"
+        assert wait_for_file(stderr_log_pattern), f"hp_stderr*.log not created at {stderr_log_pattern}"
         # Verify they are not accidentally placed in the parent data_dir
         parent_stdout = Path(START_PARAMS["data_dir"]) / "hp_stdout.log"
         assert not parent_stdout.exists(), "hp_stdout.log must not be in data_dir root"
