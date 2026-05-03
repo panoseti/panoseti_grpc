@@ -105,12 +105,8 @@ class DaqDataClient:
             raise ValueError(f"daq_config is not a str, Path, or dict: {daq_config=}")
 
         # validate daq_config
-        if (
-            "daq_nodes" not in daq_config_dict
-            or daq_config_dict["daq_nodes"] is None
-            or len(daq_config_dict["daq_nodes"]) == 0
-        ):
-            raise ValueError(f"daq_nodes is empty: {daq_config_dict=}")
+        if "daq_nodes" not in daq_config_dict or daq_config_dict["daq_nodes"] is None:
+            raise ValueError(f"daq_nodes is missing: {daq_config_dict=}")
         for daq_node in daq_config_dict["daq_nodes"]:
             if "ip_addr" not in daq_node:
                 raise ValueError(f"daq_node={daq_node} does not have an 'ip_addr' key")
@@ -135,12 +131,11 @@ class DaqDataClient:
         # add port forwarding info to daq_config if network_config is specified
         if network_config_dict is not None:
             if (
-                "daq_nodes" not in network_config_dict
-                or network_config_dict["daq_nodes"] is None
-                or len(network_config_dict["daq_nodes"]) == 0
+                "daq_nodes" in network_config_dict
+                and network_config_dict["daq_nodes"] is not None
+                and len(network_config_dict["daq_nodes"]) > 0
             ):
-                raise ValueError(f"daq_nodes is empty: {network_config_dict=}")
-            control_utils.attach_daq_config(daq_config_dict, network_config_dict)
+                control_utils.attach_daq_config(daq_config_dict, network_config_dict)
 
         # Parse real host ips for each daq node
         self.valid_daq_hosts: set[str] = set()
@@ -567,12 +562,8 @@ class AioDaqDataClient:
             raise ValueError(f"daq_config is not a str, Path, or dict: {daq_config=}")
 
         # validate daq_config
-        if (
-            "daq_nodes" not in daq_config_dict
-            or daq_config_dict["daq_nodes"] is None
-            or len(daq_config_dict["daq_nodes"]) == 0
-        ):
-            raise ValueError(f"daq_nodes is empty: {daq_config_dict=}")
+        if "daq_nodes" not in daq_config_dict or daq_config_dict["daq_nodes"] is None:
+            raise ValueError(f"daq_nodes is missing: {daq_config_dict=}")
         for daq_node in daq_config_dict["daq_nodes"]:
             if "ip_addr" not in daq_node:
                 raise ValueError(f"daq_node={daq_node} does not have an 'ip_addr' key")
@@ -597,12 +588,11 @@ class AioDaqDataClient:
         # add port forwarding info to daq_config if network_config is specified
         if network_config_dict is not None:
             if (
-                "daq_nodes" not in network_config_dict
-                or network_config_dict["daq_nodes"] is None
-                or len(network_config_dict["daq_nodes"]) == 0
+                "daq_nodes" in network_config_dict
+                and network_config_dict["daq_nodes"] is not None
+                and len(network_config_dict["daq_nodes"]) > 0
             ):
-                raise ValueError(f"daq_nodes is empty: {network_config_dict=}")
-            control_utils.attach_daq_config(daq_config_dict, network_config_dict)
+                control_utils.attach_daq_config(daq_config_dict, network_config_dict)
 
         # Parse real host ips for each daq node
         self.valid_daq_hosts: set[str] = set()

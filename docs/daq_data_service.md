@@ -75,6 +75,8 @@ These methods help you verify connectivity and discover the services available o
 
 - `ping(host)`: Checks if a single DAQ host is online and responsive.
 
+- `status(host)`: Returns the `StatusResponse` for a single host, indicating if `hp_io` is initialized.
+
 - `get_valid_daq_hosts()`: Returns a set of all hosts with DaqData servers that successfully responded to a ping.
 
 - `reflect_services(hosts)`: Lists all available gRPC services and methods on the specified hosts. This is useful for exploring the server's capabilities.
@@ -546,6 +548,10 @@ Any number of `StreamImages` clients may be concurrently connected. Returns `DEA
 ### `InitHpIo`
 
 Initializes or re-initializes the `hp_io` background task. Acquires exclusive writer access — all active `StreamImages` RPCs are cancelled. Use `force=true` to preempt active streaming clients.
+
+### `Status`
+
+Returns the initialization status of the `hp_io` background task. Used by clients to verify if the server is ready to stream data. Returns a message containing a boolean `hp_io_initialized` flag.
 
 ### `Ping`
 Returns `Empty` to verify connectivity.

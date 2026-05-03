@@ -12,7 +12,7 @@ def test_client_init_with_invalid_config_path() -> None:
 def test_client_init_with_malformed_config() -> None:
     """Test that client init fails if the daq_config dict is missing required keys."""
     # Missing 'daq_nodes' key entirely
-    with pytest.raises(ValueError, match="daq_nodes is empty"):
+    with pytest.raises(ValueError, match="daq_nodes is missing"):
         DaqDataClient({}, None)
 
     # 'daq_nodes' is empty
