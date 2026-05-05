@@ -101,6 +101,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             self.logger.warning(f"Found {n} HASHPIPE instances are running, pids: {hashpipe_pids}")
             self.logger.warning("All of these HASHPIPE instances have been killed.")
             self.kill_processes(hashpipe_pids)
+        self._lock = asyncio.Lock()
 
     def _get_pids_by_name(self, name: str) -> tuple[int, list[int]]:
         pids = []
@@ -247,102 +248,103 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         self, request: daq_control_pb2.StartDaqRequest, context: grpc.aio.ServicerContext
     ) -> daq_control_pb2.StartDaqResponse:
         self.logger.info("Starting HASHPIPE instance...")
-        # 1. check if we already have HASHPIPE running
-        n, pids = self._get_pids_by_name(PROCESS)
-        if n > 0:
-            msg = f"Found {n} HASHPIPE instances running. pids: {pids}"
-            self.logger.warning(msg)
-            return daq_control_pb2.StartDaqResponse(success=False, message=msg)
-        # 2. validate request
-        try:
-            dreq = self._request_to_dict(request)
-            vreq = StartDaqModel(**dreq)
-        except ValidationError as e:
-            msg = f"Validation Error: {e}"
-            self.logger.error(msg)
-            return daq_control_pb2.StartDaqResponse(success=False, message=msg)
+        async with self._lock:
+            # 1. check if we already have HASHPIPE running
+            n, pids = self._get_pids_by_name(PROCESS)
+            if n > 0:
+                msg = f"Found {n} HASHPIPE instances running. pids: {pids}"
+                self.logger.warning(msg)
+                return daq_control_pb2.StartDaqResponse(success=False, message=msg)
+            # 2. validate request
+            try:
+                dreq = self._request_to_dict(request)
+                vreq = StartDaqModel(**dreq)
+            except ValidationError as e:
+                msg = f"Validation Error: {e}"
+                self.logger.error(msg)
+                return daq_control_pb2.StartDaqResponse(success=False, message=msg)
 
-        vreq_dict = vreq.model_dump(mode="json", exclude_unset=True)
-        # 3. get the parameters
-        datadir = vreq.data_dir
-        run_dir = vreq.run_dir
-        bindhost = vreq.bindhost
-        max_file_size_mb = vreq.max_file_size_mb
-        group_ph_frames = vreq.group_ph_frames
-        obs = vreq.obs
-        module_id = vreq.module_id
-        # get the full path for hashpipe.so, rundir and module.config
-        hashpipe_so = f"{datadir}/hashpipe.so"
-        baked_in_so = "/usr/local/lib/panoseti_hashpipe.so"
+            vreq_dict = vreq.model_dump(mode="json", exclude_unset=True)
+            # 3. get the parameters
+            datadir = vreq.data_dir
+            run_dir = vreq.run_dir
+            bindhost = vreq.bindhost
+            max_file_size_mb = vreq.max_file_size_mb
+            group_ph_frames = vreq.group_ph_frames
+            obs = vreq.obs
+            module_id = vreq.module_id
+            # get the full path for hashpipe.so, rundir and module.config
+            hashpipe_so = f"{datadir}/hashpipe.so"
+            baked_in_so = "/usr/local/lib/panoseti_hashpipe.so"
 
-        # Async check for file existence
-        hp_so_exists = await asyncio.to_thread(os.path.exists, hashpipe_so)
-        baked_so_exists = await asyncio.to_thread(os.path.exists, baked_in_so)
+            # Async check for file existence
+            hp_so_exists = await asyncio.to_thread(os.path.exists, hashpipe_so)
+            baked_so_exists = await asyncio.to_thread(os.path.exists, baked_in_so)
 
-        if not hp_so_exists and baked_so_exists:
-            hashpipe_so = baked_in_so
-            self.logger.info(f"Using baked-in Hashpipe plugin: {hashpipe_so}")
+            if not hp_so_exists and baked_so_exists:
+                hashpipe_so = baked_in_so
+                self.logger.info(f"Using baked-in Hashpipe plugin: {hashpipe_so}")
 
-        hostname = socket.gethostname()
-        configfn = f"{datadir}/module.config"
-        # create module.config
-        self._create_module_config(datadir, module_id)
-        # setup data directories
-        self._setup_data_directories(datadir, run_dir, module_id)
-        # create per-run loggers for hashpipe stdout and stderr
-        run_dir_path = str(Path(datadir) / run_dir)
-        hp_stdout_logger = get_logger(
-            f"hp_stdout_{hostname}",
-            log_dir=run_dir_path,
-            grpc_enabled=True,
-            console=False,
-        )
-        hp_stderr_logger = get_logger(
-            f"hp_stderr_{hostname}",
-            log_dir=run_dir_path,
-            grpc_enabled=True,
-            console=False,
-        )
-        # Force file creation by logging an initial message
-        hp_stdout_logger.info(f"--- HASHPIPE STDOUT LOG STARTED for run: {run_dir} ---")
-        hp_stderr_logger.info(f"--- HASHPIPE STDERR LOG STARTED for run: {run_dir} ---")
+            hostname = socket.gethostname()
+            configfn = f"{datadir}/module.config"
+            # create module.config
+            self._create_module_config(datadir, module_id)
+            # setup data directories
+            self._setup_data_directories(datadir, run_dir, module_id)
+            # create per-run loggers for hashpipe stdout and stderr
+            run_dir_path = str(Path(datadir) / run_dir)
+            hp_stdout_logger = get_logger(
+                f"hp_stdout_{hostname}",
+                log_dir=run_dir_path,
+                grpc_enabled=True,
+                console=False,
+            )
+            hp_stderr_logger = get_logger(
+                f"hp_stderr_{hostname}",
+                log_dir=run_dir_path,
+                grpc_enabled=True,
+                console=False,
+            )
+            # Force file creation by logging an initial message
+            hp_stdout_logger.info(f"--- HASHPIPE STDOUT LOG STARTED for run: {run_dir} ---")
+            hp_stderr_logger.info(f"--- HASHPIPE STDERR LOG STARTED for run: {run_dir} ---")
 
-        # create cmdline for start HASHPIPE
-        self.logger.info(f"Starting HASHPIPE for run_dir: {run_dir}")
-        cmd = [
-            "hashpipe",
-            "-p",
-            hashpipe_so,
-            "-I",
-            "0",
-            "-o",
-            f"BINDHOST={bindhost}",
-            "-o",
-            f"MAXFILESIZE={max_file_size_mb}",
-            "-o",
-            f"GROUPPHFRAMES={group_ph_frames}",
-            "-o",
-            f"RUNDIR={run_dir}",
-            "-o",
-            f"CONFIG={configfn}",
-            "-o",
-            f"OBS={obs}",
-            "net_thread",
-            "compute_thread",
-            "output_thread",
-        ]
-        # log the cmd
-        cmdstr = " ".join(cmd)
-        self.logger.info("Create subprocess...")
-        self.logger.info(f"cmd: {cmdstr}")
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, cwd=datadir, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=True
-        )
-        self.logger.debug("Subprocess created...")
-        # monitor stdout/stderr in background — routes to run_dir log files and gRPC
-        self._monitor_task = asyncio.create_task(_monitor_hashpipe(proc, hp_stdout_logger, hp_stderr_logger))
-        # get the hashpipe pid
-        self.hashpipe_pid = proc.pid
+            # create cmdline for start HASHPIPE
+            self.logger.info(f"Starting HASHPIPE for run_dir: {run_dir}")
+            cmd = [
+                "hashpipe",
+                "-p",
+                hashpipe_so,
+                "-I",
+                "0",
+                "-o",
+                f"BINDHOST={bindhost}",
+                "-o",
+                f"MAXFILESIZE={max_file_size_mb}",
+                "-o",
+                f"GROUPPHFRAMES={group_ph_frames}",
+                "-o",
+                f"RUNDIR={run_dir}",
+                "-o",
+                f"CONFIG={configfn}",
+                "-o",
+                f"OBS={obs}",
+                "net_thread",
+                "compute_thread",
+                "output_thread",
+            ]
+            # log the cmd
+            cmdstr = " ".join(cmd)
+            self.logger.info("Create subprocess...")
+            self.logger.info(f"cmd: {cmdstr}")
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, cwd=datadir, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=True
+            )
+            self.logger.debug("Subprocess created...")
+            # monitor stdout/stderr in background — routes to run_dir log files and gRPC
+            self._monitor_task = asyncio.create_task(_monitor_hashpipe(proc, hp_stdout_logger, hp_stderr_logger))
+            # get the hashpipe pid
+            self.hashpipe_pid = proc.pid
 
         WAIT_TIMEOUT = 5  # seconds
         POLL_INTERVAL = 0.05  # seconds
@@ -977,7 +979,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             file_path = await asyncio.to_thread(_resolve_absolute_file_path)
 
         if not file_path.is_relative_to(module_run_dir):
-            await context.abort(
+            context.abort(
                 grpc.StatusCode.INVALID_ARGUMENT,
                 f"file_path escapes module run dir: {request.file_path}",
             )

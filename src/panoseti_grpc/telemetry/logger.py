@@ -230,8 +230,12 @@ class PanosetiLogFactory:
             return logger
 
         logger.setLevel(cfg.level)
-        # Prevent propagation to root logger to avoid double logging
-        logger.propagate = False
+        # Prevent propagation to root logger to avoid double logging in production.
+        # However, allow it in test environments so pytest's log_cli can capture it.
+        if "pytest" in sys.modules or os.getenv("PYTEST_CURRENT_TEST"):
+            logger.propagate = True
+        else:
+            logger.propagate = False
 
         if reset_handlers and logger.handlers:
             for h in list(logger.handlers):
