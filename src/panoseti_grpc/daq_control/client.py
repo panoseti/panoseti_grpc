@@ -6,6 +6,7 @@ from typing import Any
 import grpc
 import grpc.aio
 from google.protobuf.json_format import MessageToDict
+from pydantic import IPvAnyAddress
 
 from panoseti_grpc.generated import daq_control_pb2, daq_control_pb2_grpc
 from panoseti_grpc.grpc_utils import grpc_call
@@ -34,7 +35,7 @@ class AsyncDaqControlClient:
         port: Server gRPC port. Defaults to 50051.
     """
 
-    def __init__(self, host: str = "localhost", port: int = 50051) -> None:
+    def __init__(self, host: str | IPvAnyAddress = "localhost", port: int = 50051) -> None:
         self.target = f"{host}:{port}"
         self._channel: grpc.aio.Channel | None = None
         self._stub: daq_control_pb2_grpc.DaqControlStub | None = None
