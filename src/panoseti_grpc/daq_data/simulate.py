@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import contextlib
 import logging
 from importlib import resources
+from pathlib import Path
 from typing import Any
 
 from panoseti_grpc.panoseti_util import pff
@@ -16,6 +18,18 @@ from panoseti_grpc.panoseti_util import pff
 from .config import DaqDataServerConfig, SimulateDaqConfig, UdsSimStrategyConfig
 from .resources import daq_data_anchor_package
 from .state import get_dp_config
+
+
+@contextlib.contextmanager
+def _open_pff(path: str):
+    """Open a PFF file by absolute path or by package-relative path."""
+    p = Path(path)
+    if p.is_absolute():
+        with p.open("rb") as f:
+            yield f
+    else:
+        with resources.files(daq_data_anchor_package).joinpath(path).open("rb") as f:
+            yield f
 
 
 class BaseSimulationStrategy(abc.ABC):
@@ -43,18 +57,22 @@ class BaseSimulationStrategy(abc.ABC):
         )
 
     def _load_source_data(self) -> None:
-        """Loads all PFF frames from source files into memory."""
+        """Loads all PFF frames from source files into memory.
+
+        Paths in ``source_data`` may be absolute filesystem paths or paths
+        relative to the ``daq_data_anchor_package`` package resource directory.
+        """
         self.logger.info("Loading source data frames into memory for simulation.")
         source_cfg = self.common_config.source_data
         dp_cfgs = get_dp_config([self.common_config.movie_type, self.common_config.ph_type])
         try:
-            with resources.files(daq_data_anchor_package).joinpath(source_cfg.movie_pff_path).open("rb") as f:
+            with _open_pff(source_cfg.movie_pff_path) as f:
                 dp_config = dp_cfgs[self.common_config.movie_type]
                 frame_size, nframes, _, _ = pff.img_info(f, dp_config.bytes_per_image)
                 f.seek(0)
                 for _ in range(nframes):
                     self.movie_frames.append(f.read(frame_size))
-            with resources.files(daq_data_anchor_package).joinpath(source_cfg.ph_pff_path).open("rb") as f:
+            with _open_pff(source_cfg.ph_pff_path) as f:
                 dp_config = dp_cfgs[self.common_config.ph_type]
                 frame_size, nframes, _, _ = pff.img_info(f, dp_config.bytes_per_image)
                 f.seek(0)
@@ -134,7 +152,7 @@ class UdsStrategy(BaseSimulationStrategy):
                     _, writer = await asyncio.open_unix_connection(socket_path)
                     self._writers[dp_name] = writer
                     self.logger.info(f"UDS sim: Connected to {socket_path}")
-                except ConnectionRefusedError, FileNotFoundError:
+                except (ConnectionRefusedError, FileNotFoundError):
                     self.logger.warning(f"UDS sim (attempt {i + 1}/{num_retries}): Could not connect to {socket_path}.")
                     all_connected = False
                     break  # Break inner loop to retry all after a delay

@@ -688,7 +688,7 @@ wheels = [
 
 [[package]]
 name = "panoseti-grpc"
-version = "0.4.10"
+version = "0.4.11"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },
