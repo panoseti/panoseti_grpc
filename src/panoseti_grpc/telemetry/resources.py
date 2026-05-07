@@ -47,7 +47,7 @@ def get_config_path() -> Path:
         # For Python 3.9+
         with resources.path("panoseti_grpc.telemetry", "telemetry_config.toml") as p:
             return p
-    except ImportError, FileNotFoundError:
+    except (ImportError, FileNotFoundError):
         # Fallback for editable installs or older python
         return Path(__file__).parent / "telemetry_config.toml"
 
