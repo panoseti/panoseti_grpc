@@ -341,7 +341,7 @@ async def test_uds_partial_server_failure_tolerance(n_sim_servers_fixture_factor
                 # Stop draining once we've seen 3 frames from each remaining server.
                 if all(c >= 3 for c in drain_counts.values()):
                     break
-            except StopAsyncIteration, grpc.aio.AioRpcError:
+            except (StopAsyncIteration, grpc.aio.AioRpcError):
                 break
 
         # Now, collect the frames we actually want to test.
@@ -350,7 +350,7 @@ async def test_uds_partial_server_failure_tolerance(n_sim_servers_fixture_factor
             try:
                 img = await stream.__anext__()
                 seen_after.add(img["module_id"])
-            except StopAsyncIteration, grpc.aio.AioRpcError:
+            except (StopAsyncIteration, grpc.aio.AioRpcError):
                 break
 
         assert stopped["module_id"] not in seen_after

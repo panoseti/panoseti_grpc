@@ -51,7 +51,7 @@ def _find_hashpipe_pid() -> None:
         try:
             if proc.info["cmdline"] and any("hashpipe" in c for c in proc.info["cmdline"]):
                 return proc.info["pid"]
-        except psutil.NoSuchProcess, psutil.AccessDenied:
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
     return None
 

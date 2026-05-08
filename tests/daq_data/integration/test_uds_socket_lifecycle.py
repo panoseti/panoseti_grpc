@@ -168,7 +168,7 @@ async def test_uds_client_abrupt_disconnect_mid_frame(server_config_base):
                         img = await asyncio.wait_for(stream.__anext__(), timeout=5.0)
                         assert img is not None
                         received += 1
-                    except TimeoutError, StopAsyncIteration:
+                    except (TimeoutError, StopAsyncIteration):
                         break
 
                 assert received >= 3, "Server should continue serving after abrupt raw-socket disconnect"

@@ -549,7 +549,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
         try:
             parsed_pid = int(self.hashpipe_pid)
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             if self.hashpipe_pid != -1:
                 uncertain = True
 
@@ -571,12 +571,12 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         if pid_alive:
             msg = f"HASHPIPE is still alive, pid[{parsed_pid}]. Cleanup refused."
             self.logger.warning(msg)
-            context.abort(grpc.StatusCode.FAILED_PRECONDITION, msg)
+            await context.abort(grpc.StatusCode.FAILED_PRECONDITION, msg)
         elif uncertain:
             msg = f"HASHPIPE status uncertain for pid[{self.hashpipe_pid}]. Refusing cleanup without force=True."
             if not force:
                 self.logger.warning(msg)
-                context.abort(grpc.StatusCode.FAILED_PRECONDITION, msg)
+                await context.abort(grpc.StatusCode.FAILED_PRECONDITION, msg)
             else:
                 self.logger.warning(f"{msg} (Force cleanup enabled)")
                 self.hashpipe_pid = -1
@@ -585,7 +585,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             # but caller did not pass force=True.
             msg = f"Orphaned HASHPIPE pid[{parsed_pid}] (process dead). Use force=True to override and clean up."
             self.logger.warning(msg)
-            context.abort(grpc.StatusCode.FAILED_PRECONDITION, msg)
+            await context.abort(grpc.StatusCode.FAILED_PRECONDITION, msg)
         elif parsed_pid > 0:
             # Process is dead and force=True — allowed; reset tracked PID.
             self.logger.info(f"Orphaned HASHPIPE pid[{parsed_pid}] (dead). Force cleanup allowed.")
@@ -635,7 +635,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                             provided_digest[:16],
                             actual[:16],
                         )
-                        context.abort(
+                        await context.abort(
                             grpc.StatusCode.FAILED_PRECONDITION,
                             f"Manifest digest mismatch for {mf.name}: "
                             f"expected {provided_digest[:16]}…, got {actual[:16]}…. "
@@ -735,7 +735,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 resolved_root = await root_run_dir_async.resolve()
                 if await resolved_root.is_dir():
                     break
-            except OSError, FileNotFoundError:
+            except (OSError, FileNotFoundError):
                 pass
 
             if attempt < 9:
@@ -1018,7 +1018,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             file_path = await asyncio.to_thread(_resolve_absolute_file_path)
 
         if not file_path.is_relative_to(module_run_dir):
-            context.abort(
+            await context.abort(
                 grpc.StatusCode.INVALID_ARGUMENT,
                 f"file_path escapes module run dir: {request.file_path}",
             )

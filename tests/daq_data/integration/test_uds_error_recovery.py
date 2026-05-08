@@ -206,7 +206,7 @@ async def test_stream_deadline_exceeded_on_idle_source(server_config_base):
                             img = await asyncio.wait_for(stream.__anext__(), timeout=3.0)
                             if img is not None:
                                 count += 1
-                        except TimeoutError, StopAsyncIteration:
+                        except (TimeoutError, StopAsyncIteration):
                             break
                         except grpc.aio.AioRpcError as e:
                             if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
