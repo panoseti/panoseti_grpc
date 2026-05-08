@@ -256,7 +256,7 @@ async def _make_daq_control_servicer(
 
     # Convert string log level to int
     level = LoggerConfig.normalize_level(cfg.log_level)
-    servicer = DaqControlServicer(level=level)
+    servicer = DaqControlServicer(level=level, hashpipe_path=cfg.hashpipe_path)
     return servicer, []
 
 

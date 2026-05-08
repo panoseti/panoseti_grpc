@@ -79,7 +79,13 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     Handles start daq, stop daq and status daq.
     """
 
-    def __init__(self, level: int = logging.INFO, grpc_enabled: bool = True) -> None:
+    def __init__(
+        self,
+        level: int = logging.INFO,
+        grpc_enabled: bool = True,
+        hashpipe_path: str = "hashpipe",
+        hashpipe_name: str = "hashpipe",
+    ) -> None:
         self.logger = get_logger(
             "daq_control_server",
             level=level,
@@ -89,25 +95,38 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         )
         self.logger.info("DaqControlServicer initialized")
         self.logger.info("DaqControl Server Online")
+        self.hashpipe_path = hashpipe_path
+        self.hashpipe_name = hashpipe_name
         # This is used for recording the hashpipe pid
-        n, hashpipe_pids = self._get_pids_by_name(PROCESS)
+        n, hashpipe_pids = self._get_pids_by_name(self.hashpipe_name)
         if n == 0:
             self.hashpipe_pid = -1
         elif n == 1:
             self.hashpipe_pid = hashpipe_pids[0]
-            self.logger.warning(f"Found 1 HASHPIPE instance is already running, pid:{self.hashpipe_pid}")
+            self.logger.warning(f"Found 1 {self.hashpipe_name} instance is already running, pid:{self.hashpipe_pid}")
         else:
             self.hashpipe_pid = -1
-            self.logger.warning(f"Found {n} HASHPIPE instances are running, pids: {hashpipe_pids}")
-            self.logger.warning("All of these HASHPIPE instances have been killed.")
+            self.logger.warning(f"Found {n} {self.hashpipe_name} instances are running, pids: {hashpipe_pids}")
+            self.logger.warning(f"All of these {self.hashpipe_name} instances have been killed.")
             self.kill_processes(hashpipe_pids)
         self._lock = asyncio.Lock()
 
     def _get_pids_by_name(self, name: str) -> tuple[int, list[int]]:
         pids = []
-        for proc in psutil.process_iter(["pid", "name"]):
-            if proc.info["name"] == name:
-                pids.append(proc.info["pid"])
+        my_pid = os.getpid()
+        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+            try:
+                pid = proc.info["pid"]
+                if pid == my_pid:
+                    continue
+                # Check for substring in name OR cmdline to support shebang scripts
+                # and various executable naming conventions.
+                p_name = proc.info["name"] or ""
+                p_cmdline = " ".join(proc.info["cmdline"] or [])
+                if name in p_name or name in p_cmdline:
+                    pids.append(pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
         return len(pids), pids
 
     def kill_processes(self, pids: list[int]) -> None:
@@ -123,15 +142,29 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 f.write(f"{id} ")
 
     def _setup_data_directories(self, datadir: str | Path, rundir: str | Path, module_id: list[int]) -> None:
-        # create directory for config files
+        # 1. Create and chmod root run directory (for configs)
         cdirname = f"{datadir}/{rundir}"
         self.logger.info(f"Setup rundir for configs: {cdirname}")
-        Path(cdirname).mkdir(parents=True, exist_ok=True)
-        # create directory for data
+        p = Path(cdirname)
+        p.mkdir(parents=True, exist_ok=True)
+        with contextlib.suppress(OSError):
+            os.chmod(p, 0o777)
+
+        # 2. Create and chmod module-specific run directories
         for m in module_id:
-            dirname = f"{datadir}/module_{m}/{rundir}"
-            self.logger.info(f"Setup rundir for data: {dirname}")
-            Path(dirname).mkdir(parents=True, exist_ok=True)
+            mod_dir = Path(datadir) / f"module_{m}"
+            run_dir = mod_dir / rundir
+            self.logger.info(f"Setup rundir for data: {run_dir}")
+            
+            # Ensure parent module_X directory exists and is accessible
+            mod_dir.mkdir(parents=True, exist_ok=True)
+            with contextlib.suppress(OSError):
+                os.chmod(mod_dir, 0o777)
+                
+            # Create and chmod the actual run directory
+            run_dir.mkdir(parents=True, exist_ok=True)
+            with contextlib.suppress(OSError):
+                os.chmod(run_dir, 0o777)
 
     def _check_disk_usage(self, datadir: str | Path) -> dict[str, int]:
         usage = shutil.disk_usage(datadir)
@@ -247,12 +280,12 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     async def StartDaq(
         self, request: daq_control_pb2.StartDaqRequest, context: grpc.aio.ServicerContext
     ) -> daq_control_pb2.StartDaqResponse:
-        self.logger.info("Starting HASHPIPE instance...")
+        self.logger.info(f"Starting {self.hashpipe_name} instance...")
         async with self._lock:
             # 1. check if we already have HASHPIPE running
-            n, pids = self._get_pids_by_name(PROCESS)
+            n, pids = self._get_pids_by_name(self.hashpipe_name)
             if n > 0:
-                msg = f"Found {n} HASHPIPE instances running. pids: {pids}"
+                msg = f"Found {n} {self.hashpipe_name} instances running. pids: {pids}"
                 self.logger.warning(msg)
                 return daq_control_pb2.StartDaqResponse(success=False, message=msg)
             # 2. validate request
@@ -306,13 +339,19 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 console=False,
             )
             # Force file creation by logging an initial message
-            hp_stdout_logger.info(f"--- HASHPIPE STDOUT LOG STARTED for run: {run_dir} ---")
-            hp_stderr_logger.info(f"--- HASHPIPE STDERR LOG STARTED for run: {run_dir} ---")
+            hp_stdout_logger.info(f"--- {self.hashpipe_name.upper()} STDOUT LOG STARTED for run: {run_dir} ---")
+            hp_stderr_logger.info(f"--- {self.hashpipe_name.upper()} STDERR LOG STARTED for run: {run_dir} ---")
 
             # create cmdline for start HASHPIPE
-            self.logger.info(f"Starting HASHPIPE for run_dir: {run_dir}")
+            self.logger.info(f"Starting {self.hashpipe_name} for run_dir: {run_dir}")
+            
+            # Use python3 if it's a python script
+            hp_bin = [self.hashpipe_path]
+            if self.hashpipe_path.endswith(".py"):
+                hp_bin = ["python3", self.hashpipe_path]
+
             cmd = [
-                "hashpipe",
+                *hp_bin,
                 "-p",
                 hashpipe_so,
                 "-I",
@@ -350,28 +389,28 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         POLL_INTERVAL = 0.05  # seconds
         success = False
         for _ in range(int(WAIT_TIMEOUT / POLL_INTERVAL)):
-            success = is_hashpipe_running(self.hashpipe_pid)
+            success = is_hashpipe_running(self.hashpipe_pid, name=self.hashpipe_name)
             if success:
                 break
             await asyncio.sleep(POLL_INTERVAL)
-        self.logger.info(f"HASHPIPE instance status: {success}; PID: {self.hashpipe_pid}")
-        msg = f"HASHPIPE start failed. \n{vreq_dict=} \n{cmd=}" if not success else ""
+        self.logger.info(f"{self.hashpipe_name} instance status: {success}; PID: {self.hashpipe_pid}")
+        msg = f"{self.hashpipe_name} start failed. \n{vreq_dict=} \n{cmd=}" if not success else ""
         return daq_control_pb2.StartDaqResponse(success=success, message=msg)
 
     @grpc_error_handler
     async def StopDaq(
         self, request: daq_control_pb2.StopDaqRequest, context: grpc.ServicerContext
     ) -> daq_control_pb2.StopDaqResponse:
-        self.logger.info("Stop HASHPIPE instance(s)...")
+        self.logger.info(f"Stop {self.hashpipe_name} instance(s)...")
 
         # 1. Identify all hashpipe processes (Non-blocking)
-        n_initial, pids = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
+        n_initial, pids = await asyncio.to_thread(self._get_pids_by_name, self.hashpipe_name)
         if n_initial == 0:
-            self.logger.info("No HASHPIPE instance is running.")
+            self.logger.info(f"No {self.hashpipe_name} instance is running.")
             self.hashpipe_pid = -1
             return daq_control_pb2.StopDaqResponse(success=True, message="No processes found.")
 
-        self.logger.info(f"Found {n_initial} HASHPIPE process(es): {pids}")
+        self.logger.info(f"Found {n_initial} {self.hashpipe_name} process(es): {pids}")
 
         # 2. Tier 1: SIGINT to all detected instances
         for pid in pids:
@@ -386,17 +425,17 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         POLL_INTERVAL = 2.0
         elapsed = 0.0
         while elapsed < WAIT_TIMEOUT:
-            _, remaining_pids = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
+            _, remaining_pids = await asyncio.to_thread(self._get_pids_by_name, self.hashpipe_name)
             if not remaining_pids:
                 break
             self.logger.info(
-                f"Waiting for {len(remaining_pids)} HASHPIPE process(es) to exit gracefully... ({int(elapsed)}s)"
+                f"Waiting for {len(remaining_pids)} {self.hashpipe_name} process(es) to exit gracefully... ({int(elapsed)}s)"
             )
             await asyncio.sleep(POLL_INTERVAL)
             elapsed += POLL_INTERVAL
 
         # 4. Tier 2: Escalation to SIGKILL for survivors
-        _, final_pids = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
+        _, final_pids = await asyncio.to_thread(self._get_pids_by_name, self.hashpipe_name)
         killed_count = 0
         if final_pids:
             self.logger.warning(f"{len(final_pids)} process(es) refused SIGINT. Escalating to SIGKILL: {final_pids}")
@@ -414,7 +453,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         await asyncio.to_thread(kill_hk_recorder)
 
         # 6. Final verification
-        n_remaining, _ = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
+        n_remaining, _ = await asyncio.to_thread(self._get_pids_by_name, self.hashpipe_name)
         self.hashpipe_pid = -1
 
         success = n_remaining == 0
@@ -446,9 +485,9 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         hashpipe_pid = -1
         # check hashpipe status
         if vreq.check_hashpipe_running:
-            self.logger.debug("Checking HASHPIPE status...")
+            self.logger.debug(f"Checking {self.hashpipe_name} status...")
             # Consistency Fix: check for ANY running hashpipe process, not just the tracked one.
-            n, pids = await asyncio.to_thread(self._get_pids_by_name, PROCESS)
+            n, pids = await asyncio.to_thread(self._get_pids_by_name, self.hashpipe_name)
             hashpipe_running = n > 0
             if n > 0:
                 hashpipe_pid = pids[0]
@@ -532,12 +571,12 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         if pid_alive:
             msg = f"HASHPIPE is still alive, pid[{parsed_pid}]. Cleanup refused."
             self.logger.warning(msg)
-            return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
+            context.abort(grpc.StatusCode.FAILED_PRECONDITION, msg)
         elif uncertain:
             msg = f"HASHPIPE status uncertain for pid[{self.hashpipe_pid}]. Refusing cleanup without force=True."
             if not force:
                 self.logger.warning(msg)
-                return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
+                context.abort(grpc.StatusCode.FAILED_PRECONDITION, msg)
             else:
                 self.logger.warning(f"{msg} (Force cleanup enabled)")
                 self.hashpipe_pid = -1
@@ -546,7 +585,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             # but caller did not pass force=True.
             msg = f"Orphaned HASHPIPE pid[{parsed_pid}] (process dead). Use force=True to override and clean up."
             self.logger.warning(msg)
-            return daq_control_pb2.CleanupDataResponse(success=False, message=msg)
+            context.abort(grpc.StatusCode.FAILED_PRECONDITION, msg)
         elif parsed_pid > 0:
             # Process is dead and force=True — allowed; reset tracked PID.
             self.logger.info(f"Orphaned HASHPIPE pid[{parsed_pid}] (dead). Force cleanup allowed.")
@@ -813,7 +852,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         if not data_dir_is_dir:
             return daq_control_pb2.GetTransferStatusResponse(success=False, message=f"data_dir not found: {data_dir}")
 
-        hashpipe_running = self.hashpipe_pid > 0 and await asyncio.to_thread(is_hashpipe_running, self.hashpipe_pid)
+        hashpipe_running = self.hashpipe_pid > 0 and await asyncio.to_thread(is_hashpipe_running, self.hashpipe_pid, name=self.hashpipe_name)
 
         disk = await asyncio.to_thread(shutil.disk_usage, str(data_dir))
         free_bytes = disk.free

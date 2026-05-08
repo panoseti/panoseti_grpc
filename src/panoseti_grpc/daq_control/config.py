@@ -2,6 +2,7 @@
 Daq Control Service configuration classes for validation
 """
 
+import os
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
@@ -17,6 +18,14 @@ class DaqControlServerConfig(BaseModel):
     grpc_logging: bool = True
     shutdown_grace_period: float = Field(5.0, ge=0)
     log_level: str = Field("INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
+    hashpipe_path: str = Field(
+        default_factory=lambda: os.getenv("PSETI_DAQ_CONTROL_HASHPIPE_PATH", "hashpipe"),
+        description="Path or command to execute for hashpipe.",
+    )
+    hashpipe_name: str = Field(
+        default_factory=lambda: os.getenv("PSETI_DAQ_CONTROL_HASHPIPE_NAME", "hashpipe"),
+        description="Expected process name for hashpipe (used for liveness checks).",
+    )
 
 
 Uint8 = Annotated[int, Field(ge=0, le=255)]
