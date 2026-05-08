@@ -54,12 +54,14 @@ If you are deploying the servers on the head node or contributing to the codebas
 git clone https://github.com/panoseti/panoseti_grpc.git
 cd panoseti_grpc
 
-# 1. Create the grpc-py314 conda environment
+# Option 1. Install with pip
 conda create -n grpc-py314 python=3.14
 conda activate grpc-py314
-
-# 2. Install in editable mode with development dependencies
 pip install -e ".[dev]"
+
+# Option 2. Install with uv
+uv tool install -e .
+
 ```
 
 ## 🚦 Unified Server
@@ -69,20 +71,20 @@ All three active services (`daq_data`, `daq_control`, `telemetry`) can run on a 
 ### Quick Start
 
 ```bash
-# All services on one port (default: 50051)
-panoseti-server
+# See the options
+pseti-grpc -h 
 
 # DAQ node: daq_data + daq_control only
-panoseti-server --profile daq_node
+pseti-grpc server --profile daq_node
 
 # Head node: telemetry only
-panoseti-server --profile headnode
+pseti-grpc server --profile headnode
 
 # Custom config file
-panoseti-server --config /etc/panoseti/server.toml
+pseti-grpc server --config /etc/panoseti/server.toml
 
 # List all registered services
-panoseti-server --list-services
+pseti-grpc server --list-services
 ```
 
 ### Deployment Profiles
@@ -233,7 +235,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
 ### 5. Register with the Unified Server
 
-To make the service available via `panoseti-server`, add it to `src/panoseti_grpc/server.py`:
+To make the service available via `pseti-grpc server`, add it to `src/panoseti_grpc/server.py`:
 
 1. Write `async def _make_<name>_servicer(cfg, shutdown_event)` that returns `(servicer, [post_start_coros])`
 2. Add `<name>: NewServiceConfig = Field(default_factory=NewServiceConfig)` to `PanosetiServerConfig`
