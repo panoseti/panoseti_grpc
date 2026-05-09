@@ -685,7 +685,11 @@ class AioDaqDataClient:
             self.logger.warning(f"Client exiting: {exc_val}")
             return True
         if exc_type and exc_type not in (KeyboardInterrupt, SystemExit):
-            self.logger.error(f"Client exiting due to an unhandled exception: {exc_val}")
+            summary = str(exc_val)
+            if isinstance(exc_val, ExceptionGroup):
+                sub_errs = ", ".join(type(e).__name__ + ": " + str(e) for e in exc_val.exceptions)
+                summary = f"{summary} -> {sub_errs}"
+            self.logger.error(f"Client exiting due to an unhandled exception: {summary}")
             return False
         return exc_type is not None  # suppress KeyboardInterrupt / SystemExit only
 
