@@ -144,6 +144,7 @@ Queries the state of this DAQ node. All checks are opt-in via boolean flags.
 |---|---|---|
 | `success` | `bool` | Always `true` if the RPC reaches the server |
 | `hashpipe_running` | `bool` | Whether the tracked Hashpipe PID is alive |
+| `hashpipe_pid` | `int32` | The PID of the running Hashpipe process, or `-1` if not running |
 | `disk_usage` | `google.protobuf.Struct` | Keys: `total_disk_space`, `used_disk_space`, `free_disk_space` (bytes); `-1` when not requested |
 | `run_dirs` | `repeated string` | Paths matching `{data_dir}/*.pffd` |
 
@@ -177,6 +178,7 @@ Walks the run directory and deletes only files matching any `delete_patterns` gl
 | `delete_patterns` | `repeated string` | Glob patterns to delete in selective mode (e.g. `["*.pff"]`) |
 | `preserve_patterns` | `repeated string` | Glob patterns that take precedence over delete (e.g. `["*.json", "*.log"]`) |
 | `manifest_digest` | `bytes` | SHA-256 of the manifest file; required for `CLEANUP_SELECTIVE` integrity check |
+| `dry_run` | `bool` | If `true`, return the audit trail without actually deleting any files |
 
 **Response fields**
 
@@ -252,6 +254,29 @@ Server-streaming RPC. Reads a previously generated manifest and yields one `Mani
 
 The server automatically locates the manifest by checking the root run directory for the new unique naming format, falling back to legacy module-specific manifests if necessary.
 
+### `GetTransferStatus`
+
+Returns per-node transfer readiness: hashpipe state, run directories, disk usage, and presence of manifest files. Used by the head node to coordinate multi-node transfers.
+
+**Request fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `data_dir` | `string` | Root data directory |
+| `run_dir` | `string` | Run subdirectory |
+
+**Response fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `success` | `bool` | Always `true` if the RPC reaches the server |
+| `message` | `string` | Status message |
+| `hashpipe_running` | `bool` | Whether Hashpipe is active |
+| `free_bytes` | `uint64` | Bytes free on `data_dir` partition |
+| `total_bytes` | `uint64` | Total bytes on `data_dir` partition |
+| `run_dirs` | `repeated string` | List of all `.pffd` directories found |
+| `manifest_files` | `repeated string` | List of manifest files found for the specific `run_dir` |
+
 ---
 
 ### `GetManifestDigest`
@@ -273,6 +298,7 @@ Returns the SHA-256 hex digest of the manifest file itself. Used by the Transfer
 | `success` | `bool` | `true` if manifest was found and hashed |
 | `digest_hex` | `string` | SHA-256 of the manifest file content |
 | `algo_suffix` | `string` | Algorithm used for entries (e.g. `blake3`) |
+| `manifest_path` | `string` | Absolute path to the manifest file |
 
 ---
 
@@ -288,6 +314,16 @@ Re-computes and returns the digest for a single specific file. Used for reconcil
 | `run_dir` | `string` | Run subdirectory |
 | `module_id` | `repeated uint32` | Module IDs |
 | `file_path` | `string` | Absolute or relative path to the file on the DAQ node |
+
+**Response fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `success` | `bool` | `true` if file was found and hashed |
+| `size_bytes` | `uint64` | Size of the file in bytes |
+| `digest_hex` | `string` | Hex-encoded checksum of the file |
+| `algorithm` | `string` | Algorithm used for hashing |
+
 
 ---
 

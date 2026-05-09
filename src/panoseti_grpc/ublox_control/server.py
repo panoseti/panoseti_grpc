@@ -253,6 +253,12 @@ class UbloxControlServicer(ublox_control_pb2_grpc.UbloxControlServicer):
                 except asyncio.QueueFull:
                     self.logger.warning("Client queue full; dropping packet.")
 
+    async def PollMessage(
+        self, request: ublox_control_pb2.PollRequest, context: grpc.ServicerContext
+    ) -> ublox_control_pb2.PollResponse:
+        """Poll specific GNSS messages (Unimplemented Placeholder)."""
+        return ublox_control_pb2.PollResponse()
+
     async def CaptureUblox(self, request: ublox_control_pb2.CaptureUbloxRequest, context: grpc.ServicerContext) -> Any:
         """
         Handles CaptureUblox by streaming data to a client.

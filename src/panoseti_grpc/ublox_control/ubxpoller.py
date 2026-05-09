@@ -88,8 +88,8 @@ def main(**kwargs: Any) -> None:
     port = kwargs.get("port", "/dev/ttyACM0")
     baudrate = int(kwargs.get("baudrate", 38400))
     timeout = float(kwargs.get("timeout", 0.1))
-    read_queue = Queue()
-    send_queue = Queue()
+    read_queue: Queue[Any] = Queue()
+    send_queue: Queue[Any] = Queue()
     stop_event = Event()
 
     with Serial(port, baudrate, timeout=timeout) as stream:

@@ -123,7 +123,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 # and various executable naming conventions.
                 p_name = proc.info["name"] or ""
                 p_cmdline = " ".join(proc.info["cmdline"] or [])
-                if name in p_name or name in p_cmdline:
+                if name.lower() in p_name.lower() or name.lower() in p_cmdline.lower():
                     pids.append(pid)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
@@ -377,7 +377,11 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             self.logger.info("Create subprocess...")
             self.logger.info(f"cmd: {cmdstr}")
             proc = await asyncio.create_subprocess_exec(
-                *cmd, cwd=datadir, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=True
+                *cmd,
+                cwd=datadir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
             )
             self.logger.debug("Subprocess created...")
             # monitor stdout/stderr in background — routes to run_dir log files and gRPC
@@ -429,7 +433,8 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             if not remaining_pids:
                 break
             self.logger.info(
-                f"Waiting for {len(remaining_pids)} {self.hashpipe_name} process(es) to exit gracefully... ({int(elapsed)}s)"
+                f"Waiting for {len(remaining_pids)} {self.hashpipe_name} "
+                f"process(es) to exit gracefully... ({int(elapsed)}s)"
             )
             await asyncio.sleep(POLL_INTERVAL)
             elapsed += POLL_INTERVAL
@@ -567,6 +572,17 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             except Exception as e:
                 self.logger.error(f"Unexpected error during liveness check: {e}")
                 uncertain = True
+
+        if not pid_alive and not uncertain:
+            # Fallback: check for ANY running hashpipe process matching the name.
+            # This handles cases where the tracked PID is lost due to server restart.
+            n, pids = await asyncio.to_thread(self._get_pids_by_name, self.hashpipe_name)
+            if n > 0:
+                pid_alive = True
+                parsed_pid = pids[0]
+                # Consistency Fix: Update tracked pid if exactly one found
+                if n == 1:
+                    self.hashpipe_pid = pids[0]
 
         if pid_alive:
             msg = f"HASHPIPE is still alive, pid[{parsed_pid}]. Cleanup refused."
@@ -852,7 +868,9 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         if not data_dir_is_dir:
             return daq_control_pb2.GetTransferStatusResponse(success=False, message=f"data_dir not found: {data_dir}")
 
-        hashpipe_running = self.hashpipe_pid > 0 and await asyncio.to_thread(is_hashpipe_running, self.hashpipe_pid, name=self.hashpipe_name)
+        hashpipe_running = self.hashpipe_pid > 0 and await asyncio.to_thread(
+            is_hashpipe_running, self.hashpipe_pid, name=self.hashpipe_name
+        )
 
         disk = await asyncio.to_thread(shutil.disk_usage, str(data_dir))
         free_bytes = disk.free

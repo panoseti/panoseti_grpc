@@ -30,7 +30,7 @@ from google.protobuf.message import Message
 from panoseti_grpc.generated import telemetry_pb2, telemetry_pb2_grpc
 
 # Local Imports
-from .config import LogSchema, TelemetryConfig
+from .config import LogSchema, LogSeverity, TelemetryConfig
 from .resources import get_config_path, make_rich_logger
 
 # Create the main logger
@@ -136,7 +136,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
     async def shutdown(self) -> None:
         """Cleanup resources before server stop."""
         logger.info("Closing Redis connection...")
-        await self.redis.aclose()
+        await self.redis.close()
         logger.info("Redis connection closed.")
 
     def _proto_to_dict(self, message: Message) -> dict[str, int | float | str | bool | None]:
@@ -154,26 +154,21 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
         Validates schema and queues for Redis batch writing.
         """
         try:
-            # 1. Extract Data into a typed dictionary
-            # We map protobuf fields to our Pydantic Schema
-            log_data: dict[str, int | float | str | bool | None] = {
-                "host": request.host,
-                "service_name": request.service_name,
-                "timestamp": request.timestamp.seconds + request.timestamp.nanos / 1e9,
-                "severity": request.severity,
-                "file_path": request.file_path,
-                "line_number": request.line_number,
-                "function_name": request.function_name,
-                "process_id": request.process_id if request.process_id != 0 else None,
-                "thread_name": request.thread_name,
-                "git_commit": request.git_commit,
-                "git_branch": request.git_branch,
-                "payload_json": request.payload_json,
-            }
-
-            # 2. Validate (Pydantic)
-            validated = LogSchema(**log_data)
-
+            # 1. Validate (Pydantic)
+            validated = LogSchema(
+                    host=request.host,
+                    service_name=request.service_name,
+                    timestamp=request.timestamp.seconds + request.timestamp.nanos / 1e9,
+                    severity=LogSeverity(request.severity) if request.severity != 0 else LogSeverity.INFO,
+                    file_path=request.file_path,
+                    line_number=request.line_number,
+                    function_name=request.function_name,
+                    process_id=request.process_id if request.process_id != 0 else None,
+                    thread_name=request.thread_name,
+                    git_commit=request.git_commit,
+                    git_branch=request.git_branch,
+                    payload_json=request.payload_json,
+                )
             # 3. Serialize & Queue (Async)
             # model_dump_json is faster than json.dumps(model_dump())
             json_str = validated.model_dump_json()
@@ -274,7 +269,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
             redis_data = {k: str(v) for k, v in validated_data.items()}
 
             async with self.redis.pipeline() as pipe:
-                pipe.hset(redis_key, mapping=redis_data)
+                pipe.hset(redis_key, mapping=redis_data)  # type: ignore[arg-type]
 
                 # 5. LIFETIME MANAGEMENT
                 ttl = self.config.get_ttl(device_type)
