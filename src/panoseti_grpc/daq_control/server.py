@@ -361,7 +361,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 "-o",
                 f"MAXFILESIZE={max_file_size_mb}",
                 "-o",
-                f"GROUPPHFRAMES={group_ph_frames}",
+                f"GROUPPHFRAMES={int(group_ph_frames)}",
                 "-o",
                 f"RUNDIR={run_dir}",
                 "-o",

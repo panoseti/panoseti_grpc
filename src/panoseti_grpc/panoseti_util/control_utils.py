@@ -352,7 +352,7 @@ def kill_hashpipe() -> None:
 def kill_hk_recorder() -> None:
     for p in psutil.process_iter():
         if hk_recorder_name in p.cmdline():
-            os.kill(p.pid, signal.SIGKILL)
+            os.kill(p.pid, signal.SIGTERM)
 
 
 def kill_hv_updater() -> None:
