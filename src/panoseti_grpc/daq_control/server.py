@@ -68,9 +68,13 @@ async def _monitor_hashpipe(
     """Pipe hashpipe stdout/stderr to their respective loggers (runs as background task)."""
     if proc.stdout is None or proc.stderr is None:
         return
-    async with asyncio.TaskGroup() as tg:
-        tg.create_task(_read_stream(proc.stdout, stdout_logger.info))
-        tg.create_task(_read_stream(proc.stderr, stderr_logger.error))
+    try:
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(_read_stream(proc.stdout, stdout_logger.info))
+            tg.create_task(_read_stream(proc.stderr, stderr_logger.error))
+    finally:
+        # Ensure process is reaped by the event loop
+        await proc.wait()
 
 
 class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
@@ -119,12 +123,21 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 pid = proc.info["pid"]
                 if pid == my_pid:
                     continue
-                # Check for substring in name OR cmdline to support shebang scripts
-                # and various executable naming conventions.
+                
                 p_name = proc.info["name"] or ""
-                p_cmdline = " ".join(proc.info["cmdline"] or [])
-                if name.lower() in p_name.lower() or name.lower() in p_cmdline.lower():
+                p_cmdline = proc.info["cmdline"] or []
+                
+                # 1. Direct executable name match (binary)
+                if name.lower() == p_name.lower():
                     pids.append(pid)
+                    continue
+                
+                # 2. Command line match (script or shebang)
+                # We match if 'name' is exactly any of the arguments (ignoring paths)
+                if any(name.lower() == arg.split("/")[-1].lower() for arg in p_cmdline):
+                    pids.append(pid)
+                    continue
+
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
         return len(pids), pids
@@ -424,9 +437,9 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             except psutil.NoSuchProcess:
                 continue
 
-        # 3. Graceful Wait Loop (up to 60s)
-        WAIT_TIMEOUT = 60.0
-        POLL_INTERVAL = 2.0
+        # 3. Graceful Wait Loop (up to 10s)
+        WAIT_TIMEOUT = 10.0
+        POLL_INTERVAL = 1.0
         elapsed = 0.0
         while elapsed < WAIT_TIMEOUT:
             _, remaining_pids = await asyncio.to_thread(self._get_pids_by_name, self.hashpipe_name)
