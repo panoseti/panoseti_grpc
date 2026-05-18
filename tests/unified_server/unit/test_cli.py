@@ -1,5 +1,5 @@
 """
-Unit tests for the unified_main.py CLI (panoseti-server / python -m panoseti_grpc).
+Unit tests for the unified_main.py CLI (pseti-grpc server / python -m panoseti_grpc).
 
 Tests are run via subprocess so they exercise the real argparse entrypoint.
 No running server is required.

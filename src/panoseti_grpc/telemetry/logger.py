@@ -303,6 +303,7 @@ def get_logger(
     grpc_enabled: bool = True,
     jsonl_enabled: bool = True,
     reset: bool = True,
+    per_host: bool = True,
 ) -> logging.Logger:
     """Get or create a configured logger with up to four output paths.
 
@@ -322,10 +323,19 @@ def get_logger(
         jsonl_enabled: Whether to write the structured JSONL file for Alloy.
             Defaults to ``True`` when *log_dir* is provided.
         reset: Clear existing handlers before applying this configuration.
+        per_host: When ``True`` (default), appends ``socket.gethostname()`` as
+            a subdirectory under *log_dir* so Grafana Alloy can glob
+            ``/var/log/panoseti/*/*.jsonl`` and still label logs by host.
+            Pass ``False`` for run-scoped log dirs (e.g. hashpipe stdout/stderr)
+            where the caller controls the exact target directory.
     """
+    import socket
+
     file_config = FileLogConfig(enabled=False)
     if log_dir:
         log_dir_path = Path(log_dir) if isinstance(log_dir, str) else log_dir
+        if per_host:
+            log_dir_path = log_dir_path / (socket.gethostname() or os.getenv("HOSTNAME", "unknown"))
         file_config = FileLogConfig(enabled=True, directory=log_dir_path, jsonl_enabled=jsonl_enabled)
 
     grpc_config = GrpcLogConfig(enabled=grpc_enabled)

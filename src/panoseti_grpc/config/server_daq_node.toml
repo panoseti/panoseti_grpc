@@ -3,9 +3,9 @@
 # Runs daq_data + daq_control.  Telemetry lives on the headnode.
 #
 # Usage:
-#   panoseti-server --profile daq_node
-#   panoseti-server --config /path/to/server_daq_node.toml
-#   HEADNODE_IP=<headnode-ip> HEADNODE_GRPC_PORT=50051 panoseti-server --profile daq_node
+#   pseti-grpc server --profile daq_node
+#   pseti-grpc server --config /path/to/server_daq_node.toml
+#   HEADNODE_IP=<headnode-ip> HEADNODE_GRPC_PORT=50051 pseti-grpc server --profile daq_node
 #
 # When grpc_logging = true and telemetry = false, the AsyncGrpcHandler in
 # telemetry/logger.py connects to HEADNODE_IP:HEADNODE_GRPC_PORT automatically.

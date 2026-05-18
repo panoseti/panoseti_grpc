@@ -7,9 +7,9 @@ in the unified ``server.toml`` config.
 
 Deployment profiles
 -------------------
-``panoseti-server``                     — all enabled services (default ``server.toml``)
-``panoseti-server --profile daq_node``  — daq_data + daq_control (no local telemetry)
-``panoseti-server --profile headnode``  — telemetry only
+``pseti-grpc server``                     — all enabled services (default ``server.toml``)
+``pseti-grpc server --profile daq_node``  — daq_data + daq_control (no local telemetry)
+``pseti-grpc server --profile headnode``  — telemetry only
 
 Initialization order
 --------------------
@@ -351,8 +351,13 @@ class PanosetiServer:
             from panoseti_grpc.grpc_utils.health import register_health
 
             proto_service_names = [n for n in reflection_service_names if n != reflection.SERVICE_NAME]
-            register_health(server, proto_service_names)
+            health_toggle = register_health(server, proto_service_names)
             _logger.info("gRPC health checks registered for %d service(s).", len(proto_service_names))
+            # Hand the toggle to each servicer so they can flip NOT_SERVING during
+            # disruptive operations (writer-lock acquisition, hashpipe restart, etc.).
+            for svc in active_servicers:
+                if hasattr(svc, "health_toggle"):
+                    svc.health_toggle = health_toggle
         except ImportError:
             _logger.warning(
                 "grpcio-health-checking not installed; health probes disabled. "

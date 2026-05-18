@@ -34,6 +34,7 @@ from panoseti_grpc.generated.daq_data_pb2 import (
 )
 
 # Package imports
+from panoseti_grpc.grpc_utils.health import HealthToggle
 from panoseti_grpc.telemetry.logger import get_logger
 
 from .config import DaqDataServerConfig
@@ -45,6 +46,13 @@ from .testing import is_os_posix
 
 class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
     """Provides implementations for DaqData RPCs by orchestrating manager classes."""
+
+    # Set by the unified server after register_health(); None when health-checking
+    # is unavailable or when running standalone without the optional package.
+    health_toggle: HealthToggle | None = None
+
+    # Proto service name used for health transitions (matches the generated descriptor).
+    _HEALTH_SERVICE_NAME = "daqdata.DaqData"
 
     def __init__(self, server_cfg: DaqDataServerConfig, logging_level: int = logging.DEBUG) -> None:
         self.logger = get_logger(
@@ -213,37 +221,38 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         if request.update_interval_seconds < self.server_cfg.min_hp_io_update_interval_seconds:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "update_interval_seconds is below server minimum.")
 
-        async with self.client_manager.get_writer_access(context, force=request.force) as uid:
-            self.logger.info(f"({uid}) acquired writer lock. Initializing hp_io task.")
+        ht = self.health_toggle
+        if ht:
+            ht.not_serving(self._HEALTH_SERVICE_NAME)
+        try:
+            async with self.client_manager.get_writer_access(context, force=request.force) as uid:
+                self.logger.info(f"({uid}) acquired writer lock. Initializing hp_io task.")
 
-            last_valid_config = self.task_manager.hp_io_cfg.copy()
+                last_valid_config = self.task_manager.hp_io_cfg.copy()
 
-            # Filter hp_io_fields from the request
-            # hp_io_cfg = MessageToDict(
-            #     request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True
-            # )
-            hp_io_cfg = {
-                "data_dir": request.data_dir,
-                "simulate_daq": request.simulate_daq,
-                "update_interval_seconds": request.update_interval_seconds,
-                "module_ids": list[int](request.module_ids),
-            }
-            self.logger.debug(f"Received hp_io configuration: {hp_io_cfg}")
+                hp_io_cfg = {
+                    "data_dir": request.data_dir,
+                    "simulate_daq": request.simulate_daq,
+                    "update_interval_seconds": request.update_interval_seconds,
+                    "module_ids": list[int](request.module_ids),
+                }
+                self.logger.debug(f"Received hp_io configuration: {hp_io_cfg}")
 
-            # Delegate starting the new task to the HpIoTaskManager
-            success = await self.task_manager.start(hp_io_cfg)
+                success = await self.task_manager.start(hp_io_cfg)
 
-            if success:
-                self.logger.info(f"InitHpIo transaction ({uid}) succeeded: new hp_io task is valid.")
-            else:
-                self.logger.warning(f"({uid}) failed to start new hp_io task.")
-                # Optional: Attempt to restore the last known good configuration
-                if last_valid_config:
-                    self.logger.info("Attempting to restore previous hp_io configuration.")
-                    if not await self.task_manager.start(last_valid_config):
-                        self.logger.error("Failed to restore previous hp_io configuration. Server is now idle.")
+                if success:
+                    self.logger.info(f"InitHpIo transaction ({uid}) succeeded: new hp_io task is valid.")
+                else:
+                    self.logger.warning(f"({uid}) failed to start new hp_io task.")
+                    if last_valid_config:
+                        self.logger.info("Attempting to restore previous hp_io configuration.")
+                        if not await self.task_manager.start(last_valid_config):
+                            self.logger.error("Failed to restore previous hp_io configuration. Server is now idle.")
 
-            return InitHpIoResponse(success=success)
+                return InitHpIoResponse(success=success)
+        finally:
+            if ht:
+                ht.serving(self._HEALTH_SERVICE_NAME)
 
     async def Status(self, request: Empty, context: grpc.aio.ServicerContext) -> StatusResponse:
         """Returns the status of the DaqData service."""
@@ -299,11 +308,16 @@ async def serve(
     servicer = DaqDataServicer(server_cfg)
     daq_data_pb2_grpc.add_DaqDataServicer_to_server(servicer, server)
 
-    SERVICE_NAMES = (
-        daq_data_pb2.DESCRIPTOR.services_by_name["DaqData"].full_name,
-        reflection.SERVICE_NAME,
-    )
+    proto_service_name = daq_data_pb2.DESCRIPTOR.services_by_name["DaqData"].full_name
+    SERVICE_NAMES = (proto_service_name, reflection.SERVICE_NAME)
     reflection.enable_server_reflection(SERVICE_NAMES, server)
+
+    try:
+        from panoseti_grpc.grpc_utils.health import register_health
+
+        servicer.health_toggle = register_health(server, [proto_service_name])
+    except ImportError:
+        logger.warning("grpcio-health-checking not installed; health probes disabled.")
 
     # Add regular socket
     listen_addr = "[::]:50051"

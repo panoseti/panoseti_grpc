@@ -31,10 +31,14 @@ from panoseti_grpc.generated import telemetry_pb2, telemetry_pb2_grpc
 
 # Local Imports
 from .config import LogSchema, LogSeverity, TelemetryConfig
-from .resources import get_config_path, make_rich_logger
+from .logger import get_logger
+from .resources import get_config_path
 
-# Create the main logger
-logger = make_rich_logger("telemetry_server")
+_SERVER_LOG_DIR = os.getenv("PSETI_LOGS", "/var/log/panoseti")
+
+# Create the main logger — grpc_enabled=False avoids a circular dependency
+# (telemetry server cannot forward its own logs to itself via gRPC).
+logger = get_logger("telemetry_server", log_dir=_SERVER_LOG_DIR, grpc_enabled=False)
 
 # --- Configuration ---
 BATCH_SIZE = 100  # Max items to send in one Redis command
@@ -367,11 +371,16 @@ async def serve(
     # 2b. Enable gRPC reflection for service discovery
     from grpc_reflection.v1alpha import reflection as grpc_reflection
 
-    SERVICE_NAMES = (
-        telemetry_pb2.DESCRIPTOR.services_by_name["Telemetry"].full_name,
-        grpc_reflection.SERVICE_NAME,
-    )
+    proto_service_name = telemetry_pb2.DESCRIPTOR.services_by_name["Telemetry"].full_name
+    SERVICE_NAMES = (proto_service_name, grpc_reflection.SERVICE_NAME)
     grpc_reflection.enable_server_reflection(SERVICE_NAMES, server)
+
+    try:
+        from panoseti_grpc.grpc_utils.health import register_health
+
+        register_health(server, [proto_service_name])
+    except ImportError:
+        logger.warning("grpcio-health-checking not installed; health probes disabled.")
 
     # 3. Bind Ports (TCP and Optional UDS)
     server.add_insecure_port(f"[::]:{port}")

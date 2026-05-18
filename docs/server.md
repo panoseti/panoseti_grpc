@@ -1,6 +1,6 @@
 # PSETI Unified gRPC Server
 
-The PSETI Unified Server (`panoseti-server`) is the primary service entry point for all PANOSETI gRPC services. It co-hosts multiple functional modules on a single TCP port, providing a unified interface for observatory control, data acquisition, and telemetry.
+The PSETI Unified Server (`pseti-grpc server`) is the primary service entry point for all PANOSETI gRPC services. It co-hosts multiple functional modules on a single TCP port, providing a unified interface for observatory control, data acquisition, and telemetry.
 
 ---
 
@@ -10,7 +10,7 @@ The server follows a **Composite Servicer** pattern. Each functional domain (Daq
 
 ```mermaid
 graph TD
-    subgraph "panoseti-server"
+    subgraph "pseti-grpc server"
         S[gRPC Server Engine]
         DC[DaqControlServicer]
         DD[DaqDataServicer]
@@ -64,19 +64,19 @@ Activates centralized telemetry aggregation (typically runs only on the Head Nod
 
 ```bash
 # Start the default profile (daq_node)
-panoseti-server --profile daq_node
+pseti-grpc server --profile daq_node
 
 # Override the listening port
-GRPC_PORT=50052 panoseti-server --profile daq_node
+GRPC_PORT=50052 pseti-grpc server --profile daq_node
 
 # Run in debug mode (verbose logging)
-panoseti-server --profile daq_node --level DEBUG
+pseti-grpc server --profile daq_node --level DEBUG
 ```
 
 ### Docker (Recommended)
 
 ```bash
-docker compose up -d panoseti-server
+docker compose up -d pseti-grpc server
 ```
 
 ---

@@ -37,6 +37,7 @@ import grpc
 from google.protobuf.json_format import MessageToDict
 
 from panoseti_grpc.generated import daq_control_pb2, daq_control_pb2_grpc
+from panoseti_grpc.grpc_utils.health import HealthToggle
 from panoseti_grpc.panoseti_util.control_utils import kill_hk_recorder
 from panoseti_grpc.telemetry.logger import get_logger
 from panoseti_grpc.util.error_handling import grpc_error_handler
@@ -82,6 +83,12 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     Implements the Daq Control gRPC service.
     Handles start daq, stop daq and status daq.
     """
+
+    # Set by the unified server after register_health().
+    health_toggle: HealthToggle | None = None
+
+    # Proto service name used for health transitions.
+    _HEALTH_SERVICE_NAME = "panoseti.daq_control.DaqControl"
 
     def __init__(
         self,
@@ -294,197 +301,213 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         self, request: daq_control_pb2.StartDaqRequest, context: grpc.aio.ServicerContext
     ) -> daq_control_pb2.StartDaqResponse:
         self.logger.info(f"Starting {self.hashpipe_name} instance...")
-        async with self._lock:
-            # 1. check if we already have HASHPIPE running
-            n, pids = self._get_pids_by_name(self.hashpipe_name)
-            if n > 0:
-                msg = f"Found {n} {self.hashpipe_name} instances running. pids: {pids}"
-                self.logger.warning(msg)
-                return daq_control_pb2.StartDaqResponse(success=False, message=msg)
-            # 2. validate request
-            try:
-                dreq = self._request_to_dict(request)
-                vreq = StartDaqModel(**dreq)
-            except ValidationError as e:
-                msg = f"Validation Error: {e}"
-                self.logger.error(msg)
-                return daq_control_pb2.StartDaqResponse(success=False, message=msg)
+        ht = self.health_toggle
+        if ht:
+            ht.not_serving(self._HEALTH_SERVICE_NAME)
+        try:
+            async with self._lock:
+                # 1. check if we already have HASHPIPE running
+                n, pids = self._get_pids_by_name(self.hashpipe_name)
+                if n > 0:
+                    msg = f"Found {n} {self.hashpipe_name} instances running. pids: {pids}"
+                    self.logger.warning(msg)
+                    return daq_control_pb2.StartDaqResponse(success=False, message=msg)
+                # 2. validate request
+                try:
+                    dreq = self._request_to_dict(request)
+                    vreq = StartDaqModel(**dreq)
+                except ValidationError as e:
+                    msg = f"Validation Error: {e}"
+                    self.logger.error(msg)
+                    return daq_control_pb2.StartDaqResponse(success=False, message=msg)
 
-            vreq_dict = vreq.model_dump(mode="json", exclude_unset=True)
-            # 3. get the parameters
-            datadir = vreq.data_dir
-            run_dir = vreq.run_dir
-            bindhost = vreq.bindhost
-            max_file_size_mb = vreq.max_file_size_mb
-            group_ph_frames = vreq.group_ph_frames
-            obs = vreq.obs
-            module_id = vreq.module_id
-            # get the full path for hashpipe.so, rundir and module.config
-            hashpipe_so = f"{datadir}/hashpipe.so"
-            baked_in_so = "/usr/local/lib/panoseti_hashpipe.so"
+                vreq_dict = vreq.model_dump(mode="json", exclude_unset=True)
+                # 3. get the parameters
+                datadir = vreq.data_dir
+                run_dir = vreq.run_dir
+                bindhost = vreq.bindhost
+                max_file_size_mb = vreq.max_file_size_mb
+                group_ph_frames = vreq.group_ph_frames
+                obs = vreq.obs
+                module_id = vreq.module_id
+                # get the full path for hashpipe.so, rundir and module.config
+                hashpipe_so = f"{datadir}/hashpipe.so"
+                baked_in_so = "/usr/local/lib/panoseti_hashpipe.so"
 
-            # Async check for file existence
-            hp_so_exists = await asyncio.to_thread(os.path.exists, hashpipe_so)
-            baked_so_exists = await asyncio.to_thread(os.path.exists, baked_in_so)
+                # Async check for file existence
+                hp_so_exists = await asyncio.to_thread(os.path.exists, hashpipe_so)
+                baked_so_exists = await asyncio.to_thread(os.path.exists, baked_in_so)
 
-            if not hp_so_exists and baked_so_exists:
-                hashpipe_so = baked_in_so
-                self.logger.info(f"Using baked-in Hashpipe plugin: {hashpipe_so}")
+                if not hp_so_exists and baked_so_exists:
+                    hashpipe_so = baked_in_so
+                    self.logger.info(f"Using baked-in Hashpipe plugin: {hashpipe_so}")
 
-            hostname = socket.gethostname()
-            configfn = f"{datadir}/module.config"
-            # create module.config
-            self._create_module_config(datadir, module_id)
-            # setup data directories
-            self._setup_data_directories(datadir, run_dir, module_id)
-            # create per-run loggers for hashpipe stdout and stderr
-            run_dir_path = str(Path(datadir) / run_dir)
-            hp_stdout_logger = get_logger(
-                f"hp_stdout_{hostname}",
-                log_dir=run_dir_path,
-                grpc_enabled=True,
-                console=False,
-            )
-            hp_stderr_logger = get_logger(
-                f"hp_stderr_{hostname}",
-                log_dir=run_dir_path,
-                grpc_enabled=True,
-                console=False,
-            )
-            # Force file creation by logging an initial message
-            hp_stdout_logger.info(f"--- {self.hashpipe_name.upper()} STDOUT LOG STARTED for run: {run_dir} ---")
-            hp_stderr_logger.info(f"--- {self.hashpipe_name.upper()} STDERR LOG STARTED for run: {run_dir} ---")
+                hostname = socket.gethostname()
+                configfn = f"{datadir}/module.config"
+                # create module.config
+                self._create_module_config(datadir, module_id)
+                # setup data directories
+                self._setup_data_directories(datadir, run_dir, module_id)
+                # create per-run loggers for hashpipe stdout and stderr
+                run_dir_path = str(Path(datadir) / run_dir)
+                hp_stdout_logger = get_logger(
+                    f"hp_stdout_{hostname}",
+                    log_dir=run_dir_path,
+                    grpc_enabled=True,
+                    console=False,
+                    per_host=False,
+                )
+                hp_stderr_logger = get_logger(
+                    f"hp_stderr_{hostname}",
+                    log_dir=run_dir_path,
+                    grpc_enabled=True,
+                    console=False,
+                    per_host=False,
+                )
+                # Force file creation by logging an initial message
+                hp_stdout_logger.info(f"--- {self.hashpipe_name.upper()} STDOUT LOG STARTED for run: {run_dir} ---")
+                hp_stderr_logger.info(f"--- {self.hashpipe_name.upper()} STDERR LOG STARTED for run: {run_dir} ---")
 
-            # create cmdline for start HASHPIPE
-            self.logger.info(f"Starting {self.hashpipe_name} for run_dir: {run_dir}")
+                # create cmdline for start HASHPIPE
+                self.logger.info(f"Starting {self.hashpipe_name} for run_dir: {run_dir}")
 
-            # Use python3 if it's a python script
-            hp_bin = [self.hashpipe_path]
-            if self.hashpipe_path.endswith(".py"):
-                hp_bin = ["python3", self.hashpipe_path]
+                # Use python3 if it's a python script
+                hp_bin = [self.hashpipe_path]
+                if self.hashpipe_path.endswith(".py"):
+                    hp_bin = ["python3", self.hashpipe_path]
 
-            cmd = [
-                *hp_bin,
-                "-p",
-                hashpipe_so,
-                "-I",
-                "0",
-                "-o",
-                f"BINDHOST={bindhost}",
-                "-o",
-                f"MAXFILESIZE={max_file_size_mb}",
-                "-o",
-                f"GROUPPHFRAMES={int(group_ph_frames)}",
-                "-o",
-                f"RUNDIR={run_dir}",
-                "-o",
-                f"CONFIG={configfn}",
-                "-o",
-                f"OBS={obs}",
-                "net_thread",
-                "compute_thread",
-                "output_thread",
-            ]
-            # log the cmd
-            cmdstr = " ".join(cmd)
-            self.logger.info("Create subprocess...")
-            self.logger.info(f"cmd: {cmdstr}")
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                cwd=datadir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                start_new_session=True,
-            )
-            self.logger.debug("Subprocess created...")
-            # monitor stdout/stderr in background — routes to run_dir log files and gRPC
-            self._monitor_task = asyncio.create_task(_monitor_hashpipe(proc, hp_stdout_logger, hp_stderr_logger))
-            # get the hashpipe pid
-            self.hashpipe_pid = proc.pid
+                cmd = [
+                    *hp_bin,
+                    "-p",
+                    hashpipe_so,
+                    "-I",
+                    "0",
+                    "-o",
+                    f"BINDHOST={bindhost}",
+                    "-o",
+                    f"MAXFILESIZE={max_file_size_mb}",
+                    "-o",
+                    f"GROUPPHFRAMES={int(group_ph_frames)}",
+                    "-o",
+                    f"RUNDIR={run_dir}",
+                    "-o",
+                    f"CONFIG={configfn}",
+                    "-o",
+                    f"OBS={obs}",
+                    "net_thread",
+                    "compute_thread",
+                    "output_thread",
+                ]
+                cmdstr = " ".join(cmd)
+                self.logger.info("Create subprocess...")
+                self.logger.info(f"cmd: {cmdstr}")
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    cwd=datadir,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    start_new_session=True,
+                )
+                self.logger.debug("Subprocess created...")
+                # monitor stdout/stderr in background — routes to run_dir log files and gRPC
+                self._monitor_task = asyncio.create_task(_monitor_hashpipe(proc, hp_stdout_logger, hp_stderr_logger))
+                # get the hashpipe pid
+                self.hashpipe_pid = proc.pid
 
-        WAIT_TIMEOUT = 5  # seconds
-        POLL_INTERVAL = 0.05  # seconds
-        success = False
-        for _ in range(int(WAIT_TIMEOUT / POLL_INTERVAL)):
-            success = is_hashpipe_running(self.hashpipe_pid, name=self.hashpipe_name)
-            if success:
-                break
-            await asyncio.sleep(POLL_INTERVAL)
-        self.logger.info(f"{self.hashpipe_name} instance status: {success}; PID: {self.hashpipe_pid}")
-        msg = f"{self.hashpipe_name} start failed. \n{vreq_dict=} \n{cmd=}" if not success else ""
-        return daq_control_pb2.StartDaqResponse(success=success, message=msg)
+            WAIT_TIMEOUT = 5  # seconds
+            POLL_INTERVAL = 0.05  # seconds
+            success = False
+            for _ in range(int(WAIT_TIMEOUT / POLL_INTERVAL)):
+                success = is_hashpipe_running(self.hashpipe_pid, name=self.hashpipe_name)
+                if success:
+                    break
+                await asyncio.sleep(POLL_INTERVAL)
+            self.logger.info(f"{self.hashpipe_name} instance status: {success}; PID: {self.hashpipe_pid}")
+            msg = f"{self.hashpipe_name} start failed. \n{vreq_dict=} \n{cmd=}" if not success else ""
+            return daq_control_pb2.StartDaqResponse(success=success, message=msg)
+        finally:
+            if ht:
+                ht.serving(self._HEALTH_SERVICE_NAME)
 
     @grpc_error_handler
     async def StopDaq(
         self, request: daq_control_pb2.StopDaqRequest, context: grpc.ServicerContext
     ) -> daq_control_pb2.StopDaqResponse:
         self.logger.info(f"Stop {self.hashpipe_name} instance(s)...")
+        ht = self.health_toggle
+        if ht:
+            ht.not_serving(self._HEALTH_SERVICE_NAME)
+        try:
+            # 1. Identify all hashpipe processes (Non-blocking)
+            n_initial, pids = await asyncio.to_thread(self._get_pids_by_name, self.hashpipe_name)
+            if n_initial == 0:
+                self.logger.info(f"No {self.hashpipe_name} instance is running.")
+                self.hashpipe_pid = -1
+                return daq_control_pb2.StopDaqResponse(success=True, message="No processes found.")
 
-        # 1. Identify all hashpipe processes (Non-blocking)
-        n_initial, pids = await asyncio.to_thread(self._get_pids_by_name, self.hashpipe_name)
-        if n_initial == 0:
-            self.logger.info(f"No {self.hashpipe_name} instance is running.")
-            self.hashpipe_pid = -1
-            return daq_control_pb2.StopDaqResponse(success=True, message="No processes found.")
+            self.logger.info(f"Found {n_initial} {self.hashpipe_name} process(es): {pids}")
 
-        self.logger.info(f"Found {n_initial} {self.hashpipe_name} process(es): {pids}")
-
-        # 2. Tier 1: SIGINT to all detected instances
-        for pid in pids:
-            try:
-                p = psutil.Process(pid)
-                p.send_signal(signal.SIGINT)
-            except psutil.NoSuchProcess:
-                continue
-
-        # 3. Graceful Wait Loop (up to 10s)
-        WAIT_TIMEOUT = 10.0
-        POLL_INTERVAL = 1.0
-        elapsed = 0.0
-        while elapsed < WAIT_TIMEOUT:
-            _, remaining_pids = await asyncio.to_thread(self._get_pids_by_name, self.hashpipe_name)
-            if not remaining_pids:
-                break
-            self.logger.info(
-                f"Waiting for {len(remaining_pids)} {self.hashpipe_name} "
-                f"process(es) to exit gracefully... ({int(elapsed)}s)"
-            )
-            await asyncio.sleep(POLL_INTERVAL)
-            elapsed += POLL_INTERVAL
-
-        # 4. Tier 2: Escalation to SIGKILL for survivors
-        _, final_pids = await asyncio.to_thread(self._get_pids_by_name, self.hashpipe_name)
-        killed_count = 0
-        if final_pids:
-            self.logger.warning(f"{len(final_pids)} process(es) refused SIGINT. Escalating to SIGKILL: {final_pids}")
-            for pid in final_pids:
+            # 2. Tier 1: SIGINT to all detected instances
+            for pid in pids:
                 try:
                     p = psutil.Process(pid)
-                    p.kill()
-                    killed_count += 1
+                    p.send_signal(signal.SIGINT)
                 except psutil.NoSuchProcess:
                     continue
-            # Brief wait for OS to reap
-            await asyncio.sleep(1.0)
 
-        # 5. Cleanup sidecars (HK recorder)
-        await asyncio.to_thread(kill_hk_recorder)
+            # 3. Graceful Wait Loop (up to 10s)
+            WAIT_TIMEOUT = 10.0
+            POLL_INTERVAL = 1.0
+            elapsed = 0.0
+            while elapsed < WAIT_TIMEOUT:
+                _, remaining_pids = await asyncio.to_thread(self._get_pids_by_name, self.hashpipe_name)
+                if not remaining_pids:
+                    break
+                self.logger.info(
+                    f"Waiting for {len(remaining_pids)} {self.hashpipe_name} "
+                    f"process(es) to exit gracefully... ({int(elapsed)}s)"
+                )
+                await asyncio.sleep(POLL_INTERVAL)
+                elapsed += POLL_INTERVAL
 
-        # 6. Final verification
-        n_remaining, _ = await asyncio.to_thread(self._get_pids_by_name, self.hashpipe_name)
-        self.hashpipe_pid = -1
+            # 4. Tier 2: Escalation to SIGKILL for survivors
+            _, final_pids = await asyncio.to_thread(self._get_pids_by_name, self.hashpipe_name)
+            killed_count = 0
+            if final_pids:
+                self.logger.warning(
+                    f"{len(final_pids)} process(es) refused SIGINT. Escalating to SIGKILL: {final_pids}"
+                )
+                for pid in final_pids:
+                    try:
+                        p = psutil.Process(pid)
+                        p.kill()
+                        killed_count += 1
+                    except psutil.NoSuchProcess:
+                        continue
+                # Brief wait for OS to reap
+                await asyncio.sleep(1.0)
 
-        success = n_remaining == 0
-        status_msg = (
-            f"Successfully stopped {n_initial} processes."
-            if success
-            else f"Failed to stop all processes. {n_remaining} still active."
-        )
-        if killed_count > 0:
-            status_msg += f" ({killed_count} required SIGKILL escalation)."
+            # 5. Cleanup sidecars (HK recorder)
+            await asyncio.to_thread(kill_hk_recorder)
 
-        self.logger.info(status_msg)
-        return daq_control_pb2.StopDaqResponse(success=success, message=status_msg)
+            # 6. Final verification
+            n_remaining, _ = await asyncio.to_thread(self._get_pids_by_name, self.hashpipe_name)
+            self.hashpipe_pid = -1
+
+            success = n_remaining == 0
+            status_msg = (
+                f"Successfully stopped {n_initial} processes."
+                if success
+                else f"Failed to stop all processes. {n_remaining} still active."
+            )
+            if killed_count > 0:
+                status_msg += f" ({killed_count} required SIGKILL escalation)."
+
+            self.logger.info(status_msg)
+            return daq_control_pb2.StopDaqResponse(success=success, message=status_msg)
+        finally:
+            if ht:
+                ht.serving(self._HEALTH_SERVICE_NAME)
 
     @grpc_error_handler
     async def StatusDaq(
@@ -1095,11 +1118,16 @@ async def serve(grpc_port: int = 50051, level: int = logging.DEBUG) -> None:
     # 2b. enable gRPC reflection for service discovery
     from grpc_reflection.v1alpha import reflection as grpc_reflection
 
-    SERVICE_NAMES = (
-        daq_control_pb2.DESCRIPTOR.services_by_name["DaqControl"].full_name,
-        grpc_reflection.SERVICE_NAME,
-    )
+    proto_service_name = daq_control_pb2.DESCRIPTOR.services_by_name["DaqControl"].full_name
+    SERVICE_NAMES = (proto_service_name, grpc_reflection.SERVICE_NAME)
     grpc_reflection.enable_server_reflection(SERVICE_NAMES, server)
+
+    try:
+        from panoseti_grpc.grpc_utils.health import register_health
+
+        servicer.health_toggle = register_health(server, [proto_service_name])
+    except ImportError:
+        logger.warning("grpcio-health-checking not installed; health probes disabled.")
 
     # 3. bind Ports
     server.add_insecure_port(f"[::]:{grpc_port}")

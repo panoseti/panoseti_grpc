@@ -62,12 +62,12 @@ flake8 src/ tests/ scripts/   # max-line-length 120, ignores E203, W503
 
 Unified server (recommended):
 ```bash
-panoseti-server                                   # all services (default config)
-panoseti-server --profile daq_node                # daq_data + daq_control
-panoseti-server --profile headnode                # telemetry only
-panoseti-server --config /path/to/server.toml    # custom config file
-panoseti-server --list-services                   # print registered services and exit
-python -m panoseti_grpc                           # equivalent to panoseti-server
+pseti-grpc server                                   # all services (default config)
+pseti-grpc server --profile daq_node                # daq_data + daq_control
+pseti-grpc server --profile headnode                # telemetry only
+pseti-grpc server --config /path/to/server.toml    # custom config file
+pseti-grpc server --list-services                   # print registered services and exit
+python -m panoseti_grpc                           # equivalent to pseti-grpc server
 ```
 
 Observatory CLI (`pseti-grpc`) for a running server:

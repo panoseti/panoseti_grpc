@@ -3,12 +3,12 @@ Console script entry point for the PANOSETI unified gRPC server.
 
 Usage
 -----
-panoseti-server                                   # bundled default config (all services)
-panoseti-server --profile daq_node                # DAQ node: daq_data + daq_control
-panoseti-server --profile headnode                # Headnode: telemetry only
-panoseti-server --config /path/to/server.toml     # custom config file
-panoseti-server --services telemetry,daq_data     # override enabled services
-panoseti-server --list-services                   # print registered services and exit
+pseti-grpc server                                   # bundled default config (all services)
+pseti-grpc server --profile daq_node                # DAQ node: daq_data + daq_control
+pseti-grpc server --profile headnode                # Headnode: telemetry only
+pseti-grpc server --config /path/to/server.toml     # custom config file
+pseti-grpc server --services telemetry,daq_data     # override enabled services
+pseti-grpc server --list-services                   # print registered services and exit
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from pathlib import Path
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="panoseti-server",
+        prog="pseti-grpc server",
         description="PANOSETI Unified gRPC Server — hosts multiple services on one port.",
     )
     parser.add_argument(

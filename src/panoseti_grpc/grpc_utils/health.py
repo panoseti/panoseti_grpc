@@ -7,6 +7,8 @@ checks can still import grpc_utils without the extra package installed.
 
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, cast
 
 import grpc
@@ -16,12 +18,58 @@ if TYPE_CHECKING:
     pass
 
 
-def register_health(server: grpc.aio.Server, service_names: list[str]) -> None:
-    """Register a HealthServicer on *server* and mark all services SERVING.
+class HealthToggle:
+    """Per-service NOT_SERVING / SERVING toggle returned by :func:`register_health`.
+
+    Servicers hold an optional reference to this object and call
+    :meth:`not_serving` / :meth:`serving` (or use :meth:`reconfiguring` as a
+    context manager) to signal transient unavailability during disruptive
+    operations such as writer-lock acquisition or Hashpipe restart.
+    """
+
+    def __init__(self, servicer: object, service_names: list[str]) -> None:
+        self._servicer = servicer
+        self._service_names = service_names
+
+    def not_serving(self, service: str) -> None:
+        """Mark *service* as NOT_SERVING."""
+        try:
+            from grpc_health.v1 import health_pb2
+
+            self._servicer.set(service, health_pb2.HealthCheckResponse.NOT_SERVING)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+    def serving(self, service: str) -> None:
+        """Mark *service* as SERVING."""
+        try:
+            from grpc_health.v1 import health_pb2
+
+            self._servicer.set(service, health_pb2.HealthCheckResponse.SERVING)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+    @contextlib.contextmanager
+    def reconfiguring(self, service: str) -> Iterator[None]:
+        """Context manager: NOT_SERVING for the duration, restored to SERVING on exit."""
+        self.not_serving(service)
+        try:
+            yield
+        finally:
+            self.serving(service)
+
+
+def register_health(server: grpc.aio.Server, service_names: list[str]) -> HealthToggle:
+    """Register a HealthServicer on *server*, mark all services SERVING, and
+    return a :class:`HealthToggle` for per-service liveness transitions.
 
     Args:
         server: The running grpc.aio.Server instance.
         service_names: Proto service names to register (e.g. "panoseti.daq_control").
+
+    Returns:
+        A :class:`HealthToggle` that servicers can use to flip NOT_SERVING /
+        SERVING during disruptive reconfiguration windows.
 
     Raises:
         ImportError: If grpcio-health-checking is not installed.
@@ -40,6 +88,7 @@ def register_health(server: grpc.aio.Server, service_names: list[str]) -> None:
     for name in service_names:
         servicer.set(name, health_pb2.HealthCheckResponse.SERVING)
     servicer.set("", health_pb2.HealthCheckResponse.SERVING)
+    return HealthToggle(servicer, service_names)
 
 
 class HealthClient:

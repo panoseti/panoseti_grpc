@@ -2,7 +2,7 @@
 """
 pseti-grpc — Extensible command-line interface for a running PSETI gRPC server.
 
-Connects to the unified server (panoseti-server) and issues RPCs across all
+Connects to the unified server (pseti-grpc server) and issues RPCs across all
 registered services. Designed for observatory operators, developers, and CI
 scripts that need to verify service health or trigger one-off operations.
 """

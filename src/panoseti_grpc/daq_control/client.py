@@ -10,6 +10,8 @@ from pydantic import IPvAnyAddress
 
 from panoseti_grpc.generated import daq_control_pb2, daq_control_pb2_grpc
 from panoseti_grpc.grpc_utils import grpc_call
+from panoseti_grpc.grpc_utils.channel import AsyncChannelManager, keepalive_options
+from panoseti_grpc.grpc_utils.retries import build_retry_service_config
 
 from .client_models import (
     CleanupDataParameters,
@@ -37,19 +39,19 @@ class AsyncDaqControlClient:
 
     def __init__(self, host: str | IPvAnyAddress = "localhost", port: int = 50051) -> None:
         self.target = f"{host}:{port}"
-        self._channel: grpc.aio.Channel | None = None
+        _options = [*keepalive_options(), ("grpc.service_config", build_retry_service_config())]
+        self._channel_mgr = AsyncChannelManager(str(host), port, options=_options)
         self._stub: daq_control_pb2_grpc.DaqControlStub | None = None
 
     async def __aenter__(self) -> AsyncDaqControlClient:
         """Initialize the async gRPC channel."""
-        self._channel = grpc.aio.insecure_channel(self.target)
-        self._stub = daq_control_pb2_grpc.DaqControlStub(self._channel)
+        await self._channel_mgr.__aenter__()
+        self._stub = daq_control_pb2_grpc.DaqControlStub(self._channel_mgr.channel)
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Close the async gRPC channel."""
-        if self._channel:
-            await self._channel.close()
+        await self._channel_mgr.__aexit__(exc_type, exc_val, exc_tb)
 
     @property
     def stub(self) -> daq_control_pb2_grpc.DaqControlStub:

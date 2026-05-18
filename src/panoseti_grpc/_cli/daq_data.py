@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import warnings
 from typing import Annotated
 
 import grpc
@@ -28,7 +29,13 @@ def _make_channel() -> grpc.Channel:
 
 @app.command(name="ping")
 def daq_data_ping() -> None:
-    """Ping the DaqData service and report latency."""
+    """Ping the DaqData service and report latency. (Deprecated — use 'pseti-grpc stat' instead.)"""
+    warnings.warn(
+        "pseti-grpc daq-data ping is deprecated; use 'pseti-grpc stat' which probes all services "
+        "via the standard gRPC health protocol.",
+        DeprecationWarning,
+        stacklevel=1,
+    )
     target = f"{state.host}:{state.port}"
     try:
         with _make_channel() as channel:

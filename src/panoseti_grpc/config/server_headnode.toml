@@ -4,8 +4,8 @@
 # for centralized log ingestion.
 #
 # Usage:
-#   panoseti-server --profile headnode
-#   panoseti-server --config /path/to/server_headnode.toml
+#   pseti-grpc server --profile headnode
+#   pseti-grpc server --config /path/to/server_headnode.toml
 # ============================================================
 
 [server]

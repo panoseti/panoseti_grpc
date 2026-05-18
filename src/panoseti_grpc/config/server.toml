@@ -4,8 +4,8 @@
 # development / integration testing.
 #
 # Run with:
-#   panoseti-server
-#   panoseti-server --config /path/to/this/file
+#   pseti-grpc server
+#   pseti-grpc server --config /path/to/this/file
 #   python -m panoseti_grpc
 #
 # For production deployments use the profile configs:

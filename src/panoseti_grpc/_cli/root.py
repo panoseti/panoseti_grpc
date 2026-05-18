@@ -5,7 +5,6 @@ from typing import Annotated
 
 import grpc
 import typer
-from google.protobuf.empty_pb2 import Empty
 from grpc_reflection.v1alpha import reflection_pb2, reflection_pb2_grpc
 from rich.console import Console
 from rich.table import Table
@@ -13,8 +12,8 @@ from rich.table import Table
 from panoseti_grpc.generated import (
     daq_control_pb2,
     daq_control_pb2_grpc,
-    daq_data_pb2_grpc,
 )
+from panoseti_grpc.grpc_utils.health import HealthClient
 from panoseti_grpc.telemetry.client import TelemetryClient
 from panoseti_grpc.telemetry.logger import get_logger
 
@@ -70,18 +69,22 @@ def stat(
         if not is_ok:
             all_ok = False
 
-    # --- DaqData: Ping RPC ---
+    # --- DaqData: health check ---
     try:
-        with _make_channel() as ch:
-            daq_data_stub = daq_data_pb2_grpc.DaqDataStub(ch)
-            daq_data_stub.Ping(Empty(), timeout=state.timeout, wait_for_ready=False)
-        add_result("daq_data", "[green]✓ OK[/green]", "Ping responded", True)
+        hc = HealthClient(host=host, port=port)
+        serving = hc.check("daqdata.DaqData", timeout=state.timeout)
+        if serving:
+            add_result("daq_data", "[green]✓ OK[/green]", "Health: SERVING", True)
+        else:
+            add_result("daq_data", "[red]✗ FAIL[/red]", "Health: NOT_SERVING", False)
     except grpc.RpcError as e:
         code = e.code()
         if code == grpc.StatusCode.UNIMPLEMENTED:
             add_result("daq_data", "[yellow]— disabled[/yellow]", "UNIMPLEMENTED (service not hosted)", True)
         else:
             add_result("daq_data", "[red]✗ FAIL[/red]", f"{code.name}: {e.details()}", False)
+    except Exception as e:
+        add_result("daq_data", "[red]✗ FAIL[/red]", str(e), False)
 
     # --- DaqControl: StatusDaq RPC ---
     try:

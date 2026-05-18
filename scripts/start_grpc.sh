@@ -1,13 +1,8 @@
 #!/bin/bash
+# Launches the unified pseti-grpc server.
+# Profile is selected by PSETI_GRPC_PROFILE (default: daq_node).
+# Run as the user whose Python environment has panoseti_grpc installed.
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR" || exit 1
+PROFILE="${PSETI_GRPC_PROFILE:-daq_node}"
 
-source ~/miniconda3/etc/profile.d/conda.sh
-
-conda activate grpc-py39 || {
-    echo "Failed to activate conda environment: grpc-py39"
-    exit 1
-}
-
-python -m daq_data.server > daq_server.log 2>&1 
+exec pseti-grpc server --profile "$PROFILE"

@@ -16,6 +16,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from rich.logging import RichHandler
 
 from panoseti_grpc.generated import telemetry_pb2, telemetry_pb2_grpc
+from panoseti_grpc.grpc_utils import grpc_call
 from panoseti_grpc.telemetry.resources import get_sw_info
 
 # Default to "headnode" (Hosts file or DNS name)
@@ -96,13 +97,11 @@ class TelemetryClient:
         ts.GetCurrentTime()
         return ts
 
+    @grpc_call
     def _send(self, request: telemetry_pb2.StatusRequest) -> None:
-        try:
-            resp = self.stub.ReportStatus(request)
-            if not resp.success:
-                raise ValueError(f"Server rejected data: {resp.message}")
-        except grpc.RpcError as e:
-            raise ConnectionError(f"gRPC failed: {e.details()}") from e
+        resp = self.stub.ReportStatus(request)
+        if not resp.success:
+            raise ValueError(f"Server rejected data: {resp.message}")
 
     def log_flexible(self, device_type: str, device_id: str, data: dict[str, int | float | str | bool | None]) -> None:
         """
