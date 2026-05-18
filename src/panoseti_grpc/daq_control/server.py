@@ -123,22 +123,22 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 pid = proc.info["pid"]
                 if pid == my_pid:
                     continue
-                
+
                 p_name = proc.info["name"] or ""
                 p_cmdline = proc.info["cmdline"] or []
-                
+
                 # 1. Direct executable name match (binary)
                 if name.lower() == p_name.lower():
                     pids.append(pid)
                     continue
-                
+
                 # 2. Command line match (script or shebang)
                 # We match if 'name' is exactly any of the arguments (ignoring paths)
                 if any(name.lower() == arg.split("/")[-1].lower() for arg in p_cmdline):
                     pids.append(pid)
                     continue
 
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
+            except psutil.NoSuchProcess, psutil.AccessDenied:
                 continue
         return len(pids), pids
 
@@ -168,12 +168,12 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             mod_dir = Path(datadir) / f"module_{m}"
             run_dir = mod_dir / rundir
             self.logger.info(f"Setup rundir for data: {run_dir}")
-            
+
             # Ensure parent module_X directory exists and is accessible
             mod_dir.mkdir(parents=True, exist_ok=True)
             with contextlib.suppress(OSError):
                 os.chmod(mod_dir, 0o777)
-                
+
             # Create and chmod the actual run directory
             run_dir.mkdir(parents=True, exist_ok=True)
             with contextlib.suppress(OSError):
@@ -357,7 +357,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
             # create cmdline for start HASHPIPE
             self.logger.info(f"Starting {self.hashpipe_name} for run_dir: {run_dir}")
-            
+
             # Use python3 if it's a python script
             hp_bin = [self.hashpipe_path]
             if self.hashpipe_path.endswith(".py"):
@@ -567,7 +567,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
         try:
             parsed_pid = int(self.hashpipe_pid)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             if self.hashpipe_pid != -1:
                 uncertain = True
 
@@ -764,7 +764,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 resolved_root = await root_run_dir_async.resolve()
                 if await resolved_root.is_dir():
                     break
-            except (OSError, FileNotFoundError):
+            except OSError, FileNotFoundError:
                 pass
 
             if attempt < 9:

@@ -13,8 +13,7 @@ def is_hashpipe_running(pid: int, name: str = "hashpipe") -> bool:
             # to support shebang scripts and various execution paths.
             p_name = p.name() or ""
             p_cmdline = p.cmdline() or []
-            return (name.lower() in p_name.lower() or 
-                    any(name.lower() in arg.lower() for arg in p_cmdline))
+            return name.lower() in p_name.lower() or any(name.lower() in arg.lower() for arg in p_cmdline)
         except Exception:
             return False
     return False

@@ -340,7 +340,7 @@ def main() -> None:
         raw_cfg = load_package_json(daq_data_anchor_package, CFG_DIR / "daq_data_server_config.json")
         server_config = DaqDataServerConfig.model_validate(raw_cfg)
         asyncio.run(serve(server_config))
-    except (KeyboardInterrupt, asyncio.CancelledError):
+    except KeyboardInterrupt, asyncio.CancelledError:
         print("\nServer startup interrupted.")
     finally:
         print("Exiting server process.")

@@ -227,7 +227,7 @@ class UdsDataSource(BaseDataSource):
                 f"Read timeout on {self.socket_path} (>{self.read_timeout}s idle). "
                 "Closing connection; Hashpipe will reconnect on next frame."
             )
-        except (asyncio.IncompleteReadError, ConnectionResetError):
+        except asyncio.IncompleteReadError, ConnectionResetError:
             self.logger.info(f"Client {client_info} disconnected from {self.socket_path}.")
         except asyncio.CancelledError:
             self.logger.info(f"Client handler for {self.socket_path} was cancelled.")

@@ -156,19 +156,19 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
         try:
             # 1. Validate (Pydantic)
             validated = LogSchema(
-                    host=request.host,
-                    service_name=request.service_name,
-                    timestamp=request.timestamp.seconds + request.timestamp.nanos / 1e9,
-                    severity=LogSeverity(request.severity) if request.severity != 0 else LogSeverity.INFO,
-                    file_path=request.file_path,
-                    line_number=request.line_number,
-                    function_name=request.function_name,
-                    process_id=request.process_id if request.process_id != 0 else None,
-                    thread_name=request.thread_name,
-                    git_commit=request.git_commit,
-                    git_branch=request.git_branch,
-                    payload_json=request.payload_json,
-                )
+                host=request.host,
+                service_name=request.service_name,
+                timestamp=request.timestamp.seconds + request.timestamp.nanos / 1e9,
+                severity=LogSeverity(request.severity) if request.severity != 0 else LogSeverity.INFO,
+                file_path=request.file_path,
+                line_number=request.line_number,
+                function_name=request.function_name,
+                process_id=request.process_id if request.process_id != 0 else None,
+                thread_name=request.thread_name,
+                git_commit=request.git_commit,
+                git_branch=request.git_branch,
+                payload_json=request.payload_json,
+            )
             # 3. Serialize & Queue (Async)
             # model_dump_json is faster than json.dumps(model_dump())
             json_str = validated.model_dump_json()

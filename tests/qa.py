@@ -14,7 +14,7 @@ import typer
 
 try:
     from .grpc_qa_utils import QA_TOML_PATH, TestRunner
-except (ImportError, ValueError):
+except ImportError, ValueError:
     from grpc_qa_utils import QA_TOML_PATH, TestRunner
 
 from panoseti_grpc.util.cli import display_tree_callback
