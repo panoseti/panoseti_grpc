@@ -81,7 +81,13 @@ class AioDaqDataClient:
 
     @grpc_call
     async def init_hp_io(self, params: dict[str, Any], timeout: float = 10.0) -> bool:  # noqa: ASYNC109
-        """Initialize or reconfigure the HpIoManager on the server.
+        """Reconfigure the HpIoManager on the server (optional with auto-init).
+
+        Edge servers with ``init_from_default = true`` in their profile auto-start
+        real UDS acquisition at startup, so callers no longer need to call this as
+        a prerequisite before streaming.  Use it only when you need to override
+        the running configuration (e.g. change ``data_dir``, switch to simulation,
+        or force a restart mid-run).
 
         Args:
             params: Dict matching ``InitHpIoParameters`` fields
@@ -214,7 +220,10 @@ class DaqDataClient:
 
     @grpc_call
     def init_hp_io(self, params: dict[str, Any], timeout: float = 10.0) -> bool:
-        """Initialize or reconfigure the HpIoManager on the server."""
+        """Reconfigure the HpIoManager on the server (optional with auto-init).
+
+        See :meth:`AioDaqDataClient.init_hp_io` for full documentation.
+        """
         v = InitHpIoParameters(**params)
         req = InitHpIoRequest(
             data_dir=v.data_dir,

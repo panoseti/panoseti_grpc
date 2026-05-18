@@ -1,0 +1,51 @@
+# ============================================================
+# PANOSETI Unified gRPC Server — Gateway Profile
+# Runs telemetry + daq_data (gateway/aggregator role).
+#
+# The gateway opens server-to-server connections to each DAQ
+# edge node listed in daq_config_path and fans their streams
+# in to a single consumer endpoint.  Downstream clients connect
+# to the headnode only; M×N connections collapse to M+N.
+#
+# Usage:
+#   pseti-grpc server --profile gateway
+#   pseti-grpc server --config /path/to/server_gateway.toml
+#
+# Required: set daq_config_path to the site's daq_config.json.
+# ============================================================
+
+[server]
+port = 50051
+shutdown_grace_period = 5.0
+log_dir = "/var/log/panoseti"
+grpc_logging = true
+
+[server.services]
+telemetry   = true
+daq_data    = true
+daq_control = false
+ublox_control = false
+
+# -------------------------------------------------------
+# Telemetry service settings
+# -------------------------------------------------------
+[telemetry]
+redis_host = "localhost"
+redis_port = 6379
+redis_db   = 0
+shutdown_grace_period = 5.0
+log_level  = "INFO"
+
+# -------------------------------------------------------
+# DAQ Data service — gateway role
+# -------------------------------------------------------
+[daq_data]
+role = "gateway"
+
+[daq_data.gateway]
+# Required: path to the daq_config.json that lists all edge DAQ nodes.
+daq_config_path     = ""
+# Optional: path to network_config.json for port-forwarding overrides.
+network_config_path = ""
+# gRPC port on each edge node (matches the daq_node profile port).
+edge_port = 50051

@@ -28,8 +28,11 @@ ublox_control = false
 # DAQ Data service settings (production — real hardware)
 # -------------------------------------------------------
 [daq_data]
-init_from_default       = false
-default_hp_io_config_file = "hp_io_config_lick.json"
+# Auto-init: server starts real UDS acquisition on startup without waiting for an InitHpIo RPC.
+# Override default_hp_io_config_file with a site-specific config (e.g. hp_io_config_palomar.json)
+# if a non-default data_dir is needed.
+init_from_default       = true
+default_hp_io_config_file = "hp_io_config_default.json"
 unix_domain_socket      = "unix:///tmp/daq_data.sock"
 max_concurrent_rpcs     = 25
 max_read_queue_size     = 100

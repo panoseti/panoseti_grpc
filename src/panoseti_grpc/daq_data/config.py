@@ -8,6 +8,8 @@ has a bad value, rather than a KeyError buried in a call stack mid-observation.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -68,8 +70,23 @@ class SimulateDaqConfig(BaseModel):
     strategies: dict[str, UdsSimStrategyConfig]
 
 
+class DaqDataGatewayConfig(BaseModel):
+    """Settings used when ``DaqDataServerConfig.role == "gateway"``."""
+
+    daq_config_path: str | None = Field(
+        None, description="Path to daq_config.json listing edge DAQ nodes."
+    )
+    network_config_path: str | None = Field(
+        None, description="Optional path to network_config.json for port forwarding."
+    )
+    edge_port: int = Field(50051, ge=1, le=65535, description="gRPC port on each edge node.")
+
+
 class DaqDataServerConfig(BaseModel):
     """Top-level server configuration. Loaded from daq_data_server_config.json at startup."""
+
+    role: Literal["edge", "gateway"] = "edge"
+    gateway: DaqDataGatewayConfig = Field(default_factory=DaqDataGatewayConfig)
 
     init_from_default: bool = False
     default_hp_io_config_file: str = "hp_io_config_simulate.json"

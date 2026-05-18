@@ -204,6 +204,7 @@ class PanosetiServerConfig(BaseModel):
             "default": "server.toml",
             "daq_node": "server_daq_node.toml",
             "headnode": "server_headnode.toml",
+            "gateway": "server_gateway.toml",
         }
         if profile not in filenames:
             raise ValueError(f"Unknown profile '{profile}'. Valid: {list(filenames)}")
@@ -241,10 +242,15 @@ async def _make_telemetry_servicer(
 async def _make_daq_data_servicer(
     cfg: DaqDataServerConfig, shutdown_event: asyncio.Event
 ) -> tuple[Any, list[Coroutine[Any, Any, None]]]:
+    if cfg.role == "gateway":
+        from panoseti_grpc.daq_data.aggregator import DaqDataGatewayServicer
+
+        servicer = DaqDataGatewayServicer(cfg)
+        return servicer, [servicer.startup()]
+
     from panoseti_grpc.daq_data.server import DaqDataServicer
 
     servicer = DaqDataServicer(cfg)
-    # Start initial task in the background
     return servicer, [servicer.start_initial_task()]
 
 

@@ -1,0 +1,8 @@
+{
+  "data_dir": "/data",
+  "update_interval_seconds": 0.1,
+  "force": true,
+  "simulate_daq": false,
+  "module_ids": [],
+  "comments": "Generic auto-init config for a real DAQ node (UDS path, no simulation). Override default_hp_io_config_file in server_daq_node.toml to use a site-specific config (e.g. hp_io_config_palomar.json)."
+}

@@ -10,7 +10,6 @@ Requires following to function correctly:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import signal
@@ -72,10 +71,14 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         if self.server_cfg.init_from_default:
             self.logger.info("Creating initial hp_io task from default config.")
             try:
-                import anyio
-
-                async with await anyio.open_file(CFG_DIR / self.server_cfg.default_hp_io_config_file) as f:
-                    hp_io_cfg = json.loads(await f.read())
+                hp_io_cfg = await asyncio.to_thread(
+                    load_package_json,
+                    daq_data_anchor_package,
+                    CFG_DIR / self.server_cfg.default_hp_io_config_file,
+                )
+                sim = hp_io_cfg.get("simulate_daq")
+                d = hp_io_cfg.get("data_dir")
+                self.logger.info(f"Auto-init config: simulate={sim}, dir={d}")
                 await self.task_manager.start(hp_io_cfg)
             except Exception as e:
                 self.logger.error(f"Failed to start initial hp_io task: {e}", exc_info=True)
