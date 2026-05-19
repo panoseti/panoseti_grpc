@@ -69,7 +69,7 @@ def test_file_logger_creation_and_writing(tmp_path: Any) -> None:
     log_dir = tmp_path / "logs"
     service_name = "FileTest"
 
-    logger = get_logger(service_name, log_dir=str(log_dir), grpc_enabled=False, console=False)
+    logger = get_logger(service_name, log_dir=str(log_dir), grpc_enabled=False, console=False, per_host=False)
 
     logger.info("Hello File System")
 
@@ -254,6 +254,7 @@ async def test_logger_triple_dispatch(tmp_path, capsys):
         log_dir=str(tmp_path),  # Temp directory provided by pytest
         grpc_enabled=True,
         console=True,
+        per_host=False,
     )
 
     # 3. Create a subprocess that emits a specific traceable sequence

@@ -21,7 +21,7 @@ def test_filesystem_writing(tmp_path: Any) -> None:
     service_name = "FS_TEST"
     unique_name = f"{service_name}_{int(time.time())}"
 
-    logger = get_logger(unique_name, log_dir=str(log_dir), grpc_enabled=False, console=False)
+    logger = get_logger(unique_name, log_dir=str(log_dir), grpc_enabled=False, console=False, per_host=False)
 
     logger.info("FS_TEST_MESSAGE")
 
@@ -51,7 +51,7 @@ def test_filesystem_rotation(tmp_path: Any) -> None:
     service_name = "ROTATE_TEST"
     unique_name = f"{service_name}_{int(time.time())}"
 
-    logger = get_logger(unique_name, log_dir=str(log_dir), grpc_enabled=False)
+    logger = get_logger(unique_name, log_dir=str(log_dir), grpc_enabled=False, per_host=False)
 
     # Monkey-patch limits for test
     file_handler = next(h for h in logger.handlers if isinstance(h, logging.handlers.RotatingFileHandler))
@@ -79,7 +79,7 @@ def test_log_level_filtering(tmp_path: Any) -> None:
     service_name = "FILTER_TEST"
 
     # Set level to INFO
-    logger = get_logger(service_name, log_dir=str(log_dir), level="info", grpc_enabled=False)
+    logger = get_logger(service_name, log_dir=str(log_dir), level="info", grpc_enabled=False, per_host=False)
 
     logger.debug("THIS_SHOULD_BE_IGNORED")
     logger.info("THIS_SHOULD_BE_SEEN")
@@ -111,6 +111,7 @@ def test_dual_destination_logging(tmp_path: Any, redis_client: Any, grpc_client:
         log_dir=str(log_dir),
         grpc_enabled=True,  # Remote
         console=False,
+        per_host=False,
     )
 
     msg_body = f"Dual-Test-{time.time()}"

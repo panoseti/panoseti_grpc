@@ -36,7 +36,7 @@ def test_triple_destination_logging(tmp_path: Any, capsys: Any, redis_client: An
     log_dir = tmp_path / "omni_logs"
     log_dir.mkdir()
 
-    logger = get_logger(service_name, log_dir=str(log_dir), console=True, grpc_enabled=True, level=logging.INFO)
+    logger = get_logger(service_name, log_dir=str(log_dir), console=True, grpc_enabled=True, level=logging.INFO, per_host=False)
 
     timestamp = str(time.time())
     unique_msg = f"Triple-Check-{timestamp}"
@@ -141,18 +141,18 @@ def test_logger_reconfiguration(tmp_path: Any, start_grpc_server: Any) -> None:
     service = "RECONFIG_TEST"
 
     # 1. Init as DEBUG
-    logger1 = get_logger(service, level="DEBUG", log_dir=str(log_dir), grpc_enabled=True)
+    logger1 = get_logger(service, level="DEBUG", log_dir=str(log_dir), grpc_enabled=True, per_host=False)
     logger1.debug("DebugMessage")
 
     # 2. Re-init as INFO
     # Note: get_logger(reset=True) is the default, so this CLEARS old handlers automatically.
-    logger2 = get_logger(service, level="INFO", log_dir=str(log_dir), grpc_enabled=True)
+    logger2 = get_logger(service, level="INFO", log_dir=str(log_dir), grpc_enabled=True, per_host=False)
 
     logger2.debug("ShouldNotAppear")
     logger2.info("InfoMessage")
 
     # 3. Re-init as CRITICAL (Highest filtering)
-    logger3 = get_logger(service, level="CRITICAL", log_dir=str(log_dir), grpc_enabled=True)
+    logger3 = get_logger(service, level="CRITICAL", log_dir=str(log_dir), grpc_enabled=True, per_host=False)
 
     logger3.warning("WarningShouldNotAppear")
     logger3.error("ErrorShouldNotAppear")
