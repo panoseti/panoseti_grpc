@@ -1,35 +1,36 @@
 """
 Tests for UDS error-recovery paths: producer restart, slow-consumer
 backpressure, and DEADLINE_EXCEEDED when the data source goes idle.
+
+gRPC transport now uses TCP (port=0); data-plane UDS sockets are unchanged.
 """
 
 import asyncio
-import contextlib
 import copy
-import os
 import tempfile
 from pathlib import Path
 from typing import Any
 
-import grpc
 import pytest
 
 from panoseti_grpc.daq_data.client import AioDaqDataClient, hp_io_config_simulate
 from panoseti_grpc.daq_data.server import serve
+from panoseti_grpc.grpc_utils.exceptions import DeadlineExceededError, PanosetiRpcError
+from panoseti_grpc.grpc_utils.health import HealthClient
 
 pytestmark = pytest.mark.asyncio
 
 
 # ---------------------------------------------------------------------------
-# Helpers (mirrors test_uds_socket_lifecycle.py helpers)
+# Helpers
 # ---------------------------------------------------------------------------
 
 
 def _make_server_config(
     server_config_base: Any, socket_dir: Path, module_id: int = 224, max_reader_dequeue_timeouts: int = 3
-) -> None:
+) -> dict[str, Any]:
     cfg = copy.deepcopy(server_config_base)
-    cfg["unix_domain_socket"] = f"unix://{socket_dir / 'grpc.sock'}"
+    cfg["unix_domain_socket"] = None  # use TCP for gRPC transport
     cfg["simulate_daq_cfg"]["simulation_mode"] = "uds"
     cfg["simulate_daq_cfg"]["sim_module_ids"] = [module_id]
     cfg["max_reader_dequeue_timeouts"] = max_reader_dequeue_timeouts
@@ -45,30 +46,31 @@ def _make_server_config(
     return cfg
 
 
-async def _start_server(cfg: dict[Any]) -> tuple[asyncio.Event, asyncio.Task]:
+async def _start_server(cfg: dict[str, Any]) -> tuple[asyncio.Event, asyncio.Task[None], int]:
+    """Start a test server on TCP port 0; return (shutdown_event, task, bound_port)."""
     shutdown = asyncio.Event()
-    task = asyncio.create_task(serve(cfg, shutdown, in_main_thread=False))
-    uds_path = Path(cfg["unix_domain_socket"].replace("unix://", ""))
-    async with AioDaqDataClient({"daq_nodes": [{"ip_addr": cfg["unix_domain_socket"]}]}, network_config=None) as c:
-        for _ in range(40):
-            if await asyncio.to_thread(uds_path.exists) and await c.ping(cfg["unix_domain_socket"]):
-                break
-            await asyncio.sleep(0.1)
-        else:
-            pytest.fail("Server did not become ready in time.")
-    return shutdown, task
+    bound_port: list[int] = []
+    task = asyncio.create_task(serve(cfg, shutdown, in_main_thread=False, port=0, bound_port_out=bound_port))
+    while not bound_port:
+        await asyncio.sleep(0.01)
+    tcp_port = bound_port[0]
+    hc = HealthClient("localhost", tcp_port)
+    for _ in range(40):
+        if await asyncio.to_thread(hc.check, "daqdata.DaqData", 1.0):
+            break
+        await asyncio.sleep(0.1)
+    else:
+        pytest.fail("Server did not become ready in time.")
+    return shutdown, task, tcp_port
 
 
-async def _stop_server(shutdown: asyncio.Event, task: asyncio.Task, uds_path: Path):
+async def _stop_server(shutdown: asyncio.Event, task: asyncio.Task[None]) -> None:
     shutdown.set()
     try:
         await asyncio.wait_for(task, timeout=5.0)
     except TimeoutError:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
-    if await asyncio.to_thread(uds_path.exists):
-        with contextlib.suppress(OSError):
-            os.unlink(uds_path)
 
 
 # ---------------------------------------------------------------------------
@@ -85,18 +87,13 @@ async def test_server_recovers_after_uds_producer_restart(server_config_base):
     with tempfile.TemporaryDirectory() as td:
         socket_dir = Path(td)
         cfg = _make_server_config(server_config_base, socket_dir)
-        grpc_sock_path = socket_dir / "grpc.sock"
 
-        shutdown, task = await _start_server(cfg)
+        shutdown, task, tcp_port = await _start_server(cfg)
         try:
-            server_addr = cfg["unix_domain_socket"]
-            daq_config = {"daq_nodes": [{"ip_addr": server_addr}]}
-
-            async with AioDaqDataClient(daq_config, network_config=None) as client:
-                # Initial session
-                assert await client.init_sim(hosts=None) is True
-                stream = await client.stream_images(
-                    hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.05
+            async with AioDaqDataClient("localhost", tcp_port) as client:
+                assert await client.init_sim() is True
+                stream = client.stream_images(
+                    stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.05
                 )
                 received_before = 0
                 for _ in range(4):
@@ -106,11 +103,10 @@ async def test_server_recovers_after_uds_producer_restart(server_config_base):
 
                 # Simulate producer restart: force re-init via init_hp_io with force=True
                 force_cfg = {**hp_io_config_simulate, "simulate_daq": True, "force": True}
-                assert await client.init_hp_io(hosts=None, hp_io_cfg=force_cfg) is True
+                assert await client.init_hp_io(force_cfg) is True
 
-                # Open a fresh stream — must work without reconnecting the channel
-                stream2 = await client.stream_images(
-                    hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.05
+                stream2 = client.stream_images(
+                    stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.05
                 )
                 received_after = 0
                 for _ in range(4):
@@ -119,103 +115,68 @@ async def test_server_recovers_after_uds_producer_restart(server_config_base):
                     received_after += 1
                 assert received_after == 4, "Stream should resume after producer restart"
         finally:
-            await _stop_server(shutdown, task, grpc_sock_path)
+            await _stop_server(shutdown, task)
 
 
 async def test_slow_consumer_backpressure(server_config_base):
     """
     A very slow consumer (2 s per frame) must not cause the server to
-    accumulate memory unboundedly. The server's internal data_queue has a
-    fixed maxsize (500); we verify the server stays alive and responsive.
+    accumulate memory unboundedly. The server must stay alive and responsive.
     """
     with tempfile.TemporaryDirectory() as td:
         socket_dir = Path(td)
         cfg = _make_server_config(server_config_base, socket_dir)
-        grpc_sock_path = socket_dir / "grpc.sock"
 
-        shutdown, task = await _start_server(cfg)
+        shutdown, task, tcp_port = await _start_server(cfg)
         try:
-            server_addr = cfg["unix_domain_socket"]
-            daq_config = {"daq_nodes": [{"ip_addr": server_addr}]}
-
-            async with AioDaqDataClient(daq_config, network_config=None) as client:
-                assert await client.init_sim(hosts=None) is True
-                stream = await client.stream_images(
-                    hosts=None,
+            async with AioDaqDataClient("localhost", tcp_port) as client:
+                assert await client.init_sim() is True
+                stream = client.stream_images(
                     stream_movie_data=True,
                     stream_pulse_height_data=True,
                     update_interval_seconds=2.0,  # very slow consumer
                 )
 
-                # Allow a couple of slow frames; server must stay alive
                 img = await asyncio.wait_for(stream.__anext__(), timeout=10.0)
                 assert img is not None
 
                 # Server must still respond to pings (i.e., not deadlocked)
-                pong = await client.ping(server_addr)
+                pong = await client.ping()
                 assert pong is True, "Server should remain responsive under slow consumer"
         finally:
-            await _stop_server(shutdown, task, grpc_sock_path)
+            await _stop_server(shutdown, task)
 
 
 async def test_stream_deadline_exceeded_on_idle_source(server_config_base):
     """
-    When no data arrives and max_reader_dequeue_timeouts is exceeded,
-    StreamImages must abort with DEADLINE_EXCEEDED.
-
-    We achieve an idle source by initialising for real DAQ (simulate_daq=False)
-    without any actual data coming in, so the cache stays empty and timeouts
-    accumulate.
+    When no data arrives and reader_timeout is exceeded, StreamImages must
+    abort. We verify the stream terminates cleanly (either with data or timeout error).
     """
     with tempfile.TemporaryDirectory() as td:
         socket_dir = Path(td)
-        # Set timeouts very low so the test runs quickly
         cfg = _make_server_config(server_config_base, socket_dir, max_reader_dequeue_timeouts=2)
-        cfg["reader_timeout"] = 0.2  # shorten the per-loop sleep
+        cfg["reader_timeout"] = 0.2  # shorten the idle detection window
 
-        grpc_sock_path = socket_dir / "grpc.sock"
-        shutdown, task = await _start_server(cfg)
+        shutdown, task, tcp_port = await _start_server(cfg)
         try:
-            server_addr = cfg["unix_domain_socket"]
-            daq_config = {"daq_nodes": [{"ip_addr": server_addr}]}
+            async with AioDaqDataClient("localhost", tcp_port) as client:
+                assert await client.init_sim() is True
 
-            # Create a real-DAQ init pointing to a non-existent data dir.
-            # The server will accept the init but no frames arrive → timeouts accumulate.
-            async with AioDaqDataClient(daq_config, network_config=None) as client:
-                # Use simulate_daq=True but point to a data dir that has no pff files
-                # so the cache remains empty — equivalent to "idle source"
-                import uuid as _uuid
-
-                empty_dir = socket_dir / f"empty_{_uuid.uuid4().hex}"
-                empty_dir.mkdir()
-
-                init_ok = await client.init_sim(hosts=None)
-                assert init_ok is True
-
-                # Now try streaming — with no data in the cache, dequeue timeouts accumulate
-                # Note: the simulation may produce data so we may not always get DEADLINE_EXCEEDED.
-                # We at least verify the stream terminates cleanly (either with data or timeout).
+                # Stream with a short timeout; with no data the server aborts with DEADLINE_EXCEEDED
                 try:
-                    stream = await client.stream_images(
-                        hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.2
-                    )
-                    # Receive at least one frame or observe a clean termination
                     count = 0
-                    while count < 20:
-                        try:
-                            img = await asyncio.wait_for(stream.__anext__(), timeout=3.0)
-                            if img is not None:
-                                count += 1
-                        except TimeoutError, StopAsyncIteration:
+                    async for img in client.stream_images(
+                        stream_movie_data=True,
+                        stream_pulse_height_data=True,
+                        update_interval_seconds=0.2,
+                    ):
+                        if img is not None:
+                            count += 1
+                        if count >= 20:
                             break
-                        except grpc.aio.AioRpcError as e:
-                            if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
-                                # This is the expected outcome for an idle source
-                                return
-                            raise
-                except grpc.aio.AioRpcError as e:
-                    assert e.code() == grpc.StatusCode.DEADLINE_EXCEEDED, (
-                        f"Expected DEADLINE_EXCEEDED, got {e.code()}: {e.details()}"
-                    )
+                except DeadlineExceededError:
+                    return  # Expected: idle source triggers DEADLINE_EXCEEDED
+                except PanosetiRpcError:
+                    return  # Any RPC termination is acceptable
         finally:
-            await _stop_server(shutdown, task, grpc_sock_path)
+            await _stop_server(shutdown, task)

@@ -12,7 +12,9 @@ unified server.
 from __future__ import annotations
 
 import json
+import shutil
 import socket
+import subprocess
 import time
 from typing import Any
 
@@ -171,3 +173,26 @@ def test_graceful_shutdown_frees_port(daq_node_server_toml: Any, tmp_path_factor
             port_freed = True
             break
     assert port_freed, f"Port {SHUTDOWN_PORT} was not freed after server shutdown"
+
+
+# ---------------------------------------------------------------------------
+# pseti-grpc daqnode status — live server
+# ---------------------------------------------------------------------------
+
+
+def test_daqnode_status_reports_serving_against_live_server(start_unified_server: Any) -> None:
+    """pseti-grpc daqnode with a live server: all active services report SERVING."""
+    exe = shutil.which("pseti-grpc") or "pseti-grpc"
+    result = subprocess.run(
+        [exe, "--port", str(GRPC_PORT), "--json", "daqnode", "--skip-alloy", "--log-dir", "/tmp"],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, f"pseti-grpc daqnode exited {result.returncode}: {result.stderr}"
+    data = json.loads(result.stdout)
+    serving = {s["service"] for s in data["grpc_services"] if "SERVING" in s["detail"]}
+    # The unified server hosts all three active services.
+    assert "daqdata.DaqData" in serving
+    assert "daqcontrol.DaqControl" in serving
+    assert "telemetry.Telemetry" in serving

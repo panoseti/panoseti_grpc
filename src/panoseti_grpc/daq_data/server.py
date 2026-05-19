@@ -280,6 +280,8 @@ async def serve(
     server_cfg: DaqDataServerConfig,
     shutdown_event: asyncio.Event | None = None,
     in_main_thread: bool = True,
+    port: int = 50051,
+    bound_port_out: list[int] | None = None,
 ) -> None:
     """Create and run the gRPC server."""
     logger = logging.getLogger("daq_data.server")
@@ -323,9 +325,11 @@ async def serve(
         logger.warning("grpcio-health-checking not installed; health probes disabled.")
 
     # Add regular socket
-    listen_addr = "[::]:50051"
-    server.add_insecure_port(listen_addr)
-    logger.info(f"Server starting, listening on '{listen_addr}'")
+    listen_addr = f"[::]:{port}"
+    actual_port = server.add_insecure_port(listen_addr)
+    if bound_port_out is not None:
+        bound_port_out.append(actual_port)
+    logger.info(f"Server starting, listening on '{listen_addr}' (actual port: {actual_port})")
 
     # Add a Unix Domain Socket listener for local inter-process communication
     if server_cfg.unix_domain_socket:

@@ -29,6 +29,7 @@ _HEALTH_SERVICE = "daqdata.DaqData"
 _hp_io_config_simulate: dict[str, Any] = load_package_json(
     "panoseti_grpc.daq_data", "config/hp_io_config_simulate.json"
 )
+hp_io_config_simulate: dict[str, Any] = _hp_io_config_simulate
 
 
 class AioDaqDataClient:
