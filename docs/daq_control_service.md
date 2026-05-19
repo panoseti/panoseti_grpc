@@ -66,6 +66,21 @@ client.StopDaq({"data_dir": "/data", "run_dir": "run.pffd"})
 client.close()
 ```
 
+### Error Handling (`grpc_utils`)
+
+All client methods are decorated with `@grpc_call`, which maps `grpc.RpcError` to typed `PanosetiRpcError` subclasses. Catch these instead of raw `grpc.RpcError`:
+
+```python
+from panoseti_grpc.grpc_utils import FailedPreconditionError, UnavailableError
+
+try:
+    await client.CleanupData(params)
+except FailedPreconditionError as e:
+    logger.error("Cleanup refused — manifest digest mismatch: %s", e.details)
+except UnavailableError:
+    logger.warning("DAQ node unreachable")
+```
+
 ---
 
 ## gRPC API Reference
@@ -383,18 +398,22 @@ Request parameters are validated server-side via [Pydantic v2](https://docs.pyda
 | Hashpipe stderr | `{data_dir}/{run_dir}/hp_stderr.log` | Per-run Hashpipe standard error |
 | Manifest | `{data_dir}/{run_dir}/dp_manifest.node_<hostname>.algo_<algo>.txt` | Node-wide checksum manifest |
 
-All logs are also forwarded to Loki via the Telemetry gRPC logger when the Telemetry service is reachable.
+All logs are also forwarded to Loki via Grafana Alloy (primary path via `.jsonl`) and the Telemetry gRPC logger (shadow path) when available.
 
 ---
 
 ## Running the Server
 
-```bash
-# Default port 50051
-GRPC_PORT=50051 python -m panoseti_grpc.daq_control.server
+The recommended way to run DAQ Control on a DAQ node is via the unified server:
 
-# Via Docker (recommended for production)
-docker compose -f docker/daq_control/docker-compose.yml up
+```bash
+pseti-grpc server --profile daq_node
+```
+
+Standalone (for development or debugging):
+```bash
+python -m panoseti_grpc.daq_control.server
+panoseti-daq-control
 ```
 
 ### Environment Variables
@@ -402,6 +421,8 @@ docker compose -f docker/daq_control/docker-compose.yml up
 | Variable | Default | Description |
 |---|---|---|
 | `GRPC_PORT` | `50051` | TCP port the server listens on |
+| `HEADNODE_IP` | `localhost` | Host of the Telemetry gRPC service (for log forwarding) |
+| `HEADNODE_GRPC_PORT` | `50051` | Port of the Telemetry gRPC service |
 
 ---
 

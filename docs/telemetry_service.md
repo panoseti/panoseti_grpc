@@ -1,260 +1,229 @@
 # Telemetry Service
 
-The **PANOSETI Telemetry Service** is a high-throughput, distributed aggregation pipeline designed to ingest status updates, sensor readings, and health metrics from PANOSETI components (U-blox, DAQ nodes, HK sensors, etc.). It stores the latest state in **Redis** (Hot Store) for real-time control loops and archives historical data to **InfluxDB** (Cold Store) for analysis.
+The PANOSETI Telemetry Service provides two independent pipelines under a single gRPC interface:
 
-## 🚀 Key Features
-
-* **Centralized Logging (Loki):**
-  * Async gRPC logging handler that ships logs from all nodes to a central **Loki** instance.
-    * Automatic metadata injection (Git Commit, PID, Thread, Hostname).
-    * Non-blocking architecture to ensure logging never crashes observations.
-* **Observability:** Built-in latency tracking, rich logging, and CLI visualization tools.
-* **Hybrid Schema Strategy:**
-    * **Production Mode:** Strictly validated schemas (Pydantic 2.x) for critical hardware.
-    * **Experimental Mode:** Flexible JSON logging for R&D and rapid prototyping.
-* **Hot/Cold Storage Architecture:**
-  * **Redis:** O(1) access to the *current* state of every device.
-  * **InfluxDB:** Time-series history for dashboards (Grafana).
-  * **Loki:** Log database for log dashboards (Grafana).
-* **Automatic Hygiene:** Experimental data is auto-deleted (TTL) after 24 hours to prevent database pollution.
-
+1. **Device status** (`ReportStatus` RPC) — validated hardware payloads → Redis (hot) + InfluxDB (cold)
+2. **Log shipping** — structured `.jsonl` files → Grafana Alloy → Loki (primary path); gRPC `Log` RPC (shadow path during migration)
 
 ---
 
-## 🛠️ Configuration & Data Modes
+## Log Shipping (Grafana Alloy)
 
-The system's behavior is controlled by [telemetry/telemetry_config.toml](telemetry_config.toml). Every device type is categorized into one of two modes:
+### 4-Path Unified Logger
 
-### 1. Production Mode (Strict)
-* **Use Case:** Established/Important hardware (GNSS, White Rabbit, etc.).
-* **Validation:** Payloads MUST match the Pydantic schemas defined in [telemetry/config.py](config.py).
-* **Storage:** Permanent (TTL = 0).
-* **Naming:** Redis keys use a specific hardware prefix (e.g., `UBLOX_ZED-F9T_`).
+All services use `panoseti_grpc.telemetry.logger.get_logger()`, which writes to **four destinations simultaneously**:
 
-### 2. Experimental Mode (Flexible)
-* **Use Case:** Debugging, new sensor prototyping, one-off scripts.
-* **Validation:** None. You can send any JSON structure.
-* **Storage:** Temporary. Data expires automatically (default: 24h).
-* **Naming:** Redis keys MUST start with `DEV_` to clearly indicate their volatile nature.
+| Path | Output | Consumer |
+|---|---|---|
+| Console | Rich-formatted text | Developer / operator |
+| `{service}.log` | Plain text, rotating | Local inspection |
+| `{service}.jsonl` | Structured JSON, one record per line | **Grafana Alloy → Loki** (primary) |
+| gRPC `Log` RPC | Protobuf `LogEntry` | Legacy path (shadow period) |
 
-**Example `telemetry_config.toml`:**
-```toml
-# --- PRODUCTION ---
-[devices.gnss]
-mode = "production"
-redis_prefix = "UBLOX_ZED-F9T_"
-description = "Main GNSS Timing modules"
+Files land in `{log_dir}/{hostname}/` — the per-host subdirectory lets Alloy glob `{log_dir}/*/*.jsonl` and label logs by host automatically.
 
-# --- EXPERIMENTAL ---
-[devices.new_lidar]
-mode = "experimental"
-redis_prefix = "DEV_LIDAR_V1_"
-ttl_seconds = 86400  # Auto-delete after 1 day
+### Usage
 
+```python
+from panoseti_grpc.telemetry.logger import get_logger
+
+logger = get_logger(
+    "daq_control_server",
+    log_dir="/var/log/panoseti",   # writes to /var/log/panoseti/<hostname>/
+    grpc_enabled=True,             # also forward via gRPC Log RPC
+    console=True,
+)
+
+logger.info("Hashpipe started", extra={"run_id": "start_2026-01-01T120000Z", "module_ids": [224, 225]})
 ```
 
----
+`extra` fields are merged into the top-level JSON object and are queryable in LogQL:
+```
+{service="daq_control_server"} | json | run_id = "start_2026-01-01T120000Z"
+```
 
-## 💻 Usage
+### JSONL Record Format
 
-### 1. Running the Service
+```json
+{
+    "timestamp": "2026-01-01 12:00:00,123",
+    "service": "daq_control_server",
+    "level": "INFO",
+    "message": "Hashpipe started",
+    "hostname": "pseti-daqnode-0",
+    "pid": 1234,
+    "thread": "MainThread",
+    "run_id": "start_2026-01-01T120000Z",
+    "module_ids": [224, 225]
+}
+```
 
-The service should be run as a module on the Headnode. It will automatically connect to the Redis server.
+### Grafana Alloy Configuration
+
+`alloy/config.alloy` ships `.jsonl` files to Loki. Alloy is deployed as a systemd service alongside `pseti-grpc server`:
 
 ```bash
-# Start Server (Default Port: 50051)
-python -m panoseti_grpc.telemetry.server
+# Check Alloy liveness
+curl http://localhost:12345/-/ready
+
+# Or via pseti-grpc daqnode
+pseti-grpc daqnode --log-dir /var/log/panoseti
 ```
 
-### 2. Using the Client API: `TelemetryClient`
+The Alloy glob pattern `local.file_match "panoseti"` reads from `/var/log/panoseti/*/*.jsonl`, matching all per-host subdirectories.
 
-`TelemetryClient` automatically handles the nuances of the underlying gRPC protocol.
+---
+
+## Device Status Path (`ReportStatus`)
+
+### Data Modes
+
+| Mode | Validation | Storage | TTL | Key prefix |
+|---|---|---|---|---|
+| **Production** | Strict Pydantic schema | Redis HASH + InfluxDB | -1 (permanent) | Device-specific (e.g. `UBLOX_ZED-F9T_`) |
+| **Experimental** (`DEV_`) | None | Redis only | ≤ 24 h | Must start with `DEV_` |
+| **Unknown** | None | Redis only | Positive TTL | `SANDBOX:{type}:{device_id}` |
+
+### Client Usage
 
 ```python
 from panoseti_grpc.telemetry.client import TelemetryClient
 
-client = TelemetryClient("localhost", 50051)
+client = TelemetryClient("headnode", 50051)
 
-# --- SCENARIO A: Logging Production Data ---
-# Must match the schema for 'gnss' (lat, lon, satellites, etc.)
+# Production device — must match the Pydantic schema for 'gnss'
 client.log_strict("gnss", "dome_01", {
     "satellites": 12,
     "lat": 37.3382,
     "lon": -121.8863,
     "fix_mode": "3D",
-    # You can add extra fields safely via 'extra_data' without breaking schema
     "extra_data": {"dilution": 1.5}
 })
 
-# --- SCENARIO B: Rapid Prototyping (R&D) ---
-# Send any dict. It will be stored in Redis with a 24h TTL.
-# Device type 'new_lidar' must be defined in TOML as 'experimental'.
-client.log_flexible("new_lidar", "prototype_A", {
+# Experimental / R&D — any JSON, 24 h TTL
+client.log_flexible("DEV_LIDAR_V1", "prototype_A", {
     "distance_mm": 4502,
     "signal_strength": 88,
-    "status": "calibrating"
 })
-
 ```
 
-### 3. CLI Tools
+### Configuration (`telemetry_config.toml`)
 
-The package includes a powerful CLI for generating load, testing connectivity, and visualizing latency.
+```toml
+[devices.gnss]
+mode = "production"
+redis_prefix = "UBLOX_ZED-F9T_"
+description = "Main GNSS Timing modules"
 
-```bash
-# Generate mixed traffic (Production + Experimental)
-python -m panoseti_grpc.telemetry.cli --type mixed --count 1000
-
-# Test strictly typed GNSS messages
-python -m panoseti_grpc.telemetry.cli --type gnss --delay 0.1
-
+[devices.new_lidar]
+mode = "experimental"
+redis_prefix = "DEV_LIDAR_V1_"
+ttl_seconds = 86400
 ```
-
----
-
-## 📜 Centralized Logging (Loki)
-
-The Telemetry Service provides a high-performance logging pipeline. Instead of scattering text logs across 6 different distributed nodes, logs are shipped via gRPC to the Headnode, cached in Redis, and indexed by **Loki** for real-time analysis in Grafana.
-
-### 👨‍💻 Client Usage (Python)
-
-Do not manually construct gRPC messages. Use the provided helper function to attach the centralized logger to your existing scripts.
-
-**Basic Integration:**
-
-```python
-import logging
-from panoseti_grpc.telemetry.logger import get_logger
-
-# Run this ONCE at startup. 
-# It attaches the gRPC handler to the Root Logger, capturing everything.
-logger = get_logger(
-    service_name="Dome_Control", 
-    level=logging.INFO,
-    grpc_enabled=True,
-    console=True
-)
-
-# Use standard logging as usual - it now goes to Loki!
-logger.info("Dome rotation started")
-
-# Exceptions are automatically formatted and shipped
-try:
-    x = 1 / 0
-except Exception:
-    logger.exception("Critical math failure")
-
-```
-
-**Structured Logging (Best Practice):**
-Pass a dictionary in the `extra` field. This becomes queryable JSON in Grafana.
-
-```python
-# In Python
-logger.info("Filter wheel moved", extra={"position": 2, "temp_c": 12.5})
-
-# In Loki Query
-# {service="Dome_Control"} | json | position = 2
-
-```
-
-### 🔍 Metadata & Context
-
-The system automatically enriches your logs with context to help debug distributed failures:
-
-* **`host`**: Which machine produced the log (e.g., `node-04`).
-* **`git_commit`**: The exact software version running (from `git`).
-* **`process_id` / `thread_name**`: Identifies specific runtime instances.
-* **`trace_id`**: Correlates actions across services (if provided).
-
-
-### 🐳 Infrastructure Setup
-
-The logging stack (Loki + Grafana) runs via Docker on the Headnode.
-The relevant Loki docker-compose file is [docker-compose.loki.yml](docker-compose.loki.yml)
-
-**1. Prepare Data Directory**
-Loki runs as user ID `10001`. You **must** set permissions correctly or the container will fail to start.
-
-```bash
-# Create directory and set ownership to the container user
-mkdir -p ./loki-data
-sudo chown -R 10001:10001 ./loki-data
-
-```
-
-**2. Start the Stack**
-
-```bash
-docker compose -f docker-compose.loki.yml up -d
-
-```
-
-**3. Verify Status**
-Visit `http://HEADNODE_IP:3100/ready` to check if Loki is accepting logs.
-
----
-
-### Architecture
-
-1. **Client:** Python loggers use an `AsyncGrpcHandler` to ship logs + metadata to the Headnode.
-   * *Resilience:* Uses a background worker thread and gRPC `wait_for_ready` semantics. If the server is down, logs are buffered locally or queued in the gRPC channel until connectivity restores.
-
-2. **Server:** Validates schema and pushes logs to a Redis List (`logs:ingress`) using an async batcher (N log entries = 1 Redis write).
-3. **Storage:** A worker (`storeLoki.py`) consumes from Redis and pushes to Loki, indexing metadata (Trace ID, Host) while storing the payload compressed.
-
----
-
-## 👨‍💻 Developer Guide
 
 ### Adding a New Production Device
 
-1. **Define Schema:** Add a Pydantic model to [src/panoseti_grpc/telemetry/config.py](config.py).
-```python
-class ChillerModel(BaseModel):
-    water_temp: float
-    flow_rate: float
-    # Use Pydantic 2.x Field with default_factory for dicts
-    extra_data: dict[str, Any] | None = Field(default_factory=dict)
+1. Define a Pydantic model in `src/panoseti_grpc/telemetry/config.py`:
+    ```python
+    class ChillerModel(BaseModel):
+        water_temp: float
+        flow_rate: float
+        extra_data: dict[str, Any] | None = Field(default_factory=dict)
+    ```
+2. Add the device to `SCHEMA_MAP` in `config.py`.
+3. Add a `[devices.chiller]` entry to `telemetry_config.toml` with `mode = "production"`.
+
+---
+
+## Architecture
+
+### Log shipping pipeline
 
 ```
-
-
-2. **Register:** Add the mapping to `SCHEMA_MAP` in `config.py`.
-3. **Configure:** Add the entry to `telemetry_config.toml` with `mode = "production"`.
-
-### Developing with "Flexible" Mode
-
-1. **Configure:** Add your new type to `telemetry_config.toml`:
-```toml
-[devices.my_test]
-mode = "experimental"
-redis_prefix = "DEV_TEST_"
+Python service (get_logger)
+    ├── RichHandler → stdout
+    ├── RotatingFileHandler → {service}.log
+    ├── RotatingFileHandler → {service}.jsonl  ←── Grafana Alloy reads this
+    └── AsyncGrpcHandler → Log RPC             ←── shadow path
+                                │
+                         TelemetryServicer
+                                │
+                         RedisBatcher → Redis logs:ingress list
+                                │
+                         storeLoki.py → Loki
 ```
 
+**Resilience:** `AsyncGrpcHandler` uses a background worker thread and gRPC `wait_for_ready` semantics — logging never blocks or crashes the caller. When the gRPC path is unavailable, the `.jsonl` Alloy path continues unaffected.
 
-2. **Code:** Use `client.log_flexible("my_test", ...)` immediately. No server restart required if you are just adding data.
+**RedisBatcher:** Batches up to 100 `ReportStatus` / `Log` RPCs into a single Redis write. Integration tests must poll rather than use fixed `time.sleep` waits because of this flush latency.
 
-### Testing Logging
+---
 
-You can simulate a stream of realistic telescope logs (errors, warnings, varying components) to verify the pipeline:
+## Running the Service
+
+The Telemetry service runs as part of the unified server on the head node:
 
 ```bash
-# fast log stream
-python -m panoseti_grpc.telemetry.cli --type log --delay 0.01
-
-# slow heartbeat
-python -m panoseti_grpc.telemetry.cli --type log --delay 1.0
-
+pseti-grpc server --profile headnode
 ```
+
+Or standalone:
+```bash
+python -m panoseti_grpc.telemetry.server
+panoseti-telemetry
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `HEADNODE_IP` | `localhost` | Host for the remote Telemetry gRPC endpoint |
+| `HEADNODE_GRPC_PORT` | `50051` | Port for the remote Telemetry gRPC endpoint |
+| `GRPC_PORT` | `50051` | Port this server listens on |
+
+---
+
+## Health Checking
+
+```bash
+pseti-grpc daqnode --log-dir /var/log/panoseti
+grpc_health_probe -addr=headnode:50051 -service=telemetry.Telemetry
+```
+
+---
+
+## Infrastructure (Loki + Grafana)
+
+The Loki stack runs via Docker on the head node:
+
+```bash
+docker compose -f alloy/docker-compose.yml up -d
+```
+
+Loki runs as user ID `10001`. Set permissions before first start:
+```bash
+mkdir -p ./loki-data
+sudo chown -R 10001:10001 ./loki-data
+```
+
+Verify: `http://HEADNODE_IP:3100/ready`
+
+---
+
+## Testing
+
+```bash
+python tests/qa.py telemetry
+./scripts/run-ci-tests/run-telemetry-ci-test.sh
+```
+
+Tests require a running Redis instance (provided by Docker Compose). All assertions on Redis state must poll with a timeout — never use fixed `time.sleep` — because of `RedisBatcher` flush latency.
 
 ### Troubleshooting
 
-* **"Schema Violation" Error:** You are sending data to a production device that doesn't match its Pydantic model. Check `config.py`.
-* **"Unregistered Type" Warning:** The server received a device type not in the TOML file. It falls back to the `SANDBOX` namespace.
-* **Data Disappearing?** Check if you are using an Experimental type. Data auto-expires based on the `ttl_seconds` setting.
-
-### Observability
-
-* **Real-time Monitor:** Run `redis-cli monitor` to see raw commands.
-* **Logs:** The server uses `rich` logging. Set `LOG_LEVEL=DEBUG` to see every payload and its processing time.
+| Symptom | Cause | Fix |
+|---|---|---|
+| "Schema Violation" error | Payload doesn't match Pydantic model | Check `config.py` for the device schema |
+| "Unregistered Type" warning | Device type not in TOML | Add to `telemetry_config.toml` |
+| Data disappearing | Experimental type with short TTL | Check `ttl_seconds` in TOML |
+| Logs missing from Loki | Alloy not reading `.jsonl` | Run `pseti-grpc daqnode`; check Alloy `/-/ready` |

@@ -11,10 +11,10 @@ Each service operates independently. Click the links below for detailed API docu
 
 | Service | Description                                            | Status        | Documentation |
 | :--- |:-------------------------------------------------------|:--------------| :--- |
-| **DAQ Data** | Streams real-time science data directly from Hashpipe. | 🟢 Production | [**Read Docs**](./docs/daq_data_service.md) |
+| **DAQ Data** | Streams real-time science data from Hashpipe via headnode gateway. | 🟢 Production | [**Read Docs**](./docs/daq_data_service.md) |
 | **DAQ Control** | Manages Hashpipe lifecycle on DAQ nodes (start/stop/status). | 🟢 Production | [**Read Docs**](./docs/daq_control_service.md) |
+| **Telemetry** | Device status → Redis/InfluxDB; log shipping → Grafana Alloy → Loki. | 🟡 Beta | [**Read Docs**](./docs/telemetry_service.md) |
 | **U-blox Control** | Controls and configures GNSS chips (F9T/F9P).          | 🔴 Deprecated | [**Read Docs**](./src/panoseti_grpc/ublox_control/README.md) |
-| **Telemetry** | Collects metadata from remote Linux machines.          | 🟢 Production  | [**Read Docs**](./docs/telemetry_service.md) |
 
 ---
 
@@ -34,13 +34,23 @@ pip install panoseti-grpc
 Example Usage:
 
 ```python
+# Stream real-time science images from the headnode gateway
+import asyncio
+from panoseti_grpc.daq_data.client import AioDaqDataClient
+
+async def main():
+    async with AioDaqDataClient(host="headnode", port=50051) as client:
+        async for image in client.stream_images(stream_movie_data=True):
+            print(f"Module {image['module_id']}  {image['type']}")
+
+asyncio.run(main())
+```
+
+```python
+# Upload device telemetry
 from panoseti_grpc.telemetry.client import TelemetryClient
-
-# Connect to a running Telemetry Service
-client = TelemetryClient("localhost", 50051)
-
-# Upload metadata
-client.log_flexible("example", "weather-01", {"status": "Online", "is-raining": True})
+client = TelemetryClient("headnode", 50051)
+client.log_flexible("DEV_weather", "station-01", {"status": "Online", "is-raining": True})
 ```
 
 ---
@@ -72,7 +82,7 @@ All three active services (`daq_data`, `daq_control`, `telemetry`) can run on a 
 
 ```bash
 # See the options
-pseti-grpc -h 
+pseti-grpc -h
 
 # DAQ node: daq_data + daq_control only
 pseti-grpc server --profile daq_node
@@ -85,6 +95,9 @@ pseti-grpc server --config /etc/panoseti/server.toml
 
 # List all registered services
 pseti-grpc server --list-services
+
+# Check gRPC service health, Alloy liveness, and log disk usage
+pseti-grpc daqnode --log-dir /var/log/panoseti
 ```
 
 ### Deployment Profiles
