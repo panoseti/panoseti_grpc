@@ -7,6 +7,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
+import pytest
+
+from panoseti_grpc.grpc_utils.exceptions import FailedPreconditionError
+
 START_PARAMS = {
     "data_dir": "/app/data",
     "daq_ip_addr": "127.0.0.1",
@@ -95,15 +99,15 @@ def test_stop_then_start_idempotent(grpc_client: Any) -> None:
 
 def test_cleanup_while_start_in_progress_fails(grpc_client: Any) -> None:
     """
-    CleanupData while hashpipe is running must return False, indicating cleanup failed.
+    CleanupData while hashpipe is running must be rejected with FAILED_PRECONDITION.
     This ensures the safety guard preventing data deletion during an active run is exercised.
     """
     assert grpc_client.StartDaq(START_PARAMS) is True
     time.sleep(0.3)  # give hashpipe a moment to fully start
 
     try:
-        # with pytest.raises((ValueError, Exception)):
-        assert grpc_client.CleanupData(CLEANUP_PARAMS)["success"] is False
+        with pytest.raises(FailedPreconditionError, match="HASHPIPE is still alive"):
+            grpc_client.CleanupData(CLEANUP_PARAMS)
     finally:
         grpc_client.StopDaq(STOP_PARAMS)
         time.sleep(0.5)

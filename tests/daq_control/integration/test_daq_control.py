@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from panoseti_grpc.grpc_utils.exceptions import FailedPreconditionError
 from tests.daq_control.conftest import wait_for_file
 
 # Parameters reused across tests
@@ -55,9 +56,9 @@ def test_start_daq_already_running(grpc_client: Any) -> None:
 
 
 def test_cleanup_data_while_running(grpc_client: Any) -> None:
-    """CleanupData must be rejected while hashpipe is running."""
-    # with pytest.raises(ValueError):
-    assert grpc_client.CleanupData(CLEANUP_PARAMS)["success"] is False
+    """CleanupData must be rejected with FAILED_PRECONDITION while hashpipe is running."""
+    with pytest.raises(FailedPreconditionError, match="HASHPIPE is still alive"):
+        grpc_client.CleanupData(CLEANUP_PARAMS)
 
 
 def test_status_daq_hashpipe_running(grpc_client: Any) -> None:

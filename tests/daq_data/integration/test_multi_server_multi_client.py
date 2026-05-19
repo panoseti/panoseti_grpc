@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from panoseti_grpc.daq_data.client import AioDaqDataClient
+from panoseti_grpc.daq_data.client import AioDaqDataClient, hp_io_config_simulate
 from panoseti_grpc.grpc_utils.exceptions import FailedPreconditionError, PanosetiRpcError
 
 pytestmark = pytest.mark.asyncio
@@ -24,7 +24,7 @@ async def test_uds_multi_rate_streams_single_client(default_server_process):
     """
     host, port = default_server_process["host"], default_server_process["port"]
     async with AioDaqDataClient(host, port) as client:
-        assert await client.init_sim() is True
+        assert await client.init_hp_io(hp_io_config_simulate) is True
 
         fast = client.stream_images(
             stream_movie_data=True,
@@ -64,7 +64,7 @@ async def test_uds_multi_clients_independent_pacing(default_server_process):
         AioDaqDataClient(host, port) as client_a,
         AioDaqDataClient(host, port) as client_b,
     ):
-        assert await client_a.init_sim() is True
+        assert await client_a.init_hp_io(hp_io_config_simulate) is True
 
         stream_a_fast = client_a.stream_images(
             stream_movie_data=True, stream_pulse_height_data=False, update_interval_seconds=0.05
@@ -102,7 +102,7 @@ async def test_uds_multi_servers_single_client(gateway_factory, num_servers):
     """
     gw = await gateway_factory(num_servers)
     async with AioDaqDataClient(gw["host"], gw["port"]) as client:
-        assert await client.init_sim() is True
+        assert await client.init_hp_io(hp_io_config_simulate) is True
 
         expected_modules = {d["module_id"] for d in gw["edge_details"]}
         seen = set()
@@ -124,7 +124,7 @@ async def test_uds_multi_servers_module_filtering(gateway_factory, num_servers):
     edge_details = gw["edge_details"]
 
     async with AioDaqDataClient(gw["host"], gw["port"]) as client:
-        assert await client.init_sim() is True
+        assert await client.init_hp_io(hp_io_config_simulate) is True
 
         target = edge_details[1]["module_id"]
         # Collect frames with a single-module whitelist
@@ -153,7 +153,7 @@ async def test_uds_multi_servers_multi_clients_mixed_rates(gateway_factory, num_
         AioDaqDataClient(gw["host"], gw["port"]) as client_a,
         AioDaqDataClient(gw["host"], gw["port"]) as client_b,
     ):
-        assert await client_a.init_sim() is True
+        assert await client_a.init_hp_io(hp_io_config_simulate) is True
 
         seen_movies, seen_ph = set(), set()
 
@@ -200,13 +200,11 @@ async def test_uds_many_concurrent_streams(gateway_factory, num_servers):
     gw = await gateway_factory(num_servers)
 
     async with AioDaqDataClient(gw["host"], gw["port"]) as client:
-        assert await client.init_sim() is True
+        assert await client.init_hp_io(hp_io_config_simulate) is True
 
         rates = [0.03, 0.05, 0.07, 0.10]
         streams = [
-            client.stream_images(
-                stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=r
-            )
+            client.stream_images(stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=r)
             for r in rates
         ]
 
@@ -228,7 +226,7 @@ async def test_uds_module_ids_empty_means_all(gateway_factory, num_servers):
     gw = await gateway_factory(num_servers)
 
     async with AioDaqDataClient(gw["host"], gw["port"]) as client:
-        assert await client.init_sim() is True
+        assert await client.init_hp_io(hp_io_config_simulate) is True
 
         expected_modules = {d["module_id"] for d in gw["edge_details"]}
         seen = set()
@@ -257,7 +255,7 @@ async def test_uds_partial_server_failure_tolerance(gateway_factory, num_servers
     stopped = edge_details[0]
 
     async with AioDaqDataClient(gw["host"], gw["port"]) as client:
-        assert await client.init_sim() is True
+        assert await client.init_hp_io(hp_io_config_simulate) is True
 
         stream = client.stream_images(
             stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.05
@@ -287,7 +285,7 @@ async def test_uds_partial_server_failure_tolerance(gateway_factory, num_servers
                     drain_counts[img["module_id"]] += 1
                 if all(c >= 3 for c in drain_counts.values()):
                     break
-            except (StopAsyncIteration, PanosetiRpcError):
+            except StopAsyncIteration, PanosetiRpcError:
                 break
 
         # Collect post-failure frames
@@ -296,7 +294,7 @@ async def test_uds_partial_server_failure_tolerance(gateway_factory, num_servers
             try:
                 img = await stream.__anext__()
                 seen_after.add(img["module_id"])
-            except (StopAsyncIteration, PanosetiRpcError):
+            except StopAsyncIteration, PanosetiRpcError:
                 break
 
         assert stopped["module_id"] not in seen_after

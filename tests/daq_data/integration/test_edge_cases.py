@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from panoseti_grpc.daq_data.client import AioDaqDataClient
+from panoseti_grpc.daq_data.client import AioDaqDataClient, hp_io_config_simulate
 from panoseti_grpc.grpc_utils.exceptions import InvalidArgumentError, PanosetiRpcError, ResourceExhaustedError
 
 pytestmark = pytest.mark.asyncio
@@ -21,7 +21,7 @@ async def test_max_clients_resource_exhaustion(default_server_process, server_co
     try:
         # 0. Initialize the server
         async with AioDaqDataClient(host, port) as client:
-            assert await client.init_sim() is True
+            assert await client.init_hp_io(hp_io_config_simulate) is True
 
         # 1. Connect clients up to the server's limit.
         for i in range(max_clients):
@@ -80,7 +80,7 @@ async def test_stream_after_server_shutdown(default_server_process):
     stop_event = default_server_process["stop_event"]
 
     async with AioDaqDataClient(host, port) as client:
-        await client.init_sim()
+        await client.init_hp_io(hp_io_config_simulate)
         image_stream = client.stream_images(
             stream_movie_data=True,
             stream_pulse_height_data=False,
@@ -107,7 +107,7 @@ async def test_abrupt_client_disconnection(default_server_process):
 
     client_a = AioDaqDataClient(host, port)
     await client_a.__aenter__()
-    await client_a.init_sim()
+    await client_a.init_hp_io(hp_io_config_simulate)
     stream_a = client_a.stream_images(
         stream_movie_data=True,
         stream_pulse_height_data=False,
@@ -124,7 +124,7 @@ async def test_abrupt_client_disconnection(default_server_process):
         raise AssertionError(f"Client failed to gracefully cancel streaming task: {e}") from e
 
     async with AioDaqDataClient(host, port) as client_b:
-        await client_b.init_sim()
+        await client_b.init_hp_io(hp_io_config_simulate)
         stream_b = client_b.stream_images(
             stream_movie_data=True,
             stream_pulse_height_data=False,

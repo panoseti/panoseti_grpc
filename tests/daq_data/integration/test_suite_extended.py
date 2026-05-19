@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from panoseti_grpc.daq_data.client import AioDaqDataClient
+from panoseti_grpc.daq_data.client import AioDaqDataClient, hp_io_config_simulate
 from panoseti_grpc.grpc_utils.exceptions import PanosetiRpcError
 
 pytestmark = pytest.mark.asyncio
@@ -55,7 +55,7 @@ async def test_uds_back_pressure_handling(default_server_process):
     """
     host, port = default_server_process["host"], default_server_process["port"]
     async with AioDaqDataClient(host, port) as client:
-        assert await client.init_sim() is True
+        assert await client.init_hp_io(hp_io_config_simulate) is True
 
         images_received = 0
         async for _image in client.stream_images(
@@ -79,7 +79,7 @@ async def test_stream_terminates_when_server_stops(n_sim_servers_fixture_factory
     srv = server_details[0]
 
     async with AioDaqDataClient(srv["host"], srv["port"]) as client:
-        assert await client.init_sim() is True
+        assert await client.init_hp_io(hp_io_config_simulate) is True
         stream = client.stream_images(
             stream_movie_data=True, stream_pulse_height_data=False, update_interval_seconds=0.1
         )
@@ -98,7 +98,7 @@ async def test_stream_terminates_when_server_stops(n_sim_servers_fixture_factory
                 async for _ in stream:
                     pass
             ended = True  # Clean StopAsyncIteration
-        except (TimeoutError, PanosetiRpcError, StopAsyncIteration):
+        except TimeoutError, PanosetiRpcError, StopAsyncIteration:
             ended = True
         assert ended
 
@@ -114,7 +114,7 @@ async def test_client_connects_to_n_servers(gateway_factory, num_servers):
     gw = await gateway_factory(num_servers)
 
     async with AioDaqDataClient(gw["host"], gw["port"]) as client:
-        assert await client.init_sim() is True
+        assert await client.init_hp_io(hp_io_config_simulate) is True
 
         received_from_module = set()
         expected_modules = {detail["module_id"] for detail in gw["edge_details"]}
@@ -127,9 +127,7 @@ async def test_client_connects_to_n_servers(gateway_factory, num_servers):
             if received_from_module == expected_modules:
                 break
 
-        assert received_from_module == expected_modules, (
-            f"Did not receive images from all {num_servers} edges."
-        )
+        assert received_from_module == expected_modules, f"Did not receive images from all {num_servers} edges."
 
 
 async def test_client_handles_one_server_failure(gateway_factory):
@@ -142,7 +140,7 @@ async def test_client_handles_one_server_failure(gateway_factory):
     edge_details = gw["edge_details"]
 
     async with AioDaqDataClient(gw["host"], gw["port"]) as client:
-        assert await client.init_sim() is True
+        assert await client.init_hp_io(hp_io_config_simulate) is True
 
         stream = client.stream_images(
             stream_movie_data=True, stream_pulse_height_data=False, update_interval_seconds=0.1
@@ -173,7 +171,7 @@ async def test_client_handles_one_server_failure(gateway_factory):
                     received_after.add(mid)
                 if received_after >= remaining_modules:
                     break
-        except (PanosetiRpcError, StopAsyncIteration):
+        except PanosetiRpcError, StopAsyncIteration:
             pass
 
         assert received_after.issubset(remaining_modules)

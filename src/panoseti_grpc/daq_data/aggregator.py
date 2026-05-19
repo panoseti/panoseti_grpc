@@ -103,9 +103,7 @@ class DaqDataGatewayServicer(daq_data_pb2_grpc.DaqDataServicer):
             network_cfg = None
             if gw_cfg.network_config_path:
                 try:
-                    raw_net: dict[str, Any] = await asyncio.to_thread(
-                        _load_json, gw_cfg.network_config_path
-                    )
+                    raw_net: dict[str, Any] = await asyncio.to_thread(_load_json, gw_cfg.network_config_path)
                     network_cfg = NetworkConfig.model_validate(raw_net)
                 except OSError as exc:
                     self.logger.warning(
@@ -183,18 +181,13 @@ class DaqDataGatewayServicer(daq_data_pb2_grpc.DaqDataServicer):
                     await queue.put(resp)
             except grpc.aio.AioRpcError as e:
                 if e.code() != grpc.StatusCode.CANCELLED:
-                    self.logger.warning(
-                        f"Edge {target} stream ended: [{e.code().name}] {e.details()}"
-                    )
+                    self.logger.warning(f"Edge {target} stream ended: [{e.code().name}] {e.details()}")
             except Exception as e:
                 self.logger.error(f"Edge {target} unexpected stream error: {e}")
             finally:
                 await queue.put(None)  # sentinel: this edge is done
 
-        tasks = [
-            asyncio.create_task(_drain_edge(target, stub))
-            for target, stub in self._edge_stubs.items()
-        ]
+        tasks = [asyncio.create_task(_drain_edge(target, stub)) for target, stub in self._edge_stubs.items()]
         self.logger.info(f"Gateway StreamImages: fanning in from {n_edges} edge(s).")
 
         try:
@@ -235,8 +228,7 @@ class DaqDataGatewayServicer(daq_data_pb2_grpc.DaqDataServicer):
 
         async with asyncio.TaskGroup() as tg:
             tasks: dict[str, asyncio.Task[Any]] = {
-                target: tg.create_task(_init_one(target, stub))
-                for target, stub in self._edge_stubs.items()
+                target: tg.create_task(_init_one(target, stub)) for target, stub in self._edge_stubs.items()
             }
 
         outcomes = [tasks[t].result() for t in tasks]
@@ -248,9 +240,7 @@ class DaqDataGatewayServicer(daq_data_pb2_grpc.DaqDataServicer):
             error_message="; ".join(errors) if errors else "",
         )
 
-    async def Status(
-        self, request: Empty, context: grpc.aio.ServicerContext
-    ) -> StatusResponse:
+    async def Status(self, request: Empty, context: grpc.aio.ServicerContext) -> StatusResponse:
         """Aggregate Status from all edges."""
         if not self._edge_stubs:
             return StatusResponse(hp_io_initialized=False, message="Gateway has no connected edge nodes.")
@@ -264,16 +254,12 @@ class DaqDataGatewayServicer(daq_data_pb2_grpc.DaqDataServicer):
 
         async with asyncio.TaskGroup() as tg:
             tasks: dict[str, asyncio.Task[Any]] = {
-                target: tg.create_task(_status_one(target, stub))
-                for target, stub in self._edge_stubs.items()
+                target: tg.create_task(_status_one(target, stub)) for target, stub in self._edge_stubs.items()
             }
 
         outcomes = [tasks[t].result() for t in tasks]
         all_init = all(ok for _, ok, _ in outcomes)
-        parts = [
-            f"{t}: initialized={ok}" + (f" (err: {e})" if e else "")
-            for t, ok, e in outcomes
-        ]
+        parts = [f"{t}: initialized={ok}" + (f" (err: {e})" if e else "") for t, ok, e in outcomes]
         return StatusResponse(hp_io_initialized=all_init, message="; ".join(parts))
 
     async def Ping(self, request: Empty, context: grpc.aio.ServicerContext) -> Empty:

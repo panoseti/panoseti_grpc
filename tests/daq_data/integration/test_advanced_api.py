@@ -19,7 +19,7 @@ async def test_multiple_clients_streaming_concurrently(default_server_process):
         AioDaqDataClient(host, port) as client1,
         AioDaqDataClient(host, port) as client2,
     ):
-        assert await client1.init_sim() is True, "Server initialization failed"
+        assert await client1.init_hp_io(hp_io_config_simulate) is True, "Server initialization failed"
 
         async def receive_data(client, client_id, stream_movie, stream_ph):
             """Coroutine to receive and validate data for one client."""

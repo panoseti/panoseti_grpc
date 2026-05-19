@@ -199,8 +199,7 @@ async def gateway_factory(server_config_base: dict[str, Any]) -> Any:
 
         daq_cfg_data = {
             "daq_nodes": [
-                {"ip_addr": f"10.0.100.{i + 1}", "data_dir": "/tmp", "username": "test"}
-                for i in range(num_edges)
+                {"ip_addr": f"10.0.100.{i + 1}", "data_dir": "/tmp", "username": "test"} for i in range(num_edges)
             ]
         }
         net_cfg_data = {

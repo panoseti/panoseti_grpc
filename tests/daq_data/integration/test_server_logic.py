@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from panoseti_grpc.daq_data.client import AioDaqDataClient
+from panoseti_grpc.daq_data.client import AioDaqDataClient, hp_io_config_simulate
 from panoseti_grpc.grpc_utils.exceptions import FailedPreconditionError
 
 pytestmark = pytest.mark.asyncio
@@ -43,7 +43,7 @@ async def test_status_rpc_initialization_flow(default_server_process):
         assert "not initialized" in status.message.lower()
 
         # 2. Initialize simulation
-        success = await client.init_sim()
+        success = await client.init_hp_io(hp_io_config_simulate)
         assert success is True
 
         # 3. Check status again

@@ -91,7 +91,7 @@ async def test_server_recovers_after_uds_producer_restart(server_config_base):
         shutdown, task, tcp_port = await _start_server(cfg)
         try:
             async with AioDaqDataClient("localhost", tcp_port) as client:
-                assert await client.init_sim() is True
+                assert await client.init_hp_io(hp_io_config_simulate) is True
                 stream = client.stream_images(
                     stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.05
                 )
@@ -130,7 +130,7 @@ async def test_slow_consumer_backpressure(server_config_base):
         shutdown, task, tcp_port = await _start_server(cfg)
         try:
             async with AioDaqDataClient("localhost", tcp_port) as client:
-                assert await client.init_sim() is True
+                assert await client.init_hp_io(hp_io_config_simulate) is True
                 stream = client.stream_images(
                     stream_movie_data=True,
                     stream_pulse_height_data=True,
@@ -160,7 +160,7 @@ async def test_stream_deadline_exceeded_on_idle_source(server_config_base):
         shutdown, task, tcp_port = await _start_server(cfg)
         try:
             async with AioDaqDataClient("localhost", tcp_port) as client:
-                assert await client.init_sim() is True
+                assert await client.init_hp_io(hp_io_config_simulate) is True
 
                 # Stream with a short timeout; with no data the server aborts with DEADLINE_EXCEEDED
                 try:

@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from panoseti_grpc.daq_data.client import DaqDataClient
+from panoseti_grpc.daq_data.client import DaqDataClient, hp_io_config_simulate
 
 pytestmark = pytest.mark.asyncio
 
@@ -15,13 +15,13 @@ async def test_sync_ping(sync_client: DaqDataClient):
 
 async def test_sync_initialization(sync_client: DaqDataClient):
     """Test the InitHpIo RPC in simulation mode with the sync client."""
-    success = await asyncio.to_thread(sync_client.init_sim)
-    assert success is True, "init_sim should succeed"
+    success = await asyncio.to_thread(sync_client.init_hp_io, hp_io_config_simulate)
+    assert success is True, "init_hp_io should succeed"
 
 
 async def test_sync_stream_images(sync_client: DaqDataClient):
     """Test the full synchronous data streaming workflow."""
-    assert await asyncio.to_thread(sync_client.init_sim) is True
+    assert await asyncio.to_thread(sync_client.init_hp_io, hp_io_config_simulate) is True
 
     def stream_and_validate_data() -> tuple[int, set[str]]:
         """Synchronous function to get and validate data from the stream."""

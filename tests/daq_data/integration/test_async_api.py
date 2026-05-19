@@ -1,8 +1,6 @@
-import asyncio
-
 import pytest
 
-from panoseti_grpc.daq_data.client import AioDaqDataClient
+from panoseti_grpc.daq_data.client import AioDaqDataClient, hp_io_config_simulate
 
 pytestmark = pytest.mark.asyncio
 
@@ -14,13 +12,13 @@ async def test_async_ping(async_client):
 
 async def test_async_initialization(async_client):
     """Test the InitHpIo RPC in simulation mode with the async client."""
-    success = await async_client.init_sim()
+    success = await async_client.init_hp_io(hp_io_config_simulate)
     assert success is True, "init_sim should succeed"
 
 
 async def test_async_stream_images(async_client):
     """Test the full data streaming workflow: init -> stream -> receive."""
-    assert await async_client.init_sim() is True
+    assert await async_client.init_hp_io(hp_io_config_simulate) is True
     received_images = 0
     async for image in async_client.stream_images(
         stream_movie_data=True,
@@ -41,7 +39,7 @@ async def test_async_stream_can_be_interrupted(default_server_process):
         default_server_process["host"],
         default_server_process["port"],
     ) as client:
-        assert await client.init_sim() is True
+        assert await client.init_hp_io(hp_io_config_simulate) is True
         images_received = 0
         async for _ in client.stream_images(
             stream_movie_data=True,

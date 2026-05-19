@@ -203,6 +203,7 @@ class TestMonitorHashpipe:
     @pytest.mark.asyncio
     async def test_routes_stdout_to_stdout_logger(self):
         mock_proc = MagicMock()
+        mock_proc.wait = AsyncMock()
         mock_proc.stdout = AsyncMock()
         mock_proc.stdout.readline = AsyncMock(side_effect=[b"stdout msg\n", b""])
         mock_proc.stderr = AsyncMock()
@@ -218,6 +219,7 @@ class TestMonitorHashpipe:
     @pytest.mark.asyncio
     async def test_routes_stderr_to_stderr_logger(self):
         mock_proc = MagicMock()
+        mock_proc.wait = AsyncMock()
         mock_proc.stdout = AsyncMock()
         mock_proc.stdout.readline = AsyncMock(side_effect=[b""])
         mock_proc.stderr = AsyncMock()
@@ -233,6 +235,7 @@ class TestMonitorHashpipe:
     @pytest.mark.asyncio
     async def test_handles_both_streams_concurrently(self):
         mock_proc = MagicMock()
+        mock_proc.wait = AsyncMock()
         mock_proc.stdout = AsyncMock()
         mock_proc.stdout.readline = AsyncMock(side_effect=[b"out\n", b""])
         mock_proc.stderr = AsyncMock()

@@ -1,6 +1,6 @@
 import pytest
 
-from panoseti_grpc.daq_data.client import AioDaqDataClient
+from panoseti_grpc.daq_data.client import AioDaqDataClient, hp_io_config_simulate
 
 pytestmark = pytest.mark.asyncio
 
@@ -11,7 +11,7 @@ async def test_simulation_modes(sim_server_process):
     Tests that the UDS simulation mode can be initialized and stream data.
     """
     async with AioDaqDataClient(sim_server_process["host"], sim_server_process["port"]) as client:
-        success = await client.init_sim(timeout=10.0)
+        success = await client.init_hp_io(hp_io_config_simulate, timeout=10.0)
         assert success is True, "init_sim should succeed for all simulation modes"
 
         MIN_IMAGES_RECEIVED = 10

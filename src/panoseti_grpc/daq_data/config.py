@@ -73,9 +73,7 @@ class SimulateDaqConfig(BaseModel):
 class DaqDataGatewayConfig(BaseModel):
     """Settings used when ``DaqDataServerConfig.role == "gateway"``."""
 
-    daq_config_path: str | None = Field(
-        None, description="Path to daq_config.json listing edge DAQ nodes."
-    )
+    daq_config_path: str | None = Field(None, description="Path to daq_config.json listing edge DAQ nodes.")
     network_config_path: str | None = Field(
         None, description="Optional path to network_config.json for port forwarding."
     )

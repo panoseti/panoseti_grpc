@@ -100,7 +100,7 @@ async def test_stale_data_socket_cleaned_up_on_init(server_config_base):
         try:
             async with AioDaqDataClient("localhost", tcp_port) as client:
                 # init_sim triggers HpIoManager which cleans up and recreates data-plane sockets
-                assert await client.init_sim() is True
+                assert await client.init_hp_io(hp_io_config_simulate) is True
                 await asyncio.sleep(0.2)
                 assert dp_sock_path.exists(), "Data-plane socket should exist after init_sim"
         finally:
@@ -118,7 +118,7 @@ async def test_uds_data_socket_permissions(server_config_base):
         shutdown, task, tcp_port = await _start_server(cfg)
         try:
             async with AioDaqDataClient("localhost", tcp_port) as client:
-                assert await client.init_sim() is True
+                assert await client.init_hp_io(hp_io_config_simulate) is True
                 await asyncio.sleep(0.2)  # allow socket creation
 
             dp_sock_path = socket_dir / "hashpipe_grpc.dp_img16.sock"
@@ -141,7 +141,7 @@ async def test_uds_client_abrupt_disconnect_mid_frame(server_config_base):
         shutdown, task, tcp_port = await _start_server(cfg)
         try:
             async with AioDaqDataClient("localhost", tcp_port) as good_client:
-                assert await good_client.init_sim() is True
+                assert await good_client.init_hp_io(hp_io_config_simulate) is True
 
                 stream = good_client.stream_images(
                     stream_movie_data=True,
@@ -168,7 +168,7 @@ async def test_uds_client_abrupt_disconnect_mid_frame(server_config_base):
                         img = await asyncio.wait_for(stream.__anext__(), timeout=5.0)
                         assert img is not None
                         received += 1
-                    except (TimeoutError, StopAsyncIteration):
+                    except TimeoutError, StopAsyncIteration:
                         break
 
                 assert received >= 3, "Server should continue serving after abrupt raw-socket disconnect"
@@ -189,7 +189,7 @@ async def test_frame_id_monotonic_across_reinit(server_config_base):
         try:
             async with AioDaqDataClient("localhost", tcp_port) as client:
                 # First session
-                assert await client.init_sim() is True
+                assert await client.init_hp_io(hp_io_config_simulate) is True
                 stream1 = client.stream_images(
                     stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.05
                 )
@@ -223,7 +223,7 @@ async def test_module_discovery_from_uds_stream(server_config_base):
         shutdown, task, tcp_port = await _start_server(cfg)
         try:
             async with AioDaqDataClient("localhost", tcp_port) as client:
-                assert await client.init_sim() is True
+                assert await client.init_hp_io(hp_io_config_simulate) is True
 
                 stream = client.stream_images(
                     stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.05
@@ -233,8 +233,6 @@ async def test_module_discovery_from_uds_stream(server_config_base):
                     img = await asyncio.wait_for(stream.__anext__(), timeout=5.0)
                     seen_modules.add(img["module_id"])
 
-                assert sim_module in seen_modules, (
-                    f"Expected module {sim_module} to be discovered; got {seen_modules}"
-                )
+                assert sim_module in seen_modules, f"Expected module {sim_module} to be discovered; got {seen_modules}"
         finally:
             await _stop_server(shutdown, task)

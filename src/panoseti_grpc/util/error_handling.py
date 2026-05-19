@@ -29,6 +29,10 @@ def grpc_error_handler[F: Callable[..., Any]](func: F) -> F:
                     yield item
             except asyncio.CancelledError:
                 raise
+            except grpc.aio.AbortError:
+                # context.abort() raises AbortError internally; re-raise so we don't
+                # try to abort again with INTERNAL (which causes "Abort already called!").
+                raise
             except Exception as e:
                 logging.exception(f"Error in {func.__name__}: {e!s}")
                 await context.abort(grpc.StatusCode.INTERNAL, f"Internal server error: {e!s}")
@@ -40,6 +44,10 @@ def grpc_error_handler[F: Callable[..., Any]](func: F) -> F:
         try:
             return await func(self, request, context)
         except asyncio.CancelledError:
+            raise
+        except grpc.aio.AbortError:
+            # context.abort() raises AbortError internally; re-raise so we don't
+            # try to abort again with INTERNAL (which causes "Abort already called!").
             raise
         except Exception as e:
             logging.exception(f"Error in {func.__name__}: {e!s}")
