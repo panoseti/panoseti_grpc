@@ -239,7 +239,10 @@ class PanosetiLogFactory:
 
         if reset_handlers and logger.handlers:
             for h in list(logger.handlers):
-                h.close()
+                try:
+                    h.close()
+                except OSError:
+                    pass
                 logger.removeHandler(h)
 
         # 1. Console
