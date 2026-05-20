@@ -9,6 +9,7 @@ import abc
 import asyncio
 import contextlib
 import logging
+from collections.abc import Generator
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -21,7 +22,7 @@ from .state import get_dp_config
 
 
 @contextlib.contextmanager
-def _open_pff(path: str):
+def _open_pff(path: str) -> Generator[Any]:
     """Open a PFF file by absolute path or by package-relative path."""
     p = Path(path)
     if p.is_absolute():

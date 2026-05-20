@@ -152,7 +152,7 @@ class DaqDataGatewayServicer(daq_data_pb2_grpc.DaqDataServicer):
     # RPC implementations
     # ------------------------------------------------------------------
 
-    async def StreamImages(  # type: ignore[override]
+    async def StreamImages(
         self,
         request: daq_data_pb2.StreamImagesRequest,
         context: grpc.aio.ServicerContext,

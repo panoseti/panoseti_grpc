@@ -89,7 +89,7 @@ class AsyncDaqControlClient:
         request.run_dir = v_params.run_dir
         request.obs = v_params.obs
         request.module_id.extend(v_params.module_id)
-        resp: daq_control_pb2.StartDaqResponse = await self.stub.StartDaq(request, timeout=timeout)  # type: ignore[misc]  # type: ignore[misc]
+        resp: daq_control_pb2.StartDaqResponse = await self.stub.StartDaq(request, timeout=timeout)
         if not resp.success:
             raise ValueError(f"Server rejected data: {resp.message}")
         return bool(resp.success)
@@ -113,7 +113,7 @@ class AsyncDaqControlClient:
         request = daq_control_pb2.StopDaqRequest()
         request.data_dir = v_params.data_dir
         request.run_dir = v_params.run_dir
-        resp: daq_control_pb2.StopDaqResponse = await self.stub.StopDaq(request, timeout=timeout)  # type: ignore[misc]
+        resp: daq_control_pb2.StopDaqResponse = await self.stub.StopDaq(request, timeout=timeout)
         if not resp.success:
             raise ValueError(f"Server rejected data: {resp.message}")
         return bool(resp.success)
@@ -139,7 +139,7 @@ class AsyncDaqControlClient:
         request.check_hashpipe_running = v_params.check_hashpipe_running
         request.check_disk_usage = v_params.check_disk_usage
         request.check_run_dirs = v_params.check_run_dirs
-        resp: daq_control_pb2.DaqStatusResponse = await self.stub.StatusDaq(request, timeout=timeout)  # type: ignore[misc]
+        resp: daq_control_pb2.DaqStatusResponse = await self.stub.StatusDaq(request, timeout=timeout)
         if not resp.success:
             raise ValueError(f"Server rejected data: {resp.message}")
         status: dict[str, Any] = {}
@@ -174,7 +174,7 @@ class AsyncDaqControlClient:
         request.preserve_patterns.extend(v_params.preserve_patterns)
         request.manifest_digest = v_params.manifest_digest
         request.dry_run = v_params.dry_run
-        resp: daq_control_pb2.CleanupDataResponse = await self.stub.CleanupData(request, timeout=timeout)  # type: ignore[misc]
+        resp: daq_control_pb2.CleanupDataResponse = await self.stub.CleanupData(request, timeout=timeout)
         return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
     @grpc_call
@@ -198,7 +198,7 @@ class AsyncDaqControlClient:
         request.module_id.extend(v_params.module_id)
         request.algorithm = v_params.algorithm
         request.include_patterns.extend(v_params.include_patterns)
-        resp: daq_control_pb2.GenerateManifestResponse = await self.stub.GenerateManifest(request, timeout=timeout)  # type: ignore[misc]
+        resp: daq_control_pb2.GenerateManifestResponse = await self.stub.GenerateManifest(request, timeout=timeout)
         return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
     @grpc_call
@@ -224,7 +224,7 @@ class AsyncDaqControlClient:
         request.data_dir = v_params.data_dir
         request.run_dir = v_params.run_dir
         request.module_id.extend(v_params.module_id)
-        async for entry in self.stub.GetManifest(request, timeout=timeout):  # type: ignore[attr-defined]
+        async for entry in self.stub.GetManifest(request, timeout=timeout):
             yield MessageToDict(entry, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
     @grpc_call
@@ -246,7 +246,7 @@ class AsyncDaqControlClient:
         request = daq_control_pb2.GetTransferStatusRequest()
         request.data_dir = v_params.data_dir
         request.run_dir = v_params.run_dir
-        resp: daq_control_pb2.GetTransferStatusResponse = await self.stub.GetTransferStatus(request, timeout=timeout)  # type: ignore[misc]
+        resp: daq_control_pb2.GetTransferStatusResponse = await self.stub.GetTransferStatus(request, timeout=timeout)
         return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
     @grpc_call
@@ -271,7 +271,7 @@ class AsyncDaqControlClient:
         request.data_dir = v_params.data_dir
         request.run_dir = v_params.run_dir
         request.module_id.extend(v_params.module_id)
-        resp: daq_control_pb2.GetManifestDigestResponse = await self.stub.GetManifestDigest(request, timeout=timeout)  # type: ignore[misc]
+        resp: daq_control_pb2.GetManifestDigestResponse = await self.stub.GetManifestDigest(request, timeout=timeout)
         return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
     @grpc_call
@@ -296,7 +296,7 @@ class AsyncDaqControlClient:
         request.file_path = v_params.file_path
         resp: daq_control_pb2.RetryFailedTransferResponse = await self.stub.RetryFailedTransfer(
             request, timeout=timeout
-        )  # type: ignore[misc]
+        )
         return MessageToDict(resp, always_print_fields_with_no_presence=True, preserving_proto_field_name=True)
 
 

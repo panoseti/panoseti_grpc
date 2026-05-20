@@ -27,6 +27,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -239,10 +240,8 @@ class PanosetiLogFactory:
 
         if reset_handlers and logger.handlers:
             for h in list(logger.handlers):
-                try:
+                with contextlib.suppress(OSError):
                     h.close()
-                except OSError:
-                    pass
                 logger.removeHandler(h)
 
         # 1. Console

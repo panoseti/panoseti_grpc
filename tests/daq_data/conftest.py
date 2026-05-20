@@ -61,7 +61,7 @@ async def _start_edge_server(config: dict[str, Any]) -> dict[str, Any]:
     bound_port: list[int] = []
     shutdown_event = asyncio.Event()
     task = asyncio.create_task(serve(cfg, shutdown_event, in_main_thread=False, port=0, bound_port_out=bound_port))
-    while not bound_port:
+    while not bound_port:  # noqa: ASYNC110
         await asyncio.sleep(0.01)
     tcp_port = bound_port[0]
     await _wait_for_server("localhost", tcp_port)

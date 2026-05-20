@@ -194,5 +194,5 @@ def test_daqnode_status_reports_serving_against_live_server(start_unified_server
     serving = {s["service"] for s in data["grpc_services"] if "SERVING" in s["detail"]}
     # The unified server hosts all three active services.
     assert "daqdata.DaqData" in serving
-    assert "daqcontrol.DaqControl" in serving
-    assert "telemetry.Telemetry" in serving
+    assert "panoseti.daq_control.DaqControl" in serving
+    assert "panoseti.telemetry.Telemetry" in serving

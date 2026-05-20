@@ -4,7 +4,7 @@ import asyncio
 import logging
 import warnings
 from collections.abc import AsyncIterator, Generator
-from typing import Any
+from typing import Any, cast
 
 import grpc
 from google.protobuf.empty_pb2 import Empty
@@ -78,7 +78,7 @@ class AioDaqDataClient:
     @grpc_call
     async def status(self, timeout: float = 5.0) -> StatusResponse:  # noqa: ASYNC109
         """Return the current DaqData service status."""
-        return await self.stub.Status(Empty(), timeout=timeout)  # type: ignore[misc]
+        return cast(StatusResponse, await self.stub.Status(Empty(), timeout=timeout))
 
     @grpc_call
     async def init_hp_io(self, params: dict[str, Any], timeout: float = 10.0) -> bool:  # noqa: ASYNC109
@@ -110,7 +110,7 @@ class AioDaqDataClient:
             module_ids=v.module_ids,
         )
         self.logger.info(f"InitHpIo({self.target}): simulate={v.simulate_daq}, dir={v.data_dir}")
-        resp = await self.stub.InitHpIo(req, timeout=timeout)  # type: ignore[misc]
+        resp = await self.stub.InitHpIo(req, timeout=timeout)
         return bool(resp.success)
 
     async def init_sim(self, hp_io_cfg: dict[str, Any] | None = None, timeout: float = 5.0) -> bool:  # noqa: ASYNC109
@@ -217,7 +217,7 @@ class DaqDataClient:
     @grpc_call
     def status(self, timeout: float = 5.0) -> StatusResponse:
         """Return the current DaqData service status."""
-        return self.stub.Status(Empty(), timeout=timeout)  # type: ignore[misc]
+        return cast(StatusResponse, self.stub.Status(Empty(), timeout=timeout))
 
     @grpc_call
     def init_hp_io(self, params: dict[str, Any], timeout: float = 10.0) -> bool:
@@ -234,7 +234,7 @@ class DaqDataClient:
             module_ids=v.module_ids,
         )
         self.logger.info(f"InitHpIo({self.target}): simulate={v.simulate_daq}, dir={v.data_dir}")
-        resp = self.stub.InitHpIo(req, timeout=timeout)  # type: ignore[misc]
+        resp = self.stub.InitHpIo(req, timeout=timeout)
         return bool(resp.success)
 
     def init_sim(self, hp_io_cfg: dict[str, Any] | None = None, timeout: float = 5.0) -> bool:

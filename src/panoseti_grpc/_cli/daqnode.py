@@ -15,8 +15,8 @@ from typing import Annotated
 
 import grpc
 import typer
-from grpc_health.v1 import health_pb2 as _hp2  # type: ignore[import]
-from grpc_health.v1 import health_pb2_grpc as _hp2_grpc  # type: ignore[import]
+from grpc_health.v1 import health_pb2 as _hp2
+from grpc_health.v1 import health_pb2_grpc as _hp2_grpc
 from rich.console import Console
 from rich.table import Table
 
@@ -25,7 +25,7 @@ from .state import state
 console = Console()
 app = typer.Typer(help="Per-node health and readiness checks.", no_args_is_help=True)
 
-_ACTIVE_SERVICES = ["daqdata.DaqData", "daqcontrol.DaqControl", "telemetry.Telemetry"]
+_ACTIVE_SERVICES = ["daqdata.DaqData", "panoseti.daq_control.DaqControl", "panoseti.telemetry.Telemetry"]
 _LOG_DIR = "/var/log/panoseti"
 _ALLOY_DEFAULT_PORT = 12345
 

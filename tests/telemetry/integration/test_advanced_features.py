@@ -36,7 +36,9 @@ def test_triple_destination_logging(tmp_path: Any, capsys: Any, redis_client: An
     log_dir = tmp_path / "omni_logs"
     log_dir.mkdir()
 
-    logger = get_logger(service_name, log_dir=str(log_dir), console=True, grpc_enabled=True, level=logging.INFO, per_host=False)
+    logger = get_logger(
+        service_name, log_dir=str(log_dir), console=True, grpc_enabled=True, level=logging.INFO, per_host=False
+    )
 
     timestamp = str(time.time())
     unique_msg = f"Triple-Check-{timestamp}"

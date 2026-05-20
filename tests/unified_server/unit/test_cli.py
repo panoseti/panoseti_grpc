@@ -166,8 +166,8 @@ def test_daqnode_status_skip_alloy_reports_all_services() -> None:
     result = run_pseti_grpc("daqnode", "--skip-alloy", "--log-dir", "/tmp")
     # Exit 1 is expected (no server running), but all service names should appear.
     assert "daqdata.DaqData" in result.stdout
-    assert "daqcontrol.DaqControl" in result.stdout
-    assert "telemetry.Telemetry" in result.stdout
+    assert "panoseti.daq_control.DaqControl" in result.stdout
+    assert "panoseti.telemetry.Telemetry" in result.stdout
     assert "Log disk usage" in result.stdout
 
 
@@ -182,8 +182,8 @@ def test_daqnode_status_json_skip_alloy() -> None:
     assert len(data["grpc_services"]) == 3
     service_names = {s["service"] for s in data["grpc_services"]}
     assert "daqdata.DaqData" in service_names
-    assert "daqcontrol.DaqControl" in service_names
-    assert "telemetry.Telemetry" in service_names
+    assert "panoseti.daq_control.DaqControl" in service_names
+    assert "panoseti.telemetry.Telemetry" in service_names
 
 
 def test_daqnode_status_reports_disk() -> None:

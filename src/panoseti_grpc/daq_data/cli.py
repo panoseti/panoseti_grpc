@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 from rich import print
-from rich.pretty import pprint
 
 from panoseti_grpc.telemetry.logger import get_logger
 
@@ -36,8 +35,7 @@ async def run_pulse_height_distribution(
     elif len(module_ids) > 1:
         print("more than one module_id specified to make ph distribution")
     # pulse-height image streaming only
-    stream_images_responses = await addc.stream_images(
-        host,
+    stream_images_responses = addc.stream_images(
         stream_movie_data=False,
         stream_pulse_height_data=True,
         update_interval_seconds=-1.0,
@@ -65,8 +63,7 @@ async def run_pano_image_preview(
 ) -> None:
     """Streams PanoImages from an active observing run."""
     # Make the RPC call
-    stream_images_responses = await addc.stream_images(
-        host,
+    stream_images_responses = addc.stream_images(
         stream_movie_data=stream_movie_data,
         stream_pulse_height_data=stream_pulse_height_data,
         update_interval_seconds=update_interval_seconds,
@@ -91,8 +88,7 @@ async def run_speed_test(
     shutdown_event: asyncio.Event,
 ) -> None:
     # Stream images of all types as fast as possible
-    stream_images_responses = await addc.stream_images(
-        host,
+    stream_images_responses = addc.stream_images(
         stream_movie_data=True,
         stream_pulse_height_data=True,
         update_interval_seconds=-1.0,
@@ -116,27 +112,22 @@ async def run_speed_test(
 
 
 async def do_ping_fn(addc: AioDaqDataClient, host: str | None) -> None:
-    if host is None:
-        raise ValueError("--host must be specified for --ping")
-    if await addc.ping(host):
+    if await addc.ping():
         print(f"PING {host=}: [green] success [/green]")
     else:
         print(f"PING {host=}: [red] failed [/red]")
 
 
 async def do_list_hosts_fn(addc: AioDaqDataClient) -> None:
-    print("DAQ host status (True = valid, False = invalid):")
-    host_status_dict = await addc.get_daq_host_status()
-    pprint(host_status_dict, expand_all=True)
+    print("DAQ status:")
+    status = await addc.status()
+    print(f"HP IO Initialized: {status.hp_io_initialized}")
+    print(f"Message: {status.message}")
 
 
 async def do_reflect_services_fn(addc: AioDaqDataClient, host: str | None) -> None:
     print("-------------- ReflectServices --------------")
-    try:
-        services = await addc.reflect_services(host)
-        print(services)
-    except ValueError as e:
-        print(f"Error reflecting services: {e}")
+    print("Service reflection is not supported in the new client API. Use grpc_cli or standard tools.")
 
 
 async def do_init_fn(
@@ -147,7 +138,7 @@ async def do_init_fn(
         print("Initializing hp_io thread on all hosts")
     else:
         print(f"Initializing hp_io thread on {host=}")
-    await addc.init_hp_io(host, hp_io_cfg, timeout_sec=timeout_sec)
+    await addc.init_hp_io(hp_io_cfg, timeout=timeout_sec)
 
 
 def parse_log_level(log_level: str) -> int:
@@ -213,9 +204,8 @@ async def run_demo_api(args: argparse.Namespace) -> None:
     host = args.host
     module_ids = args.module_ids
     log_level = parse_log_level(args.log_level)
-    async with AioDaqDataClient(
-        args.daq_config_path, args.net_config_path, stop_event=shutdown_event, log_level=log_level
-    ) as addc:
+    target_host = host if host else "localhost"
+    async with AioDaqDataClient(host=target_host, port=50051, log_level=log_level) as addc:
         if do_ping:
             await do_ping_fn(addc, host)
 
@@ -231,9 +221,17 @@ async def run_demo_api(args: argparse.Namespace) -> None:
             await do_init_fn(addc, host, hp_io_cfg)
 
         if do_plot:
-            valid_daq_hosts = await addc.get_valid_daq_hosts()
+            import json
+
+            try:
+                with open(args.daq_config_path) as f:  # noqa: ASYNC230
+                    daq_cfg = json.load(f)
+                valid_daq_hosts = [node.get("ip_addr") for node in daq_cfg.get("daq_nodes", [])]
+            except Exception:
+                valid_daq_hosts = []
+
             if host is not None and host not in valid_daq_hosts:
-                raise ValueError(f"Invalid host: {host}. Valid hosts: {valid_daq_hosts}")
+                print(f"[warning] Target host {host} not explicitly listed in daq_config hosts: {valid_daq_hosts}")
 
             plot_tasks = []
             if args.plot_view:

@@ -31,7 +31,6 @@ loki.process "panoseti" {
       git_commit = "git_commit",
     }
   }
-  stage.output { source = "message" }
   forward_to = [loki.write.headnode.receiver]
 }
 

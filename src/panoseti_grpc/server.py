@@ -245,13 +245,13 @@ async def _make_daq_data_servicer(
     if cfg.role == "gateway":
         from panoseti_grpc.daq_data.aggregator import DaqDataGatewayServicer
 
-        servicer = DaqDataGatewayServicer(cfg)
-        return servicer, [servicer.startup()]
+        gateway_servicer = DaqDataGatewayServicer(cfg)
+        return gateway_servicer, [gateway_servicer.startup()]
 
     from panoseti_grpc.daq_data.server import DaqDataServicer
 
-    servicer = DaqDataServicer(cfg)
-    return servicer, [servicer.start_initial_task()]
+    edge_servicer = DaqDataServicer(cfg)
+    return edge_servicer, [edge_servicer.start_initial_task()]
 
 
 async def _make_daq_control_servicer(

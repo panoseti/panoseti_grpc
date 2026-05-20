@@ -273,7 +273,7 @@ class TelemetryServicer(telemetry_pb2_grpc.TelemetryServicer):
             redis_data = {k: str(v) for k, v in validated_data.items()}
 
             async with self.redis.pipeline() as pipe:
-                pipe.hset(redis_key, mapping=redis_data)  # type: ignore[arg-type]
+                pipe.hset(redis_key, mapping=redis_data)
 
                 # 5. LIFETIME MANAGEMENT
                 ttl = self.config.get_ttl(device_type)

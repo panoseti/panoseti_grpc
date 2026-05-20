@@ -17,7 +17,7 @@ import grpc.aio
 class LoggingClientInterceptor(grpc.aio.UnaryUnaryClientInterceptor):  # type: ignore[misc]
     """Logs outgoing RPCs (method, target) at DEBUG level."""
 
-    async def intercept_unary_unary(  # type: ignore[override]
+    async def intercept_unary_unary(
         self,
         continuation: Callable[[grpc.aio.ClientCallDetails, Any], Awaitable[Any]],
         client_call_details: grpc.aio.ClientCallDetails,
@@ -33,7 +33,7 @@ class ExceptionServerInterceptor(grpc.aio.ServerInterceptor):  # type: ignore[mi
     util/error_handling.py but applied globally at the server level.
     """
 
-    async def intercept_service(  # type: ignore[override]
+    async def intercept_service(
         self,
         continuation: Callable[[grpc.HandlerCallDetails], Awaitable[grpc.RpcMethodHandler]],
         handler_call_details: grpc.HandlerCallDetails,

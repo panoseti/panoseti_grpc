@@ -51,7 +51,7 @@ async def _start_server(cfg: dict[str, Any]) -> tuple[asyncio.Event, asyncio.Tas
     shutdown = asyncio.Event()
     bound_port: list[int] = []
     task = asyncio.create_task(serve(cfg, shutdown, in_main_thread=False, port=0, bound_port_out=bound_port))
-    while not bound_port:
+    while not bound_port:  # noqa: ASYNC110
         await asyncio.sleep(0.01)
     tcp_port = bound_port[0]
     hc = HealthClient("localhost", tcp_port)
