@@ -12,10 +12,10 @@ import builtins as _builtins
 import sys
 import typing as _typing
 
-if sys.version_info >= (3, 10):
-    from typing import TypeAlias as _TypeAlias
+if sys.version_info >= (3, 11):
+    from typing import TypeAlias as _TypeAlias, Never as _Never
 else:
-    from typing_extensions import TypeAlias as _TypeAlias
+    from typing_extensions import TypeAlias as _TypeAlias, Never as _Never
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -99,6 +99,7 @@ class LogMessage(_message.Message):
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["file_path", b"file_path", "function_name", b"function_name", "git_branch", b"git_branch", "git_commit", b"git_commit", "host", b"host", "line_number", b"line_number", "payload_json", b"payload_json", "process_id", b"process_id", "service_name", b"service_name", "severity", b"severity", "thread_name", b"thread_name", "timestamp", b"timestamp"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___LogMessage: _TypeAlias = LogMessage  # noqa: Y015
 
@@ -116,8 +117,11 @@ class LogResponse(_message.Message):
         success: _builtins.bool = ...,
         message: _builtins.str = ...,
     ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["message", b"message", "success", b"success"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___LogResponse: _TypeAlias = LogResponse  # noqa: Y015
 
@@ -203,6 +207,7 @@ class GnssPayload(_message.Message):
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["extra_data", b"extra_data", "fix_mode", b"fix_mode", "lat", b"lat", "lon", b"lon", "satellites", b"satellites"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___GnssPayload: _TypeAlias = GnssPayload  # noqa: Y015
 
@@ -230,6 +235,7 @@ class DewPayload(_message.Message):
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["extra_data", b"extra_data", "humidity", b"humidity", "temp_c", b"temp_c"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___DewPayload: _TypeAlias = DewPayload  # noqa: Y015
 
@@ -263,6 +269,7 @@ class TestPayload(_message.Message):
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["active", b"active", "extra_data", b"extra_data", "iteration", b"iteration", "message", b"message", "value", b"value"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___TestPayload: _TypeAlias = TestPayload  # noqa: Y015
 
@@ -280,7 +287,10 @@ class StatusResponse(_message.Message):
         success: _builtins.bool = ...,
         message: _builtins.str = ...,
     ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["message", b"message", "success", b"success"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___StatusResponse: _TypeAlias = StatusResponse  # noqa: Y015

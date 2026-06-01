@@ -13,9 +13,12 @@ port = 50051
 shutdown_grace_period = 5.0
 
 [server.services]
-telemetry   = true
-daq_data    = false
-daq_control = false
+telemetry    = true
+daq_data     = false
+daq_control  = false
+# Enable ml_inference on the head node when running pa-stream-cloud in attach mode.
+# Exposes EmitPrediction / StreamPredictions / SubscribeAlerts for real-time scoring.
+ml_inference = false
 
 # -------------------------------------------------------
 # Telemetry service settings

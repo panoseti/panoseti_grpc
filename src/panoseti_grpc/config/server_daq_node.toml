@@ -21,6 +21,7 @@ grpc_logging = true
 telemetry    = false   # telemetry runs on headnode; logs forwarded via HEADNODE_IP env var
 daq_data     = true
 daq_control  = true
+ml_inference = false   # ml_inference runs on headnode, not daq nodes
 # DEPRECATED: ublox_control is in maintenance-only mode; will be removed in next major release.
 ublox_control = false
 

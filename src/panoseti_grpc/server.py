@@ -51,6 +51,7 @@ from pydantic import BaseModel, Field
 # Per-service config models
 from panoseti_grpc.daq_control.config import DaqControlServerConfig
 from panoseti_grpc.daq_data.config import DaqDataServerConfig
+from panoseti_grpc.ml_inference.config import MLInferenceServerConfig
 
 # Protobuf-generated descriptors and registration functions
 from panoseti_grpc.generated import (
@@ -58,6 +59,8 @@ from panoseti_grpc.generated import (
     daq_control_pb2_grpc,
     daq_data_pb2,
     daq_data_pb2_grpc,
+    ml_inference_pb2,
+    ml_inference_pb2_grpc,
     telemetry_pb2,
     telemetry_pb2_grpc,
 )
@@ -127,6 +130,7 @@ class ServiceToggles(BaseModel):
     telemetry: bool = True
     daq_data: bool = True
     daq_control: bool = True
+    ml_inference: bool = False
 
 
 class PanosetiServerConfig(BaseModel):
@@ -162,6 +166,7 @@ class PanosetiServerConfig(BaseModel):
     daq_control: DaqControlServerConfig = Field(
         default_factory=lambda: DaqControlServerConfig(grpc_port=50051, shutdown_grace_period=5.0, log_level="INFO")
     )
+    ml_inference: MLInferenceServerConfig = Field(default_factory=MLInferenceServerConfig)
 
     model_config = {"extra": "ignore"}
 
@@ -266,6 +271,15 @@ async def _make_daq_control_servicer(
     return servicer, []
 
 
+async def _make_ml_inference_servicer(
+    cfg: MLInferenceServerConfig, shutdown_event: asyncio.Event
+) -> tuple[Any, list[Coroutine[Any, Any, None]]]:
+    from panoseti_grpc.ml_inference.server import MLInferenceServicer
+
+    servicer = MLInferenceServicer(cfg)
+    return servicer, []
+
+
 # Register core services
 ServiceRegistry.register(
     ServiceDescriptor(
@@ -297,13 +311,25 @@ ServiceRegistry.register(
     )
 )
 
+ServiceRegistry.register(
+    ServiceDescriptor(
+        name="ml_inference",
+        servicer_factory=_make_ml_inference_servicer,
+        add_to_server_fn=ml_inference_pb2_grpc.add_MLInferenceServicer_to_server,
+        service_names_for_reflection=[ml_inference_pb2.DESCRIPTOR.services_by_name["MLInference"].full_name],
+        config_field="ml_inference",
+    )
+)
+
 
 # ---------------------------------------------------------------------------
 # PanosetiServer
 # ---------------------------------------------------------------------------
 
 # Services are started in this order.
-INIT_ORDER = ["telemetry", "daq_data", "daq_control"]
+# ml_inference is last: it is a pure pub-sub broker with no dependencies on
+# other services, but it emits predictions during/after daq_data streams.
+INIT_ORDER = ["telemetry", "daq_data", "daq_control", "ml_inference"]
 
 
 class PanosetiServer:

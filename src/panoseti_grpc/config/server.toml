@@ -26,6 +26,9 @@ grpc_logging = true
 telemetry    = true
 daq_data     = true
 daq_control  = true
+# ml_inference: enable on the observatory head node when pa-stream-cloud is
+# running in attach mode.  Exposes EmitPrediction/StreamPredictions/SubscribeAlerts.
+ml_inference  = false
 # DEPRECATED: ublox_control is in maintenance-only mode; use Telemetry.ReportStatus
 # with GnssPayload instead.  Will be removed in the next major release.
 ublox_control = false
@@ -87,4 +90,13 @@ grpc_logging      = true
 shutdown_grace_period = 5.0
 log_level         = "INFO"
 
-
+# -------------------------------------------------------
+# ML Inference service settings
+# -------------------------------------------------------
+[ml_inference]
+# Score threshold at or above which a prediction triggers a SubscribeAlerts event.
+alert_threshold          = 0.5
+# Maximum concurrent StreamPredictions / SubscribeAlerts subscribers.
+max_subscribers          = 100
+# Per-subscriber asyncio.Queue size (backpressure: oldest item dropped when full).
+subscriber_queue_size    = 256

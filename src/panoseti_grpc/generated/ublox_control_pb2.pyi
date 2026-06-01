@@ -14,10 +14,10 @@ import builtins as _builtins
 import sys
 import typing as _typing
 
-if sys.version_info >= (3, 10):
-    from typing import TypeAlias as _TypeAlias
+if sys.version_info >= (3, 11):
+    from typing import TypeAlias as _TypeAlias, Never as _Never
 else:
-    from typing_extensions import TypeAlias as _TypeAlias
+    from typing_extensions import TypeAlias as _TypeAlias, Never as _Never
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -77,6 +77,7 @@ class CaptureUbloxResponse(_message.Message):
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["message", b"message", "name", b"name", "parsed_data", b"parsed_data", "payload", b"payload", "pkt_unix_timestamp", b"pkt_unix_timestamp", "type", b"type"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___CaptureUbloxResponse: _TypeAlias = CaptureUbloxResponse  # noqa: Y015
 
@@ -94,8 +95,11 @@ class PollRequest(_message.Message):
         *,
         cfg_key_patterns: _abc.Iterable[_builtins.str] | None = ...,
     ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["cfg_key_patterns", b"cfg_key_patterns"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___PollRequest: _TypeAlias = PollRequest  # noqa: Y015
 
@@ -117,6 +121,7 @@ class PollResponse(_message.Message):
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["parsed_data", b"parsed_data"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___PollResponse: _TypeAlias = PollResponse  # noqa: Y015
 
@@ -141,8 +146,11 @@ class CaptureUbloxRequest(_message.Message):
         *,
         patterns: _abc.Iterable[_builtins.str] | None = ...,
     ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["patterns", b"patterns"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___CaptureUbloxRequest: _TypeAlias = CaptureUbloxRequest  # noqa: Y015
 
@@ -175,6 +183,7 @@ class InitF9tRequest(_message.Message):
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["f9t_config", b"f9t_config", "force_init", b"force_init"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___InitF9tRequest: _TypeAlias = InitF9tRequest  # noqa: Y015
 
@@ -234,5 +243,6 @@ class InitF9tResponse(_message.Message):
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["f9t_config", b"f9t_config", "init_status", b"init_status", "message", b"message"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___InitF9tResponse: _TypeAlias = InitF9tResponse  # noqa: Y015
