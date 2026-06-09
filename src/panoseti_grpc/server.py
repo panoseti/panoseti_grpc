@@ -51,7 +51,6 @@ from pydantic import BaseModel, Field
 # Per-service config models
 from panoseti_grpc.daq_control.config import DaqControlServerConfig
 from panoseti_grpc.daq_data.config import DaqDataServerConfig
-from panoseti_grpc.ml_inference.config import MLInferenceServerConfig
 
 # Protobuf-generated descriptors and registration functions
 from panoseti_grpc.generated import (
@@ -64,6 +63,7 @@ from panoseti_grpc.generated import (
     telemetry_pb2,
     telemetry_pb2_grpc,
 )
+from panoseti_grpc.ml_inference.config import MLInferenceServerConfig
 from panoseti_grpc.telemetry.config import TelemetryServerConfig
 
 _logger = logging.getLogger(__name__)

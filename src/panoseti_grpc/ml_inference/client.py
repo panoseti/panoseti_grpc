@@ -9,7 +9,6 @@ the Ray Serve inference deployment calls ``emit_prediction()`` (or
 
 from __future__ import annotations
 
-import time
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
@@ -17,7 +16,6 @@ import grpc
 import grpc.aio
 
 from panoseti_grpc.generated import ml_inference_pb2, ml_inference_pb2_grpc
-
 
 # ---------------------------------------------------------------------------
 # Sync client
@@ -41,7 +39,7 @@ class MLInferenceClient:
 
     # -- context manager --
 
-    def __enter__(self) -> "MLInferenceClient":
+    def __enter__(self) -> MLInferenceClient:
         self._channel = grpc.insecure_channel(self._target)
         self._stub = ml_inference_pb2_grpc.MLInferenceStub(self._channel)
         return self
@@ -148,7 +146,7 @@ class AioMLInferenceClient:
         self._channel: grpc.aio.Channel | None = None
         self._stub: ml_inference_pb2_grpc.MLInferenceStub | None = None
 
-    async def __aenter__(self) -> "AioMLInferenceClient":
+    async def __aenter__(self) -> AioMLInferenceClient:
         self._channel = grpc.aio.insecure_channel(self._target)
         self._stub = ml_inference_pb2_grpc.MLInferenceStub(self._channel)
         return self

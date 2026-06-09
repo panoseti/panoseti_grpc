@@ -17,10 +17,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import grpc
-from google.protobuf.timestamp_pb2 import Timestamp
 
 from panoseti_grpc.generated import ml_inference_pb2, ml_inference_pb2_grpc
 
@@ -147,7 +146,7 @@ class MLInferenceServicer(ml_inference_pb2_grpc.MLInferenceServicer):
         self._cfg = cfg
         self._subs = _SubscriberSet(cfg.max_subscribers, cfg.subscriber_queue_size)
 
-    async def EmitPrediction(  # noqa: N802
+    async def EmitPrediction(
         self,
         request: ml_inference_pb2.Prediction,
         context: grpc.aio.ServicerContext,
@@ -178,7 +177,7 @@ class MLInferenceServicer(ml_inference_pb2_grpc.MLInferenceServicer):
         )
         return ml_inference_pb2.EmitAck(success=True, subscriber_count=n)
 
-    async def StreamPredictions(  # noqa: N802
+    async def StreamPredictions(
         self,
         request: ml_inference_pb2.PredictionRequest,
         context: grpc.aio.ServicerContext,
@@ -207,7 +206,7 @@ class MLInferenceServicer(ml_inference_pb2_grpc.MLInferenceServicer):
             self._subs.remove_prediction_subscriber(sid)
             logger.info("StreamPredictions subscriber %d disconnected", sid)
 
-    async def SubscribeAlerts(  # noqa: N802
+    async def SubscribeAlerts(
         self,
         request: ml_inference_pb2.AlertRequest,
         context: grpc.aio.ServicerContext,
