@@ -14,7 +14,7 @@ Each service operates independently. Click the links below for detailed API docu
 | **DAQ Data** | Streams real-time science data from Hashpipe via headnode gateway. | 🟢 Production | [**Read Docs**](./docs/daq_data_service.md) |
 | **DAQ Control** | Manages Hashpipe lifecycle on DAQ nodes (start/stop/status). | 🟢 Production | [**Read Docs**](./docs/daq_control_service.md) |
 | **Telemetry** | Device status → Redis/InfluxDB; log shipping → Grafana Alloy → Loki. | 🟡 Beta | [**Read Docs**](./docs/telemetry_service.md) |
-| **ML Inference** | Real-time cloud-detection scores from the streaming pipeline; pub-sub for predictions and alerts. | 🟡 Beta | [**Read Docs**](./docs/ml_inference.md) |
+| **ML Inference** | Real-time cloud-detection scores from the streaming pipeline; pub-sub for predictions and alerts. | 🟡 Beta | [**Read Docs**](./docs/ml_inference_service.md) |
 | **U-blox Control** | Controls and configures GNSS chips (F9T/F9P).          | 🔴 Deprecated | [**Read Docs**](./src/panoseti_grpc/ublox_control/README.md) |
 
 ---
