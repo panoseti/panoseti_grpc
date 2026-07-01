@@ -29,8 +29,12 @@ dependencies = [
     "grpcio==1.78.0",
     "grpcio-tools==1.78.0",
     "grpcio-reflection==1.78.0",
+
+    # Pin Protobuf to the v5 series (Stable)
     "protobuf>=6.31.1,<7.0.0",
     "grpcio-health-checking",
+    "mypy-protobuf",
+    "types-protobuf",
     "coverage>=7.10.7",
     "cython",
     "wheel",
