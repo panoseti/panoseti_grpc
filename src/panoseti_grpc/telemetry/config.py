@@ -1,13 +1,17 @@
 """
 Telemetry Service configuration classes for validation and
 """
+
+from __future__ import annotations
+
 import json
-import time
-import tomli
-from enum import IntEnum
-from pydantic import BaseModel, Field, field_validator, ValidationError
-from typing import Dict, Type, Optional, Any, Literal
 import os
+import time
+import tomllib
+from enum import IntEnum
+from typing import Any
+
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 
 # --- 1. Pydantic Models (Production Schemas) ---
@@ -38,25 +42,26 @@ class LogSchema(BaseModel):
     severity: LogSeverity = Field(default=LogSeverity.INFO)
 
     # Source info (Optional)
-    file_path: Optional[str] = None
-    line_number: Optional[int] = None
-    function_name: Optional[str] = None
+    file_path: str | None = None
+    line_number: int | None = None
+    function_name: str | None = None
 
     # --- System Metadata (New Fields) ---
-    process_id: Optional[int] = None
-    thread_name: Optional[str] = None
+    process_id: int | None = None
+    thread_name: str | None = None
 
     # Optional because development environments might not be git repos
-    git_commit: Optional[str] = None
-    git_branch: Optional[str] = None
+    git_commit: str | None = None
+    git_branch: str | None = None
 
     # --- Payload ---
     # We accept a raw string (from gRPC) but validate it isn't massive.
     # 1MB limit for a single log entry is generous but sane.
     payload_json: str = Field(..., max_length=1_000_000)
 
-    @field_validator('service_name')
-    def prevent_high_cardinality(cls, v):
+    @field_validator("service_name")
+    @classmethod
+    def prevent_high_cardinality(cls, v: str) -> str:
         """
         Prevent dynamic names like 'process_12345' from becoming labels.
         This protects Loki from index explosion.
@@ -67,12 +72,13 @@ class LogSchema(BaseModel):
             pass
         return v.lower()
 
-    @field_validator('payload_json')
-    def validate_json_structure(cls, v):
+    @field_validator("payload_json")
+    @classmethod
+    def validate_json_structure(cls, v: str) -> str:
         try:
             json.loads(v)
         except ValueError:
-            raise ValueError("Payload must be valid JSON")
+            raise ValueError("Payload must be valid JSON") from None
         return v
 
 
@@ -83,13 +89,13 @@ class GnssModel(BaseModel):
     fix_mode: str
     # Core + Extensions Pattern: "extra_data" is the safe extension point
     # Use a default_factory (or default to None) to avoid cross-instance state leakage.
-    extra_data: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    extra_data: dict[str, Any] | None = Field(default_factory=dict)
 
 
 class DewModel(BaseModel):
     temp_c: float = Field(ge=-50, le=100)
     humidity: float = Field(ge=0, le=100)
-    extra_data: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    extra_data: dict[str, Any] | None = Field(default_factory=dict)
 
 
 class PayloadTestModel(BaseModel):
@@ -97,16 +103,17 @@ class PayloadTestModel(BaseModel):
     value: float
     message: str
     active: bool
-    extra_data: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    extra_data: dict[str, Any] | None = Field(default_factory=dict)
 
-    @field_validator('message')
-    def must_be_uppercase(cls, v):
+    @field_validator("message")
+    @classmethod
+    def must_be_uppercase(cls, v: str) -> str:
         if not v.isupper():
-            raise ValueError('Message must be uppercase')
+            raise ValueError("Message must be uppercase")
         return v
 
 
-SCHEMA_MAP: Dict[str, Type[BaseModel]] = {
+SCHEMA_MAP: dict[str, type[BaseModel]] = {
     "gnss": GnssModel,
     "dew": DewModel,
     "test": PayloadTestModel,
@@ -116,47 +123,55 @@ SCHEMA_MAP: Dict[str, Type[BaseModel]] = {
 
 # --- 2. Registry Configuration ---
 
+
 class DeviceConfig(BaseModel):
     """
     Represents a single device entry in telemetry_config.toml
     """
+
     mode: str = Field(default="production", pattern="^(production|experimental)$")
     redis_prefix: str
     ttl_seconds: int = Field(default=0, ge=0)
-    description: Optional[str] = ""
+    description: str | None = ""
 
-    @field_validator('redis_prefix')
-    def validate_prefix(cls, v, info):
+    @field_validator("redis_prefix")
+    @classmethod
+    def validate_prefix(cls, v: str, info: Any) -> str:
         # We need access to the 'mode' field to validate this rule.
         # Pydantic v2 validation allows access to other fields via 'info' context if needed.
         # For simple robustness, we enforce the "DEV_" rule if mode is experimental.
-        if 'mode' in info.data and info.data['mode'] == 'experimental':
-            if not v.startswith("DEV_"):
-                raise ValueError(f"Experimental prefix '{v}' must start with 'DEV_'")
+        if (
+            hasattr(info, "data")
+            and "mode" in info.data
+            and info.data["mode"] == "experimental"
+            and not v.startswith("DEV_")
+        ):
+            raise ValueError(f"Experimental prefix '{v}' must start with 'DEV_'")
         return v
 
 
 class TelemetryConfig:
-    def __init__(self, devices: Dict[str, DeviceConfig]):
+    def __init__(self, devices: dict[str, DeviceConfig]) -> None:
         self.devices = devices
 
     @classmethod
-    def load(cls, path: str):
+    def load(cls, path: str | None = None) -> TelemetryConfig:
         """Loads TOML config and parses into DeviceConfig objects."""
-        if not os.path.exists(path):
+        if path is None or not os.path.exists(path):
             # Fallback for installed package resources
             try:
                 from . import resources as r
-                path = r.get_config_path()
+
+                path = str(r.get_config_path())
             except ImportError:
                 pass
 
         # If still missing, try generic fallback or fail
-        if not os.path.exists(path):
+        if path is None or not os.path.exists(path):
             raise FileNotFoundError(f"Config file not found: {path}")
 
         with open(path, "rb") as f:
-            data = tomli.load(f)
+            data = tomllib.load(f)
 
         parsed_devices = {}
         raw_devices = data.get("devices", {})
@@ -186,7 +201,7 @@ class TelemetryConfig:
             return 3600  # Unknown types die after 1 hour
         return self.devices[device_type].ttl_seconds
 
-    def validate_and_flatten(self, device_type: str, data: dict) -> dict:
+    def validate_and_flatten(self, device_type: str, data: dict[str, Any]) -> dict[str, Any]:
         """
         Validates data if Production. Flattens data for Redis.
         """
@@ -203,21 +218,22 @@ class TelemetryConfig:
                 model = SCHEMA_MAP[device_type](**data)
                 clean_data = model.model_dump()
             except ValidationError as e:
-                raise ValueError(f"Schema Violation for {device_type}: {e}")
+                raise ValueError(f"Schema Violation for {device_type}: {e}") from e
         else:
             # Should not happen if config and code are synced
             raise ValueError(f"No schema defined for production type '{device_type}'")
 
         # 3. Flatten (Handling nested 'extra_data')
-        if 'extra_data' in clean_data and clean_data['extra_data']:
-            extras = clean_data.pop('extra_data')
-            for k, v in extras.items():
-                clean_data[f"extra_{k}"] = v
+        if clean_data.get("extra_data"):
+            extras = clean_data.pop("extra_data")
+            if isinstance(extras, dict):
+                for k, v in extras.items():
+                    clean_data[f"extra_{k}"] = v
 
         return self._flatten_dict(clean_data)
 
-    def _flatten_dict(self, d: Dict, parent_key: str = '', sep: str = '_') -> Dict:
-        items = []
+    def _flatten_dict(self, d: dict[str, Any], parent_key: str = "", sep: str = "_") -> dict[str, Any]:
+        items: list[tuple[str, Any]] = []
         for k, v in d.items():
             new_key = f"{parent_key}{sep}{k}" if parent_key else k
             if isinstance(v, dict):
@@ -225,3 +241,16 @@ class TelemetryConfig:
             else:
                 items.append((new_key, v))
         return dict(items)
+
+
+class TelemetryServerConfig(BaseModel):
+    """Server-level configuration for the Telemetry gRPC service."""
+
+    grpc_port: int = Field(50051, ge=1024, le=65535)
+    redis_host: str = Field(default_factory=lambda: os.getenv("REDIS_HOST", "localhost"))
+    redis_port: int = 6379
+    redis_db: int = 0
+    uds_path: str | None = None
+    telemetry_config_path: str | None = None  # overrides env var / package default
+    shutdown_grace_period: float = Field(5.0, ge=0)
+    log_level: str = Field("INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")

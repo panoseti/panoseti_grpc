@@ -1,0 +1,47 @@
+# docker-compose for the unified-server CI test suite.
+#
+# Design: a single test_runner container starts PanosetiServer in a subprocess
+# (same pattern as tests/telemetry and tests/daq_control). No separate server
+# container is needed.  Redis is required only for the telemetry service tests.
+#
+# The test_runner exposes three ports (50055, 50056, 50057) for the three
+# server fixture variants (all-services, headnode, daq_node) so that all
+# fixtures can coexist in the same process without port conflicts.
+
+services:
+  redis:
+    image: redis:alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - panoseti-net
+
+  test_runner:
+    build:
+      context: ../../
+      dockerfile: Dockerfile.ci
+      target: unified-server-test
+    hostname: unified-test-runner
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GRPC_PORT=50055        # All-services unified server
+      - HEADNODE_PORT=50056    # Headnode (telemetry-only) server
+      - DAQ_NODE_PORT=50057    # DAQ node (daq_data + daq_control) server
+      - HEADNODE_IP=localhost
+      - HEADNODE_GRPC_PORT=50055
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
+    command: ["sleep", "infinity"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - panoseti-net
+
+networks:
+  panoseti-net:
+    driver: bridge

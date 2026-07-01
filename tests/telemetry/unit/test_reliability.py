@@ -1,15 +1,18 @@
-import pytest
 import logging
 import time
+from typing import Any
 from unittest.mock import MagicMock
-from panoseti_grpc.telemetry.client import AsyncGrpcHandler, TelemetryClient
+
+import pytest
+
+from panoseti_grpc.telemetry.client import AsyncGrpcHandler
 
 
 # -----------------------------------------------------------------------------
 # 1. Custom Fixture that bypasses helper functions to GUARANTEE correct wiring
 # -----------------------------------------------------------------------------
 @pytest.fixture
-def crash_proof_logger():
+def crash_proof_logger() -> None:
     """
     Creates a logger manually wired to a MagicMock client.
     This avoids any risk of make_grpc_logger overwriting our mock.
@@ -23,7 +26,7 @@ def crash_proof_logger():
     mock_client.send_log_future.return_value = future_mock
 
     # 3. Create the Handler manually
-    handler = AsyncGrpcHandler(mock_client, "CrashTestDummy", queue_size=10)
+    handler = AsyncGrpcHandler(mock_client, queue_size=10)
 
     # 4. Create an isolated logger
     logger = logging.getLogger("CrashTestDummy")
@@ -39,16 +42,20 @@ def crash_proof_logger():
 # 2. Test Cases
 # -----------------------------------------------------------------------------
 
-def test_handler_survives_unserializable_object(crash_proof_logger):
+
+def test_handler_survives_unserializable_object(crash_proof_logger: Any) -> None:
     """
     Scenario: User logs an object that crashes json.dumps().
     """
     logger, _ = crash_proof_logger
 
     class UnserializableObj:
-        def __str__(self): return "I am problematic"
+        def __str__(self) -> str:
+            return "I am problematic"
 
-        def __repr__(self): return "I am problematic"
+        def __repr__(self) -> str:
+            return "I am problematic"
+
         # Removing to_json/dict to force serialization issues if not handled strings
 
     try:
@@ -62,7 +69,7 @@ def test_handler_survives_unserializable_object(crash_proof_logger):
     # Passed if we didn't crash
 
 
-def test_handler_survives_schema_violation(crash_proof_logger):
+def test_handler_survives_schema_violation(crash_proof_logger: Any) -> None:
     """
     Scenario: The worker thread tries to send data, but the gRPC client raises an error.
     Expectation: The worker thread should stay alive.
@@ -72,7 +79,7 @@ def test_handler_survives_schema_violation(crash_proof_logger):
     # 1. Configure the Mock to crash on the FIRST call, succeed on SECOND
     mock_client.send_log_future.side_effect = [
         RuntimeError("Protobuf Schema Mismatch!"),  # 1st log crashes
-        MagicMock()  # 2nd log returns a fresh future
+        MagicMock(),  # 2nd log returns a fresh future
     ]
 
     # 2. Send logs
@@ -84,11 +91,12 @@ def test_handler_survives_schema_violation(crash_proof_logger):
 
     # 3. Verify the worker tried TWICE
     # If the thread died after the first error, this would be 1
-    assert mock_client.send_log_future.call_count == 2, \
+    assert mock_client.send_log_future.call_count == 2, (
         f"Worker died! Call count is {mock_client.send_log_future.call_count}"
+    )
 
 
-def test_handler_survives_queue_overflow(crash_proof_logger):
+def test_handler_survives_queue_overflow(crash_proof_logger: Any) -> None:
     """
     Scenario: Logging faster than the network can handle.
     Expectation: Drop logs, don't crash.
@@ -108,6 +116,6 @@ def test_handler_survives_queue_overflow(crash_proof_logger):
     # Wait for drain
     time.sleep(0.5)
 
-    # We expect at least 10 calls (the queue size). 
+    # We expect at least 10 calls (the queue size).
     # Some might be dropped, some might process fast.
     assert mock_client.send_log_future.call_count >= 10

@@ -1,15 +1,18 @@
-import pytest
-import time
 import json
 import logging
+import time
+from typing import Any
 from unittest.mock import MagicMock
-from panoseti_grpc.telemetry.client import TelemetryClient, AsyncGrpcHandler
+
+import pytest
+
+from panoseti_grpc.telemetry.client import AsyncGrpcHandler, TelemetryClient
 from panoseti_grpc.telemetry.logger import get_logger
 
 LOG_KEY = "logs:ingress"
 
 
-def wait_for_service_log(redis_client, service_name, retries=20):
+def wait_for_service_log(redis_client: Any, service_name: Any, retries: Any = 20) -> None:
     """
     Polls Redis for the specific service log.
     Now looks at the TAIL of the list (most recent logs).
@@ -24,13 +27,13 @@ def wait_for_service_log(redis_client, service_name, retries=20):
                 data = json.loads(entry)
                 if data.get("service_name", "").lower() == service_name.lower():
                     return data
-            except (json.JSONDecodeError, TypeError):
+            except json.JSONDecodeError, TypeError:
                 continue
         time.sleep(0.2)
     return None
 
 
-def test_unserializable_payload_handling(redis_client, start_grpc_server):
+def test_unserializable_payload_handling(redis_client: Any, start_grpc_server: Any) -> None:
     service_name = "BAD_DATA_TEST"
     logger = get_logger(service_name, grpc_enabled=True)
 
@@ -49,7 +52,7 @@ def test_unserializable_payload_handling(redis_client, start_grpc_server):
     assert "invalid" in data["payload_json"]
 
 
-def test_huge_payload_logging(redis_client):
+def test_huge_payload_logging(redis_client: Any) -> None:
     service_name = "HUGE_LOG_TEST"
     client = TelemetryClient(host="localhost", port=50051)
 
@@ -57,7 +60,7 @@ def test_huge_payload_logging(redis_client):
     logger.setLevel(logging.INFO)
     logger.handlers = []
     # Larger queue to accept the burst
-    logger.addHandler(AsyncGrpcHandler(client, service_name, queue_size=100))
+    logger.addHandler(AsyncGrpcHandler(client, queue_size=100))
 
     huge_msg = "X" * 5000
     logger.info(huge_msg)
@@ -71,7 +74,7 @@ def test_huge_payload_logging(redis_client):
     assert len(content) == 5000
 
 
-def test_handler_survives_queue_overflow():
+def test_handler_survives_queue_overflow() -> None:
     """
     Verifies that the AsyncGrpcHandler swallows the queue.Full exception
     and protects the main application thread from crashing when under load.
@@ -81,13 +84,12 @@ def test_handler_survives_queue_overflow():
 
     # 2. Setup Handler with a TINY queue (size=1)
     # This makes it instant to overflow.
-    handler = AsyncGrpcHandler(mock_client, "CRASH_TEST", queue_size=1)
+    handler = AsyncGrpcHandler(mock_client, queue_size=1)
 
     # 3. Create dummy records
     # Note: We must populate process/threadName because client.py now expects them
     record = logging.LogRecord(
-        name="test", level=logging.INFO, pathname=__file__, lineno=10,
-        msg="Spam", args=(), exc_info=None
+        name="test", level=logging.INFO, pathname=__file__, lineno=10, msg="Spam", args=(), exc_info=None
     )
     record.process = 1234
     record.threadName = "MainThread"
@@ -116,7 +118,7 @@ def test_handler_survives_queue_overflow():
     handler._stop_event.set()
 
 
-def test_metadata_context_propagation(redis_client, start_grpc_server):
+def test_metadata_context_propagation(redis_client: Any, start_grpc_server: Any) -> None:
     """
     Verifies that rich Python metadata (function name, filename, line number)
     survives the gRPC serialization loop and arrives in Redis.
@@ -124,7 +126,7 @@ def test_metadata_context_propagation(redis_client, start_grpc_server):
     service_name = "META_TEST"
     logger = get_logger(service_name, grpc_enabled=True)
 
-    def internal_function():
+    def internal_function() -> None:
         logger.info("Inside Function")  # Line X
 
     internal_function()
@@ -141,16 +143,16 @@ def test_metadata_context_propagation(redis_client, start_grpc_server):
     payload = data.get("payload_json", "")
 
     # We expect the function name to be present somewhere
-    assert "internal_function" in str(data) or "internal_function" in payload, \
+    assert "internal_function" in str(data) or "internal_function" in payload, (
         f"Function name metadata lost. Data: {data}"
+    )
 
     # We expect the filename to be present
-    assert "test_logging_scenarios.py" in str(data) or "test_logging_scenarios.py" in payload, \
-        "Filename metadata lost."
+    assert "test_logging_scenarios.py" in str(data) or "test_logging_scenarios.py" in payload, "Filename metadata lost."
 
 
 # --- NEW TEST 4: Severity Level Mapping ---
-def test_severity_level_propagation(redis_client, start_grpc_server):
+def test_severity_level_propagation(redis_client: Any, start_grpc_server: Any) -> None:
     """
     Verifies that Python logging levels (WARNING, ERROR, CRITICAL)
     are correctly mapped to the Telemetry Protocol Enums in Redis.
@@ -177,5 +179,4 @@ def test_severity_level_propagation(redis_client, start_grpc_server):
 
     # Accept either Int(4) or String("ERROR")
     valid_severities = [4, "ERROR", "LogSeverity.ERROR"]
-    assert severity in valid_severities, \
-        f"Expected severity ERROR (4), got {severity}"
+    assert severity in valid_severities, f"Expected severity ERROR (4), got {severity}"

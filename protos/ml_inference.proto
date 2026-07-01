@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.grpc.panoseti.ml";
+option java_outer_classname = "MlInferenceProto";
+option objc_class_prefix = "PANO_ML";
+
+package panoseti.ml;
+
+import "google/protobuf/timestamp.proto";
+
+// ---------------------------------------------------------------------------
+// MLInference service
+// ---------------------------------------------------------------------------
+// Thin gRPC adapter that exposes real-time cloud-detection (and future ML)
+// predictions produced by the panoseti_analysis streaming pipeline running on
+// the Ray cluster.
+//
+// Two output channels (by design):
+//   MLInference.EmitPrediction / StreamPredictions — low-latency actionable
+//   Telemetry.ReportStatus(log_flexible, "DEV_ml_predictions") — observability
+//
+// SEAMS (commented, unimplemented — reserved for future HITL integration):
+//   TriggerCapture  — request DAQ to archive a window-of-interest
+//   MLInterrupt     — pause / reconfigure pipeline from ML score
+//   MountControl    — future mount-interrupt based on cloud coverage
+// ---------------------------------------------------------------------------
+service MLInference {
+  // Accumulator → service: emit one prediction for a completed window.
+  // The servicer fans the prediction out to all active StreamPredictions
+  // and SubscribeAlerts subscribers.
+  rpc EmitPrediction(Prediction) returns (EmitAck);
+
+  // Client → service: subscribe to a live stream of scored windows.
+  // Filtered by optional PredictionRequest fields (empty = all modules/models).
+  rpc StreamPredictions(PredictionRequest) returns (stream Prediction);
+
+  // Client → service: subscribe only to alert-level events (cloud_label=true
+  // or score ≥ alert_threshold).  Intended for actionable triggers.
+  rpc SubscribeAlerts(AlertRequest) returns (stream Alert);
+
+  // --- SEAM: TriggerCapture (not yet implemented) ---
+  // rpc TriggerCapture(TriggerCaptureRequest) returns (TriggerCaptureAck);
+  //
+  // --- SEAM: MLInterrupt (not yet implemented) ---
+  // rpc MLInterrupt(MLInterruptRequest) returns (MLInterruptAck);
+  //
+  // --- SEAM: MountControl (not yet implemented) ---
+  // rpc MountControl(MountControlRequest) returns (MountControlAck);
+}
+
+// ---------------------------------------------------------------------------
+// Core messages
+// ---------------------------------------------------------------------------
+
+// One ML prediction for a (module, data_product) time window.
+// Emitted by the Ray Serve inference deployment via EmitPrediction and
+// fanned out to all StreamPredictions / SubscribeAlerts subscribers.
+message Prediction {
+  // --- Source identification ---
+  uint32 module_id     = 1;    // PANOSETI module ID (hardware ID)
+  string data_product  = 2;    // "img16", "img8", "ph256", "ph1024"
+
+  // --- Model provenance (lightweight streaming tags) ---
+  string model_name    = 3;    // e.g. "cloud_detector"
+  string model_version = 4;    // e.g. "1.0"
+  string recipe_hash   = 5;    // sha256: of the YAML recipe bytes
+  string git_sha       = 6;    // kernel-code git commit at time of inference
+
+  // --- Inference result ---
+  double cloud_score   = 7;    // softmax probability of cloud class [0,1]
+  bool   cloud_label   = 8;    // cloud_score >= threshold
+
+  // --- Time range of the scored window (White-Rabbit ns, UTC) ---
+  int64  t_start_ns    = 9;    // unix_t_ns of earliest frame in window
+  int64  t_end_ns      = 10;   // unix_t_ns of latest frame in window
+
+  // --- Calibration maturity (progressive-calibration quality indicator) ---
+  // 0.0 = cold start (first window of the night, poor pedestal estimate).
+  // 1.0 = warm (buffer spans >= 2 × window_ns, stable rolling median).
+  float  calibration_maturity = 11;
+
+  // --- Inference timing ---
+  google.protobuf.Timestamp emitted_at = 12;  // server-side emission time (UTC)
+}
+
+// Emitted when a window is archived to disk as an L2 Zarr store.
+message EmitAck {
+  bool success = 1;
+  string message = 2;
+  // Number of active StreamPredictions subscribers that received this prediction.
+  uint32 subscriber_count = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Request / response messages
+// ---------------------------------------------------------------------------
+
+message PredictionRequest {
+  // Optional filters — empty lists mean "no filter" (receive all).
+  repeated uint32 module_ids     = 1;  // filter by module ID
+  repeated string data_products  = 2;  // filter by data product type
+  repeated string model_names    = 3;  // filter by model name
+}
+
+message AlertRequest {
+  // Optional filters (same semantics as PredictionRequest).
+  repeated uint32 module_ids    = 1;
+  repeated string data_products = 2;
+  // Emit an Alert only when cloud_score >= this threshold.
+  // Defaults to 0.5 (the model's baked-in decision threshold) if unset.
+  double alert_threshold = 3;
+}
+
+message Alert {
+  // The full prediction that triggered this alert.
+  Prediction prediction = 1;
+  // Human-readable alert description.
+  string description    = 2;
+}

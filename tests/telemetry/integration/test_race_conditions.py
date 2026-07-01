@@ -1,16 +1,16 @@
-import pytest
-import time
 import json
 import logging
 import random
+import time
 from concurrent.futures import ThreadPoolExecutor
-from panoseti_grpc.telemetry.client import TelemetryClient
+from typing import Any
+
 from panoseti_grpc.telemetry.logger import get_logger
 
 LOG_KEY = "logs:ingress"
 
 
-def test_concurrent_loggers_race_condition(redis_client):
+def test_concurrent_loggers_race_condition(redis_client: Any) -> None:
     """
     Spins up multiple logger instances in different threads to ensure
     the gRPC server handles concurrent connections without dropping logs.
@@ -21,7 +21,7 @@ def test_concurrent_loggers_race_condition(redis_client):
 
     start_len = redis_client.llen(LOG_KEY)
 
-    def worker_logger(worker_id):
+    def worker_logger(worker_id: Any) -> None:
         # Each thread gets its own logger instance (simulating different modules)
         # They share the same gRPC port but are distinct clients
         # client = TelemetryClient(host="localhost", port=50051)
@@ -30,11 +30,7 @@ def test_concurrent_loggers_race_condition(redis_client):
 
         for i in range(logs_per_thread):
             # Send structured data
-            payload = {
-                "worker": worker_id,
-                "seq": i,
-                "data": random.random()
-            }
+            payload = {"worker": worker_id, "seq": i, "data": random.random()}
             logger.info(json.dumps(payload))
             time.sleep(0.005)  # Slight delay to interleave
 
@@ -77,7 +73,7 @@ def test_concurrent_loggers_race_condition(redis_client):
         assert worker_counts[i] == logs_per_thread, f"Worker {i} missing logs! Got {worker_counts[i]}"
 
 
-def test_server_enforces_log_schema(grpc_client, redis_client):
+def test_server_enforces_log_schema(grpc_client: Any, redis_client: Any) -> None:
     """
     Verifies that the Server strictly enforces the LogSchema from config.py.
     This checks if the 'host' and 'service_name' validators are working.
@@ -86,8 +82,9 @@ def test_server_enforces_log_schema(grpc_client, redis_client):
     # config.py: service_name = Field(..., min_length=2)
 
     # We construct a raw message that violates the schema
-    from panoseti_grpc.generated import telemetry_pb2
     from google.protobuf.timestamp_pb2 import Timestamp
+
+    from panoseti_grpc.generated import telemetry_pb2
 
     ts = Timestamp()
     ts.GetCurrentTime()
@@ -97,7 +94,7 @@ def test_server_enforces_log_schema(grpc_client, redis_client):
         service_name="x",  # INVALID: Length 1 < 2
         timestamp=ts,
         severity=2,
-        payload_json='{"msg": "test"}'
+        payload_json='{"msg": "test"}',
     )
 
     # Send directly via stub to bypass client-side checks (if any)
@@ -113,7 +110,7 @@ def test_server_enforces_log_schema(grpc_client, redis_client):
         service_name="valid_service",
         timestamp=ts,
         severity=2,
-        payload_json='{NOT_JSON}'  # INVALID
+        payload_json="{NOT_JSON}",  # INVALID
     )
 
     resp = grpc_client.stub.Log(req_bad_json)

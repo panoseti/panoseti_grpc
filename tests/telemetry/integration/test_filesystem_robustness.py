@@ -1,16 +1,17 @@
-import pytest
 import logging
 import time
-import json
-from pathlib import Path
+from typing import Any
+
+import pytest
+
+from panoseti_grpc.telemetry.client import AsyncGrpcHandler, TelemetryClient
 from panoseti_grpc.telemetry.logger import get_logger
-from panoseti_grpc.telemetry.client import TelemetryClient, AsyncGrpcHandler
 
 # Import helper to check Redis for the dual-destination test
 from .test_logging_scenarios import wait_for_service_log
 
 
-def test_filesystem_writing(tmp_path):
+def test_filesystem_writing(tmp_path: Any) -> None:
     """
     FIXED: Now searches for the filename using .lower() to handle
     auto-lowercasing behavior of the logger factory.
@@ -20,12 +21,7 @@ def test_filesystem_writing(tmp_path):
     service_name = "FS_TEST"
     unique_name = f"{service_name}_{int(time.time())}"
 
-    logger = get_logger(
-        unique_name,
-        log_dir=str(log_dir),
-        grpc_enabled=False,
-        console=False
-    )
+    logger = get_logger(unique_name, log_dir=str(log_dir), grpc_enabled=False, console=False, per_host=False)
 
     logger.info("FS_TEST_MESSAGE")
 
@@ -38,14 +34,15 @@ def test_filesystem_writing(tmp_path):
     # Match the exact unique name pattern.
     found_files = list(log_dir.glob(f"{unique_name}.log"))
 
-    assert len(
-        found_files) > 0, f"No log file found matching {unique_name.lower()}. Dir content: {list(log_dir.iterdir())}"
+    assert len(found_files) > 0, (
+        f"No log file found matching {unique_name.lower()}. Dir content: {list(log_dir.iterdir())}"
+    )
 
     content = found_files[0].read_text()
     assert "FS_TEST_MESSAGE" in content
 
 
-def test_filesystem_rotation(tmp_path):
+def test_filesystem_rotation(tmp_path: Any) -> None:
     """
     FIXED: Uses .lower() for glob matching.
     """
@@ -54,7 +51,7 @@ def test_filesystem_rotation(tmp_path):
     service_name = "ROTATE_TEST"
     unique_name = f"{service_name}_{int(time.time())}"
 
-    logger = get_logger(unique_name, log_dir=str(log_dir), grpc_enabled=False)
+    logger = get_logger(unique_name, log_dir=str(log_dir), grpc_enabled=False, per_host=False)
 
     # Monkey-patch limits for test
     file_handler = next(h for h in logger.handlers if isinstance(h, logging.handlers.RotatingFileHandler))
@@ -72,7 +69,7 @@ def test_filesystem_rotation(tmp_path):
 
 
 # --- NEW TEST 1: Log Level Filtering (Local) ---
-def test_log_level_filtering(tmp_path):
+def test_log_level_filtering(tmp_path: Any) -> None:
     """
     Verifies that low-priority logs (DEBUG) are suppressed when
     the logger is set to a higher level (INFO).
@@ -82,17 +79,13 @@ def test_log_level_filtering(tmp_path):
     service_name = "FILTER_TEST"
 
     # Set level to INFO
-    logger = get_logger(
-        service_name,
-        log_dir=str(log_dir),
-        level="info",
-        grpc_enabled=False
-    )
+    logger = get_logger(service_name, log_dir=str(log_dir), level="info", grpc_enabled=False, per_host=False)
 
     logger.debug("THIS_SHOULD_BE_IGNORED")
     logger.info("THIS_SHOULD_BE_SEEN")
 
-    for h in logger.handlers: h.flush()
+    for h in logger.handlers:
+        h.flush()
 
     # Find log file
     log_file = next(log_dir.glob(f"{service_name}.log"))
@@ -103,7 +96,7 @@ def test_log_level_filtering(tmp_path):
 
 
 # --- NEW TEST 2: Dual Destination (Local + Distributed) ---
-def test_dual_destination_logging(tmp_path, redis_client, grpc_client):
+def test_dual_destination_logging(tmp_path: Any, redis_client: Any, grpc_client: Any) -> None:
     """
     Verifies that a single logger instance correctly dispatches data
     to BOTH the local filesystem AND the remote Redis server.
@@ -117,14 +110,16 @@ def test_dual_destination_logging(tmp_path, redis_client, grpc_client):
         service_name,
         log_dir=str(log_dir),
         grpc_enabled=True,  # Remote
-        console=False
+        console=False,
+        per_host=False,
     )
 
     msg_body = f"Dual-Test-{time.time()}"
     logger.info(msg_body)
 
     # 1. Check Filesystem
-    for h in logger.handlers: h.flush()
+    for h in logger.handlers:
+        h.flush()
     log_file = next(log_dir.glob(f"*{service_name}*.log"))
     assert msg_body in log_file.read_text(), "Message missing from local file"
 
@@ -136,7 +131,8 @@ def test_dual_destination_logging(tmp_path, redis_client, grpc_client):
 
 # --- ROBUSTNESS TESTS ---
 
-def test_grpc_server_down_resilience(grpc_client):
+
+def test_grpc_server_down_resilience(grpc_client: Any) -> None:
     """
     CRITICAL: If the Telemetry Server is offline, the client app MUST NOT crash.
     It should just drop logs or queue them (up to limit).
@@ -144,7 +140,7 @@ def test_grpc_server_down_resilience(grpc_client):
     service_name = "SERVER_DOWN_TEST"
 
     # Point to a blackhole port where nothing is listening
-    dead_client = TelemetryClient(host="localhost", port=59999)
+    TelemetryClient(host="localhost", port=59999)
 
     logger = get_logger(service_name, grpc_enabled=True)
 
@@ -155,7 +151,7 @@ def test_grpc_server_down_resilience(grpc_client):
         pytest.fail(f"Logger raised exception when server was down: {e}")
 
 
-def test_queue_overflow_protection(grpc_client):
+def test_queue_overflow_protection(grpc_client: Any) -> None:
     """
     If the worker is stuck (or server down) and queue fills up,
     the handler should drop logs rather than blocking the main thread.
@@ -163,7 +159,7 @@ def test_queue_overflow_protection(grpc_client):
     service_name = "OVERFLOW_TEST"
 
     # Tiny queue size = 1
-    handler = AsyncGrpcHandler(grpc_client, service_name, queue_size=1)
+    handler = AsyncGrpcHandler(grpc_client, queue_size=1)
 
     # Mock the worker to do NOTHING (simulating a stuck thread)
     # We replace the _worker function with a no-op before starting

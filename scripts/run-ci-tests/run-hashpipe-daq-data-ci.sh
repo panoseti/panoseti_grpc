@@ -5,7 +5,7 @@ set -e
 IMAGE_NAME="panoseti-hashpipe-daq-data-ci"
 
 echo "--- Building CI Docker Image: $IMAGE_NAME ---"
-docker build -t $IMAGE_NAME -f tests/daq_data_hashpipe/Dockerfile .
+docker build -t $IMAGE_NAME --target daq-data-hashpipe-test -f Dockerfile.ci .
 
 echo "--- Running Integration Tests ---"
 # Run the tests inside the container.
@@ -16,5 +16,6 @@ docker run --rm \
     -e RUN_REAL_DATA_TESTS=1 \
     $IMAGE_NAME \
     python3 -m pytest -v -s --maxfail=2 tests/daq_data_hashpipe/
+    #python3 -m pytest -v -s --maxfail=2 --timeout=120 tests/daq_data_hashpipe/
 
 echo "--- CI Test Run Completed Successfully ---"

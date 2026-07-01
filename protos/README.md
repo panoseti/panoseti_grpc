@@ -2,15 +2,13 @@
 
 ## Contents
 
-### RPI
-- [ublox_control.proto]
-  - RPCs for configuration of, and data streaming from, a ZED-F9T chip.
-- [daq_utils.proto]
-  - RPCs for streaming hashpipe data samples and status during an observing run.
-
-### Example proto files from gRPC team
-- [helloworld.proto]
-  - The simple example used in the gRPC tutorial overview.
-- [route_guide.proto]
-  - An example service described in detail in the tutorial.
-- 
+- [daq_control.proto](./daq_control.proto)
+  - RPCs for controlling the Hashpipe lifecycle on DAQ nodes (start/stop/status/cleanup).
+- [daq_data.proto](./daq_data.proto)
+  - RPCs for streaming science data (images, pulse heights) from the DAQ node to the headnode.
+- [ml_inference.proto](./ml_inference.proto)
+  - RPCs for real-time ML cloud-detection predictions and pub-sub alerting.
+- [telemetry.proto](./telemetry.proto)
+  - RPCs for centralized logging and telemetry metrics aggregation.
+- [ublox_control.proto](./ublox_control.proto)
+  - RPCs for configuration of, and data streaming from, a ZED-F9T chip. 

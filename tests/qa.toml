@@ -1,0 +1,53 @@
+# ── Global settings ──────────────────────────────────────────────────────────
+
+[settings]
+default_parallel = 4
+project_prefix = "pseti-grpc"
+
+# ── Test Suites ──────────────────────────────────────────────────────────────
+
+[suites.lint]
+description = "Static analysis (Ruff + MyPy)"
+type = "lint"
+requires_docker = false
+tasks = { ruff = "docker build --target qa-linter -f ../Dockerfile.ci -t panoseti-qa-linter .. && docker run --rm -v $(pwd)/..:/app panoseti-qa-linter python -m ruff check src/ tests/ scripts/ --fix", ruff_format = "docker build --target qa-linter -f ../Dockerfile.ci -t panoseti-qa-linter .. && docker run --rm -v $(pwd)/..:/app panoseti-qa-linter python -m ruff format src/ tests/ scripts/", mypy = "docker build --target qa-linter -f ../Dockerfile.ci -t panoseti-qa-linter .. && docker run --rm -v $(pwd)/..:/app panoseti-qa-linter python -m mypy src/ tests/ scripts/" }
+
+[suites.daq_data]
+description = "DAQ Data service integration tests"
+type = "test"
+raw_command = "docker build --target daq-data-test -f ../Dockerfile.ci -t panoseti-daq-data-test .. && docker run --rm panoseti-daq-data-test python -m pytest -v -s --maxfail=2 tests/daq_data/"
+
+[suites.daq_control]
+description = "DAQ Control service integration tests"
+type = "test"
+requires_docker = true
+compose_file = "daq_control/docker-compose.test.yml"
+project_name = "pseti-grpc-daq-control"
+service = "test_runner"
+test_dir = "tests/daq_control/"
+pytest_args = ["--timeout=20"]
+
+[suites.telemetry]
+description = "Telemetry service integration tests (requires Redis)"
+type = "test"
+requires_docker = true
+compose_file = "telemetry/docker-compose.test.yml"
+project_name = "pseti-grpc-telemetry"
+service = "test_runner"
+test_dir = "tests/telemetry/"
+pytest_args = ["--timeout=40"]
+
+[suites.unified_server]
+description = "Unified server integration tests"
+type = "test"
+requires_docker = true
+compose_file = "unified_server/docker-compose.test.yml"
+project_name = "pseti-grpc-unified-server"
+service = "test_runner"
+test_dir = "tests/unified_server/"
+pytest_args = ["--timeout=90"]
+
+[suites.hashpipe_daq_data]
+description = "Hashpipe DAQ Data integration tests (requires real/simulated hardware)"
+type = "test"
+raw_command = "docker build --target daq-data-hashpipe-test -f ../Dockerfile.ci -t panoseti-hashpipe-daq-data-test .. && docker run --rm --shm-size=2g -e RUN_REAL_DATA_TESTS=1 panoseti-hashpipe-daq-data-test python -m pytest -v -s --maxfail=2 tests/daq_data_hashpipe/"

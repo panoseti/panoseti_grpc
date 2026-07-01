@@ -9,9 +9,19 @@ service DaqControl {
     /* stop daq: stop hashpipe on daq nodes */
     rpc StopDaq (StopDaqRequest) returns (StopDaqResponse) {}
     /* status daq: get status data from daq nodes */
-    rpc StatusDaq (StatusDaqRequest) returns (StatusDaqResponse) {}
+    rpc StatusDaq (DaqStatusRequest) returns (DaqStatusResponse) {}
     /* CleanupData: Clean up data for the specific run */
     rpc CleanupData (CleanupDataRequest) returns (CleanupDataResponse) {}
+    /* GenerateManifest: Generate a checksum manifest for run data */
+    rpc GenerateManifest (GenerateManifestRequest) returns (GenerateManifestResponse) {}
+    /* GetManifest: Stream manifest entries for a module's run data */
+    rpc GetManifest (GetManifestRequest) returns (stream ManifestEntry) {}
+    /* GetTransferStatus: Per-node transfer readiness: hashpipe state, run dirs, disk, manifest presence */
+    rpc GetTransferStatus (GetTransferStatusRequest) returns (GetTransferStatusResponse) {}
+    /* GetManifestDigest: SHA-256 of the on-disk manifest file; used to satisfy CleanupData precondition */
+    rpc GetManifestDigest (GetManifestDigestRequest) returns (GetManifestDigestResponse) {}
+    /* RetryFailedTransfer: Re-emit a single file by path; returns size + digest for reconciliation */
+    rpc RetryFailedTransfer (RetryFailedTransferRequest) returns (RetryFailedTransferResponse) {}
 }
 
 /* start daq request and response */
@@ -46,14 +56,14 @@ message StopDaqResponse {
 }
 
 /* status daq request and response */
-message StatusDaqRequest {
+message DaqStatusRequest {
     string  data_dir = 1;
     bool    check_hashpipe_running = 2;
     bool    check_disk_usage = 3;
     bool    check_run_dirs = 4;
 }
 
-message StatusDaqResponse {
+message DaqStatusResponse {
     bool    success = 1;
     /* response to check_hashpipe_running */
     bool    hashpipe_running = 2;
@@ -62,6 +72,12 @@ message StatusDaqResponse {
     /* response to check_run_dir */
     repeated string run_dirs = 4;
     string  message = 5;
+    int32   hashpipe_pid = 6;
+}
+
+enum CleanupMode {
+    CLEANUP_FULL      = 0;
+    CLEANUP_SELECTIVE = 1;
 }
 
 /* collect data request and response */
@@ -69,9 +85,100 @@ message CleanupDataRequest {
     string  data_dir = 1;
     string  run_dir = 2;
     repeated uint32  module_id = 3 [packed=true];
+    bool    force = 4;
+    CleanupMode mode = 5;
+    repeated string delete_patterns  = 6;
+    repeated string preserve_patterns = 7;
+    /* manifest_digest: hex root-digest of the manifest file, required for
+       CLEANUP_SELECTIVE to enforce "no deletion without verified integrity".
+       The server recomputes the manifest digest and rejects with
+       FAILED_PRECONDITION if it does not match. Empty bytes = no check
+       (legacy callers and CLEANUP_FULL are unaffected). */
+    bytes   manifest_digest = 8;
+    /* dry_run: when true, return the would-be preserved_paths and deleted_count
+       without actually deleting anything. Only meaningful for CLEANUP_SELECTIVE. */
+    bool    dry_run = 11;
 }
 
 message CleanupDataResponse {
     bool    success = 1;
     string  message = 2;
+    uint32  deleted_count = 3;
+    uint64  freed_bytes   = 4;
+    repeated string preserved_paths = 5;
+}
+
+message GenerateManifestRequest {
+    string  data_dir = 1;
+    string  run_dir  = 2;
+    repeated uint32  module_id = 3 [packed=true];
+    string  algorithm = 4;
+    repeated string include_patterns = 5;
+}
+
+message GenerateManifestResponse {
+    bool    success = 1;
+    string  message = 2;
+    string  manifest_path = 3;
+    uint32  file_count = 4;
+    uint64  total_bytes = 5;
+    double  elapsed_seconds = 6;
+    string  algorithm = 7;
+}
+
+message GetManifestRequest {
+    string  data_dir = 1;
+    string  run_dir  = 2;
+    repeated uint32  module_id = 3 [packed=true];
+}
+
+message ManifestEntry {
+    string  relative_path = 1;
+    string  digest_hex    = 2;
+    uint64  size_bytes    = 3;
+    int64   mtime_ns      = 4;
+}
+
+message GetTransferStatusRequest {
+    string  data_dir = 1;
+    string  run_dir  = 2;
+}
+
+message GetTransferStatusResponse {
+    bool    success          = 1;
+    string  message          = 2;
+    bool    hashpipe_running = 3;
+    uint64  free_bytes       = 4;
+    uint64  total_bytes      = 5;
+    repeated string run_dirs       = 6;
+    repeated string manifest_files = 7;
+}
+
+message GetManifestDigestRequest {
+    string  data_dir  = 1;
+    string  run_dir   = 2;
+    repeated uint32  module_id = 3 [packed=true];
+}
+
+message GetManifestDigestResponse {
+    bool    success       = 1;
+    string  message       = 2;
+    string  digest_hex    = 3;
+    string  algo_suffix   = 4;
+    string  manifest_path = 5;
+}
+
+message RetryFailedTransferRequest {
+    string  data_dir  = 1;
+    string  run_dir   = 2;
+    repeated uint32  module_id = 3 [packed=true];
+    string  file_path = 4;
+}
+
+message RetryFailedTransferResponse {
+    bool    success    = 1;
+    string  message    = 2;
+    uint64  size_bytes = 3;
+    string  digest_hex = 4;
+    string  algorithm  = 5;
 }

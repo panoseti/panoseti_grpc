@@ -1,9 +1,13 @@
-import pytest
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
+
+import pytest
+
+from tests.telemetry.conftest import poll_redis_field, poll_redis_key
 
 
-def test_flexible_struct_flow(grpc_client, redis_client):
+def test_flexible_struct_flow(grpc_client: Any, redis_client: Any) -> None:
     """
     Verifies that 'flexible' logging works for configured EXPERIMENTAL devices.
     """
@@ -13,12 +17,10 @@ def test_flexible_struct_flow(grpc_client, redis_client):
     # Use "test_flex" which is defined as experimental in config
     grpc_client.log_flexible("test_flex", device_id, rnd_data)
 
-    time.sleep(0.5)
-
     # CHECK: Expect DEV_ prefix as per config
     expected_key = f"DEV_TEST-FLEX_{device_id}"
 
-    assert redis_client.exists(expected_key)
+    assert poll_redis_key(redis_client, expected_key), f"Key {expected_key!r} not found in Redis"
     # Check data content
     assert redis_client.hget(expected_key, "voltage") == "5.1"
 
@@ -27,33 +29,31 @@ def test_flexible_struct_flow(grpc_client, redis_client):
     assert ttl > 0 and ttl <= 3600  # Config says 3600s
 
 
-def test_strict_gps_with_extras(grpc_client, redis_client):
+def test_strict_gps_with_extras(grpc_client: Any, redis_client: Any) -> None:
     """
     Verifies that 'strict' logging works for configured PRODUCTION devices.
     """
     device_id = "dome_test_gps"
 
-    grpc_client.log_strict("gnss", device_id, {
-        "satellites": 8,
-        "lat": 37.0,
-        "lon": -122.0,
-        "fix_mode": "3D",
-        "extra_data": {"dilution_of_precision": 1.2}
-    })
-
-    time.sleep(0.5)
+    grpc_client.log_strict(
+        "gnss",
+        device_id,
+        {"satellites": 8, "lat": 37.0, "lon": -122.0, "fix_mode": "3D", "extra_data": {"dilution_of_precision": 1.2}},
+    )
 
     # CHECK: Expect Production prefix
     expected_key = f"UBLOX_ZED-F9T_{device_id}"
 
-    assert redis_client.hget(expected_key, "satellites") == "8"
+    assert poll_redis_field(redis_client, expected_key, "satellites", expected="8"), (
+        f"Field 'satellites' not found in {expected_key!r}"
+    )
     assert redis_client.hget(expected_key, "extra_dilution_of_precision") == "1.2"
 
     # Check TTL (Should be -1 aka Permanent for production)
     assert redis_client.ttl(expected_key) == -1
 
 
-def test_invalid_schema_rejection(grpc_client):
+def test_invalid_schema_rejection(grpc_client: Any) -> None:
     """
     Verifies that strict mode actually enforces schema.
     """
@@ -62,7 +62,7 @@ def test_invalid_schema_rejection(grpc_client):
         "satellites": 999,  # Invalid: must be <= 100
         "lat": 37.0,
         "lon": -122.0,
-        "fix_mode": "3D"
+        "fix_mode": "3D",
     }
 
     # Should raise ValueError from client wrapper
@@ -72,22 +72,18 @@ def test_invalid_schema_rejection(grpc_client):
     assert "Server rejected data" in str(excinfo.value)
 
 
-def test_concurrent_clients(grpc_client, redis_client):
+def test_concurrent_clients(grpc_client: Any, redis_client: Any) -> None:
     num_clients = 10
     messages_per_client = 5
 
-    def worker(client_idx):
+    def worker(client_idx: Any) -> None:
         dev_id = f"worker_{client_idx}"
         for i in range(messages_per_client):
             try:
                 # This should pass now that server.py uses including_default_value_fields=True
                 # (iteration=0 and value=0.0 will be preserved)
                 grpc_client.log_test(
-                    device_id=dev_id,
-                    iteration=i,
-                    value=float(client_idx),
-                    message="STRESS_TEST",
-                    active=True
+                    device_id=dev_id, iteration=i, value=float(client_idx), message="STRESS_TEST", active=True
                 )
             except Exception as e:
                 return f"Client {client_idx} failed: {e}"
@@ -99,14 +95,12 @@ def test_concurrent_clients(grpc_client, redis_client):
     for res in results:
         assert res == "OK"
 
-    time.sleep(1.0)
-    # Check last write
-    key = f"TEST-STRICT_worker_0"
-    assert redis_client.exists(key)
+    key = "TEST-STRICT_worker_0"
+    assert poll_redis_key(redis_client, key), f"Key {key!r} not found after concurrent writes"
     assert redis_client.hget(key, "message") == "STRESS_TEST"
 
 
-def test_time_series_integrity(grpc_client, redis_client):
+def test_time_series_integrity(grpc_client: Any, redis_client: Any) -> None:
     """
     Scenario: A client sends a sequence of strictly ordered updates.
     We assert that the final state in Redis matches the LAST update,
@@ -117,19 +111,15 @@ def test_time_series_integrity(grpc_client, redis_client):
 
     for i in range(num_updates):
         # We use a monotonically increasing 'iteration'
-        grpc_client.log_test(
-            device_id=device_id,
-            iteration=i,
-            value=float(i * 10),
-            message=f"SEQ_{i}",
-            active=True
-        )
+        grpc_client.log_test(device_id=device_id, iteration=i, value=float(i * 10), message=f"SEQ_{i}", active=True)
         # No sleep here! We want to hammer the server.
 
-    # Give server a moment to drain the queue
-    time.sleep(0.5)
-
     key = f"TEST-STRICT_{device_id}"
+
+    # Wait for last write to land in Redis
+    assert poll_redis_field(redis_client, key, "iteration", expected=str(num_updates - 1)), (
+        f"Final iteration not found in {key!r}"
+    )
 
     # Verify Redis holds the FINAL state
     final_iteration = redis_client.hget(key, "iteration")
@@ -139,7 +129,7 @@ def test_time_series_integrity(grpc_client, redis_client):
     assert final_message == f"SEQ_{num_updates - 1}"
 
 
-def test_interleaved_clients_same_type(grpc_client, redis_client):
+def test_interleaved_clients_same_type(grpc_client: Any, redis_client: Any) -> None:
     """
     Scenario: Two different devices of the SAME type (gps) logging simultaneously.
     Ensures the server doesn't cross-contaminate data between IDs.
@@ -151,10 +141,11 @@ def test_interleaved_clients_same_type(grpc_client, redis_client):
     grpc_client.log_strict("gnss", dev_a, {"satellites": 10, "lat": 0.0, "lon": 0.0, "fix_mode": "3D"})
     grpc_client.log_strict("gnss", dev_b, {"satellites": 5, "lat": 90.0, "lon": 0.0, "fix_mode": "2D"})
 
-    time.sleep(0.2)
-
     key_a = f"UBLOX_ZED-F9T_{dev_a}"
     key_b = f"UBLOX_ZED-F9T_{dev_b}"
+    assert poll_redis_key(redis_client, key_a) and poll_redis_key(redis_client, key_b), (
+        "Both device keys must appear in Redis"
+    )
 
     lat_a = redis_client.hget(key_a, "lat")
     lat_b = redis_client.hget(key_b, "lat")
@@ -163,7 +154,7 @@ def test_interleaved_clients_same_type(grpc_client, redis_client):
     assert lat_b == "90.0"
 
 
-def test_rapid_reconnect_simulation(grpc_client, redis_client):
+def test_rapid_reconnect_simulation(grpc_client: Any, redis_client: Any) -> None:
     """
     Scenario: Simulates a flaky connection where a client connects,
     sends 1 message, disconnects, and repeats.
@@ -172,17 +163,16 @@ def test_rapid_reconnect_simulation(grpc_client, redis_client):
 
     for i in range(5):
         grpc_client.log_flexible("test_flex", device_id, {"boot_count": i})
-        time.sleep(0.05)
 
-    time.sleep(0.2)
     key = f"DEV_TEST-FLEX_{device_id}"
+    assert poll_redis_key(redis_client, key), f"Key {key!r} not found after rapid reconnects"
 
     # Cast to float to handle Proto Struct behavior (4 -> 4.0)
     val = redis_client.hget(key, "boot_count")
     assert float(val) == 4.0
 
 
-def test_huge_payload(grpc_client, redis_client):
+def test_huge_payload(grpc_client: Any, redis_client: Any) -> None:
     """
     Scenario: Sending a very large flexible payload (near gRPC limits).
     """
@@ -194,15 +184,15 @@ def test_huge_payload(grpc_client, redis_client):
 
     grpc_client.log_flexible("test_flex", device_id, data)
 
-    time.sleep(0.5)
     key = f"DEV_TEST-FLEX_{device_id}"
+    assert poll_redis_field(redis_client, key, "blob"), f"Field 'blob' not found in {key!r}"
 
     val = redis_client.hget(key, "blob")
     assert len(val) == 100_000
     assert val == big_string
 
 
-def test_concurrent_field_merging(grpc_client, redis_client):
+def test_concurrent_field_merging(grpc_client: Any, redis_client: Any) -> None:
     """
     CREATIVE SCENARIO: Two different clients update THE SAME device ID,
     but they write to DIFFERENT fields.
@@ -212,13 +202,13 @@ def test_concurrent_field_merging(grpc_client, redis_client):
     """
     device_id = "shared_resource_01"
 
-    def client_temp():
+    def client_temp() -> None:
         # This client only knows about Temperature
         for i in range(10):
             grpc_client.log_flexible("test_flex", device_id, {"temp": float(i)})
             time.sleep(0.01)
 
-    def client_pressure():
+    def client_pressure() -> None:
         # This client only knows about Pressure
         for i in range(10):
             grpc_client.log_flexible("test_flex", device_id, {"pressure": float(i + 100)})
@@ -229,15 +219,17 @@ def test_concurrent_field_merging(grpc_client, redis_client):
         exc.submit(client_temp)
         exc.submit(client_pressure)
 
-    time.sleep(0.5)
     key = f"DEV_TEST-FLEX_{device_id}"
+    assert poll_redis_field(redis_client, key, "temp") and poll_redis_field(redis_client, key, "pressure"), (
+        "Both fields must appear in Redis after concurrent writes"
+    )
 
     # Verify BOTH fields exist and have the last values
     assert float(redis_client.hget(key, "temp")) == 9.0
     assert float(redis_client.hget(key, "pressure")) == 109.0
 
 
-def test_unknown_experimental_device(grpc_client, redis_client):
+def test_unknown_experimental_device(grpc_client: Any, redis_client: Any) -> None:
     """
     Verifies that a completely unknown device type goes to SANDBOX.
     """
@@ -247,9 +239,7 @@ def test_unknown_experimental_device(grpc_client, redis_client):
     # Using a type not in TOML
     grpc_client.log_flexible("alien_tech", device_id, data)
 
-    time.sleep(0.2)
     expected_key = f"SANDBOX:alien_tech:{device_id}"
-
-    assert redis_client.exists(expected_key)
+    assert poll_redis_key(redis_client, expected_key), f"SANDBOX key {expected_key!r} not found in Redis"
     # Sandbox should also have a default TTL
     assert redis_client.ttl(expected_key) > 0

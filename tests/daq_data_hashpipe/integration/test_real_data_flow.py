@@ -1,7 +1,8 @@
 # In tests/daq_data/test_real_data_flow.py
 
+
 import pytest
-import asyncio
+
 from panoseti_grpc.daq_data.client import AioDaqDataClient
 
 pytestmark = pytest.mark.asyncio
@@ -35,10 +36,7 @@ async def test_grpc_server_streams_real_hashpipe_data(default_server_process):
 
         # 2. Subscribe to the image streams
         stream = await client.stream_images(
-            hosts=None,
-            stream_movie_data=True,
-            stream_pulse_height_data=True,
-            update_interval_seconds=0.1
+            hosts=None, stream_movie_data=True, stream_pulse_height_data=True, update_interval_seconds=0.1
         )
 
         # 3. Collect 10 frames to confirm the pipeline is working

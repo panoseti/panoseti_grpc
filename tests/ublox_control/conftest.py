@@ -1,28 +1,31 @@
 # tests/conftest.py
 
-import sys
-import pytest
-import pytest_asyncio
 import asyncio
 import json
 import logging
-import grpc
+import sys
 from pathlib import Path
-from panoseti_grpc.ublox_control.server import UbloxControlServicer, serve
-from panoseti_grpc.ublox_control.resources import make_rich_logger, load_package_json
-from panoseti_grpc.generated import ublox_control_pb2_grpc
+
+import grpc
+import pytest
+import pytest_asyncio
+
+from panoseti_grpc.ublox_control.resources import make_rich_logger
+from panoseti_grpc.ublox_control.server import UbloxControlServicer
 
 TEST_CFG_DIR = Path("tests/config")
 TEST_CFG_DIR.mkdir(exist_ok=True, parents=True)
 TEST_DATA_DIR = Path("tests/ublox_control/test_data")
 
+
 @pytest.fixture(scope="session")
-def ubx_packets_data_path():
+def ubx_packets_data_path() -> None:
     return TEST_DATA_DIR / "ubx_packets.jsonl"
+
 
 # Create a dummy server config for testing
 @pytest.fixture(scope="session")
-def server_config():
+def server_config() -> None:
     cfg = {"max_workers": 5, "max_read_queue_size": 200, "shutdown_grace_period": 0.1}
     config_path = TEST_CFG_DIR / "ublox_control_server_config.json"
     # config_path = load_package_json("panoseti_grpc.ublox_control", "config/ublox_control_server_config.json")
@@ -55,11 +58,7 @@ async def live_server(server_config):
     cmd = [sys.executable, "-m", "panoseti_grpc.ublox_control.server"]
 
     # Start the server as a subprocess
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
+    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
 
     # Wait for the server to become ready by polling the gRPC port
     try:
@@ -69,7 +68,7 @@ async def live_server(server_config):
                     await channel.channel_ready()
                 # Server is up, break the loop
                 break
-            except (grpc.aio.AioRpcError, asyncio.exceptions.TimeoutError):
+            except grpc.aio.AioRpcError, asyncio.exceptions.TimeoutError:
                 await asyncio.sleep(0.1)
         else:
             # If the loop completes without breaking, the server failed to start
@@ -90,5 +89,3 @@ async def live_server(server_config):
             print(f"--- Server STDOUT ---\n{stdout.decode()}\n--------------------")
         if stderr:
             print(f"--- Server STDERR ---\n{stderr.decode()}\n--------------------")
-
-

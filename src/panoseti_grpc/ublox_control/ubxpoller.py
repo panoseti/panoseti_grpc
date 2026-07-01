@@ -33,18 +33,13 @@ from queue import Queue
 from sys import argv
 from threading import Event, Thread
 from time import sleep
-
-from serial import Serial
+from typing import Any
 
 from pyubx2 import POLL, UBX_PAYLOADS_POLL, UBX_PROTOCOL, UBXMessage, UBXReader
+from serial import Serial
 
 
-def io_data(
-    ubr: UBXReader,
-    readqueue: Queue,
-    sendqueue: Queue,
-    stop: Event,
-):
+def io_data(ubr: UBXReader, readqueue: Queue[Any], sendqueue: Queue[Any], stop: Event) -> None:
     """
     THREADED
     Read and parse inbound UBX data and place
@@ -72,7 +67,7 @@ def io_data(
             continue
 
 
-def process_data(queue: Queue, stop: Event):
+def process_data(queue: Queue[Any], stop: Event) -> None:
     """
     THREADED
     Get UBX data from queue and display.
@@ -85,7 +80,7 @@ def process_data(queue: Queue, stop: Event):
             queue.task_done()
 
 
-def main(**kwargs):
+def main(**kwargs: Any) -> None:
     """
     Main routine.
     """
@@ -93,8 +88,8 @@ def main(**kwargs):
     port = kwargs.get("port", "/dev/ttyACM0")
     baudrate = int(kwargs.get("baudrate", 38400))
     timeout = float(kwargs.get("timeout", 0.1))
-    read_queue = Queue()
-    send_queue = Queue()
+    read_queue: Queue[Any] = Queue()
+    send_queue: Queue[Any] = Queue()
     stop_event = Event()
 
     with Serial(port, baudrate, timeout=timeout) as stream:
@@ -152,5 +147,4 @@ def main(**kwargs):
 
 
 if __name__ == "__main__":
-
     main(**dict(arg.split("=") for arg in argv[1:]))

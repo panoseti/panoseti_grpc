@@ -6,7 +6,7 @@ import warnings
 from . import daq_data_pb2 as daq__data__pb2
 from google.protobuf import empty_pb2 as google_dot_protobuf_dot_empty__pb2
 
-GRPC_GENERATED_VERSION = '1.70.0'
+GRPC_GENERATED_VERSION = '1.78.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -19,7 +19,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in daq_data_pb2_grpc.py depends on'
+        + ' but the generated code in daq_data_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -45,6 +45,11 @@ class DaqDataStub(object):
                 '/daqdata.DaqData/InitHpIo',
                 request_serializer=daq__data__pb2.InitHpIoRequest.SerializeToString,
                 response_deserializer=daq__data__pb2.InitHpIoResponse.FromString,
+                _registered_method=True)
+        self.Status = channel.unary_unary(
+                '/daqdata.DaqData/Status',
+                request_serializer=google_dot_protobuf_dot_empty__pb2.Empty.SerializeToString,
+                response_deserializer=daq__data__pb2.StatusResponse.FromString,
                 _registered_method=True)
         self.Ping = channel.unary_unary(
                 '/daqdata.DaqData/Ping',
@@ -77,6 +82,13 @@ class DaqDataServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Status(self, request, context):
+        """Get the status of the DaqData service
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def Ping(self, request, context):
         """Ping server
         """
@@ -103,6 +115,11 @@ def add_DaqDataServicer_to_server(servicer, server):
                     servicer.InitHpIo,
                     request_deserializer=daq__data__pb2.InitHpIoRequest.FromString,
                     response_serializer=daq__data__pb2.InitHpIoResponse.SerializeToString,
+            ),
+            'Status': grpc.unary_unary_rpc_method_handler(
+                    servicer.Status,
+                    request_deserializer=google_dot_protobuf_dot_empty__pb2.Empty.FromString,
+                    response_serializer=daq__data__pb2.StatusResponse.SerializeToString,
             ),
             'Ping': grpc.unary_unary_rpc_method_handler(
                     servicer.Ping,
@@ -170,6 +187,33 @@ class DaqData(object):
             '/daqdata.DaqData/InitHpIo',
             daq__data__pb2.InitHpIoRequest.SerializeToString,
             daq__data__pb2.InitHpIoResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Status(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/daqdata.DaqData/Status',
+            google_dot_protobuf_dot_empty__pb2.Empty.SerializeToString,
+            daq__data__pb2.StatusResponse.FromString,
             options,
             channel_credentials,
             insecure,

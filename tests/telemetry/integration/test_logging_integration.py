@@ -1,13 +1,14 @@
-import pytest
-import time
 import json
 import logging
+import time
+from typing import Any
+
 from panoseti_grpc.telemetry.logger import get_logger
 
 LOG_KEY = "logs:ingress"
 
 
-def test_basic_log_rpc(grpc_client, redis_client):
+def test_basic_log_rpc(grpc_client: Any, redis_client: Any) -> None:
     """Verifies that a direct gRPC Log call ends up in Redis."""
     msg = "Integration Test - Raw RPC"
     timestamp = time.time()
@@ -19,7 +20,7 @@ def test_basic_log_rpc(grpc_client, redis_client):
         timestamp=timestamp,
         file_path=__file__,
         line_number=15,
-        function_name="test_basic_log_rpc"
+        function_name="test_basic_log_rpc",
     )
 
     future.result()
@@ -37,18 +38,14 @@ def test_basic_log_rpc(grpc_client, redis_client):
     assert payload["text"] == msg
 
 
-def test_async_logger_pipeline(redis_client, start_grpc_server):
+def test_async_logger_pipeline(redis_client: Any, start_grpc_server: Any) -> None:
     """Verifies the end-to-end Python Logger -> Redis flow."""
     logger_name = "TEST_LOGGER_PIPELINE"
 
     # FIXED: Use 'port' argument
     # client = TelemetryClient(host="localhost", port=50051)
 
-    logger = get_logger(
-        logger_name,
-        grpc_enabled=True,
-        level=logging.INFO
-    )
+    logger = get_logger(logger_name, grpc_enabled=True, level=logging.INFO)
 
     test_payload = {"sensor_id": 99, "status": "nominal"}
     logger.info(json.dumps(test_payload))
@@ -88,7 +85,7 @@ def test_async_logger_pipeline(redis_client, start_grpc_server):
         assert "_meta" in stored_payload
 
 
-def test_burst_logging(redis_client, start_grpc_server):
+def test_burst_logging(redis_client: Any, start_grpc_server: Any) -> None:
     """Chaos Test: Sends 500 logs rapidly."""
     burst_count = 500
     service_name = "BURST_TEST"
@@ -109,7 +106,7 @@ def test_burst_logging(redis_client, start_grpc_server):
     assert delta >= burst_count, f"Packet Loss Detected! Sent {burst_count}, Stored {delta}"
 
 
-def test_severity_mapping(redis_client, start_grpc_server):
+def test_severity_mapping(redis_client: Any, start_grpc_server: Any) -> None:
     """Verifies Python Log Levels -> PANOSETI Severities."""
     service_name = "LEVEL_TEST"
     logger = get_logger(service_name, grpc_enabled=True, level=logging.DEBUG)

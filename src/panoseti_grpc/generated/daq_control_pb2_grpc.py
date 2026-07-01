@@ -5,7 +5,7 @@ import warnings
 
 from . import daq_control_pb2 as daq__control__pb2
 
-GRPC_GENERATED_VERSION = '1.70.0'
+GRPC_GENERATED_VERSION = '1.78.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in daq_control_pb2_grpc.py depends on'
+        + ' but the generated code in daq_control_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -46,13 +46,38 @@ class DaqControlStub(object):
                 _registered_method=True)
         self.StatusDaq = channel.unary_unary(
                 '/panoseti.daq_control.DaqControl/StatusDaq',
-                request_serializer=daq__control__pb2.StatusDaqRequest.SerializeToString,
-                response_deserializer=daq__control__pb2.StatusDaqResponse.FromString,
+                request_serializer=daq__control__pb2.DaqStatusRequest.SerializeToString,
+                response_deserializer=daq__control__pb2.DaqStatusResponse.FromString,
                 _registered_method=True)
         self.CleanupData = channel.unary_unary(
                 '/panoseti.daq_control.DaqControl/CleanupData',
                 request_serializer=daq__control__pb2.CleanupDataRequest.SerializeToString,
                 response_deserializer=daq__control__pb2.CleanupDataResponse.FromString,
+                _registered_method=True)
+        self.GenerateManifest = channel.unary_unary(
+                '/panoseti.daq_control.DaqControl/GenerateManifest',
+                request_serializer=daq__control__pb2.GenerateManifestRequest.SerializeToString,
+                response_deserializer=daq__control__pb2.GenerateManifestResponse.FromString,
+                _registered_method=True)
+        self.GetManifest = channel.unary_stream(
+                '/panoseti.daq_control.DaqControl/GetManifest',
+                request_serializer=daq__control__pb2.GetManifestRequest.SerializeToString,
+                response_deserializer=daq__control__pb2.ManifestEntry.FromString,
+                _registered_method=True)
+        self.GetTransferStatus = channel.unary_unary(
+                '/panoseti.daq_control.DaqControl/GetTransferStatus',
+                request_serializer=daq__control__pb2.GetTransferStatusRequest.SerializeToString,
+                response_deserializer=daq__control__pb2.GetTransferStatusResponse.FromString,
+                _registered_method=True)
+        self.GetManifestDigest = channel.unary_unary(
+                '/panoseti.daq_control.DaqControl/GetManifestDigest',
+                request_serializer=daq__control__pb2.GetManifestDigestRequest.SerializeToString,
+                response_deserializer=daq__control__pb2.GetManifestDigestResponse.FromString,
+                _registered_method=True)
+        self.RetryFailedTransfer = channel.unary_unary(
+                '/panoseti.daq_control.DaqControl/RetryFailedTransfer',
+                request_serializer=daq__control__pb2.RetryFailedTransferRequest.SerializeToString,
+                response_deserializer=daq__control__pb2.RetryFailedTransferResponse.FromString,
                 _registered_method=True)
 
 
@@ -87,6 +112,41 @@ class DaqControlServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GenerateManifest(self, request, context):
+        """GenerateManifest: Generate a checksum manifest for run data 
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetManifest(self, request, context):
+        """GetManifest: Stream manifest entries for a module's run data 
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTransferStatus(self, request, context):
+        """GetTransferStatus: Per-node transfer readiness: hashpipe state, run dirs, disk, manifest presence 
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetManifestDigest(self, request, context):
+        """GetManifestDigest: SHA-256 of the on-disk manifest file; used to satisfy CleanupData precondition 
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RetryFailedTransfer(self, request, context):
+        """RetryFailedTransfer: Re-emit a single file by path; returns size + digest for reconciliation 
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DaqControlServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -102,13 +162,38 @@ def add_DaqControlServicer_to_server(servicer, server):
             ),
             'StatusDaq': grpc.unary_unary_rpc_method_handler(
                     servicer.StatusDaq,
-                    request_deserializer=daq__control__pb2.StatusDaqRequest.FromString,
-                    response_serializer=daq__control__pb2.StatusDaqResponse.SerializeToString,
+                    request_deserializer=daq__control__pb2.DaqStatusRequest.FromString,
+                    response_serializer=daq__control__pb2.DaqStatusResponse.SerializeToString,
             ),
             'CleanupData': grpc.unary_unary_rpc_method_handler(
                     servicer.CleanupData,
                     request_deserializer=daq__control__pb2.CleanupDataRequest.FromString,
                     response_serializer=daq__control__pb2.CleanupDataResponse.SerializeToString,
+            ),
+            'GenerateManifest': grpc.unary_unary_rpc_method_handler(
+                    servicer.GenerateManifest,
+                    request_deserializer=daq__control__pb2.GenerateManifestRequest.FromString,
+                    response_serializer=daq__control__pb2.GenerateManifestResponse.SerializeToString,
+            ),
+            'GetManifest': grpc.unary_stream_rpc_method_handler(
+                    servicer.GetManifest,
+                    request_deserializer=daq__control__pb2.GetManifestRequest.FromString,
+                    response_serializer=daq__control__pb2.ManifestEntry.SerializeToString,
+            ),
+            'GetTransferStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTransferStatus,
+                    request_deserializer=daq__control__pb2.GetTransferStatusRequest.FromString,
+                    response_serializer=daq__control__pb2.GetTransferStatusResponse.SerializeToString,
+            ),
+            'GetManifestDigest': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetManifestDigest,
+                    request_deserializer=daq__control__pb2.GetManifestDigestRequest.FromString,
+                    response_serializer=daq__control__pb2.GetManifestDigestResponse.SerializeToString,
+            ),
+            'RetryFailedTransfer': grpc.unary_unary_rpc_method_handler(
+                    servicer.RetryFailedTransfer,
+                    request_deserializer=daq__control__pb2.RetryFailedTransferRequest.FromString,
+                    response_serializer=daq__control__pb2.RetryFailedTransferResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -190,8 +275,8 @@ class DaqControl(object):
             request,
             target,
             '/panoseti.daq_control.DaqControl/StatusDaq',
-            daq__control__pb2.StatusDaqRequest.SerializeToString,
-            daq__control__pb2.StatusDaqResponse.FromString,
+            daq__control__pb2.DaqStatusRequest.SerializeToString,
+            daq__control__pb2.DaqStatusResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -219,6 +304,141 @@ class DaqControl(object):
             '/panoseti.daq_control.DaqControl/CleanupData',
             daq__control__pb2.CleanupDataRequest.SerializeToString,
             daq__control__pb2.CleanupDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GenerateManifest(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/panoseti.daq_control.DaqControl/GenerateManifest',
+            daq__control__pb2.GenerateManifestRequest.SerializeToString,
+            daq__control__pb2.GenerateManifestResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetManifest(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/panoseti.daq_control.DaqControl/GetManifest',
+            daq__control__pb2.GetManifestRequest.SerializeToString,
+            daq__control__pb2.ManifestEntry.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTransferStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/panoseti.daq_control.DaqControl/GetTransferStatus',
+            daq__control__pb2.GetTransferStatusRequest.SerializeToString,
+            daq__control__pb2.GetTransferStatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetManifestDigest(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/panoseti.daq_control.DaqControl/GetManifestDigest',
+            daq__control__pb2.GetManifestDigestRequest.SerializeToString,
+            daq__control__pb2.GetManifestDigestResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RetryFailedTransfer(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/panoseti.daq_control.DaqControl/RetryFailedTransfer',
+            daq__control__pb2.RetryFailedTransferRequest.SerializeToString,
+            daq__control__pb2.RetryFailedTransferResponse.FromString,
             options,
             channel_credentials,
             insecure,

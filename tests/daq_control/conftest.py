@@ -1,16 +1,49 @@
-import pytest
-import time
-import os
+import asyncio
 import multiprocessing
 import socket
-import asyncio
+import time
+from typing import Any
+
+import pytest
+
 from panoseti_grpc.daq_control.client import DaqControlClient
+
 # Import the serve function
 from panoseti_grpc.daq_control.server import serve
 
+# ---------------------------------------------------------------------------
+# Shared polling utilities — preferred over hardcoded time.sleep() waits
+# ---------------------------------------------------------------------------
+
+
+def wait_for_file(path_pattern: Any, timeout: Any = 10.0, poll: Any = 0.1) -> bool:
+    """Return True once a file matching `path_pattern` exists; False on timeout."""
+    import glob
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if glob.glob(str(path_pattern)):
+            return True
+        time.sleep(poll)
+    return False
+
+
+def wait_for_pid_gone(pid: Any, timeout: Any = 10.0, poll: Any = 0.1) -> bool:
+    """Return True once the given PID no longer exists; False on timeout."""
+    import psutil
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not psutil.pid_exists(pid):
+            return True
+        time.sleep(poll)
+    return False
+
+
 SERVER_PORT = 50051
 
-def _run_server_process(grpc_port):
+
+def _run_server_process(grpc_port: Any) -> Any:
     """
     Runs the server in a separate process.
     """
@@ -19,16 +52,12 @@ def _run_server_process(grpc_port):
 
 
 @pytest.fixture(scope="session")
-def start_grpc_server():
+def start_grpc_server() -> Any:
     """
     Starts the gRPC server in a separate multiprocessing.Process.
     """
     # 1. Start Server Process
-    proc = multiprocessing.Process(
-        target=_run_server_process,
-        args=[SERVER_PORT],
-        daemon=True
-    )
+    proc = multiprocessing.Process(target=_run_server_process, args=[SERVER_PORT], daemon=True)
     proc.start()
 
     # 2. Wait for Port to Open (Health Check)
@@ -42,7 +71,7 @@ def start_grpc_server():
             with socket.create_connection(("localhost", SERVER_PORT), timeout=0.1):
                 server_ready = True
                 break
-        except (OSError, ConnectionRefusedError):
+        except OSError, ConnectionRefusedError:
             time.sleep(0.1)
 
     if not server_ready:
@@ -59,5 +88,5 @@ def start_grpc_server():
 
 
 @pytest.fixture(scope="session")
-def grpc_client(start_grpc_server):
+def grpc_client(start_grpc_server: Any) -> Any:
     return DaqControlClient(host="localhost", port=SERVER_PORT)

@@ -1,16 +1,18 @@
-import time
+import json
+import logging
 import os
 import socket
-import json
+import time
+
 import redis
-import logging
+
 from panoseti_grpc.telemetry.logger import get_logger
 
 
-def run_worker():
+def run_worker() -> None:
     my_host = socket.gethostname()
-    redis_host = os.getenv('REDIS_HOST', 'redis')
-    redis_db = int(os.getenv('REDIS_DB', 1))
+    redis_host = os.getenv("REDIS_HOST", "redis")
+    redis_db = int(os.getenv("REDIS_DB", 1))
 
     r = redis.Redis(host=redis_host, port=6379, db=redis_db, decode_responses=True)
 
@@ -23,8 +25,8 @@ def run_worker():
     except Exception as e:
         print(f"[Worker {my_host}] Redis PING failed: {e}", flush=True)
 
-    target_host = os.getenv('HEADNODE_IP', 'localhost')
-    target_port = int(os.getenv('HEADNODE_GRPC_PORT', 50051))
+    target_host = os.getenv("HEADNODE_IP", "localhost")
+    target_port = int(os.getenv("HEADNODE_GRPC_PORT", 50051))
 
     # Wait for connectivity
     while True:
@@ -32,7 +34,7 @@ def run_worker():
             with socket.create_connection((target_host, target_port), timeout=1):
                 print(f"✅ [Worker {my_host}] Linked to {target_host}:{target_port}", flush=True)
                 break
-        except (OSError, ConnectionRefusedError):
+        except OSError, ConnectionRefusedError:
             time.sleep(1)
 
     service_name = "Distributed_Worker"
@@ -58,12 +60,7 @@ def run_worker():
                 continue
 
             # payload object
-            data = {
-                "host": my_host,
-                "session_id": session_id,
-                "seq": seq_num,
-                "ts": time.time()
-            }
+            data = {"host": my_host, "session_id": session_id, "seq": seq_num, "ts": time.time()}
 
             # CRITICAL: Send as JSON string to ensure compatibility with all handlers
             msg = json.dumps(data)

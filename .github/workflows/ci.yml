@@ -1,131 +1,59 @@
-name: PANOSETI gRPC CI
+name: PSETI gRPC CI
 
 on:
   push:
-    branches: [ main, tests, dev, telemetry-service]
+    branches: [main, dev]
   pull_request:
-    branches: [ main ]
+    branches: [main, dev]
+
+# Concurrency group ensures that only the latest commit on a branch is tested.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  daq-data-build-and-test:
+  # 1. Warm up the base cache.
+  prepare-base:
     runs-on: ubuntu-latest
     steps:
-      # Checks-out repository
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      # Set up Docker Buildx
-      # enables advanced features like multi-platform builds and cache management.
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      #Build the Docker image with cache enabled
-      # This step builds the image and pushes the cache to the GitHub Actions cache.
-      # The 'load: true' flag makes the image available to subsequent steps in the same job.
-      - name: Build and cache Docker image
-        uses: docker/build-push-action@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
         with:
-          context: .
-          file: tests/daq_data/Dockerfile
-          load: true # Makes the image available for the next step
-          tags: panoseti-grpc-test-daq-data:latest
-          cache-from: type=gha # Pulls cache from GitHub Actions cache
-          cache-to: type=gha,mode=max # Pushes cache to GitHub Actions cache
-
-      # Run tests inside the now-cached Docker container
-      - name: Run Pytest in container
-        run: docker run --rm panoseti-grpc-test-daq-data:latest
-
-  ublox-control-build-and-test:
-    runs-on: ubuntu-latest
-    steps:
-      # Checks-out repository
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      # Set up Docker Buildx
-      # enables advanced features like multi-platform builds and cache management.
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      #Build the Docker image with cache enabled
-      # This step builds the image and pushes the cache to the GitHub Actions cache.
-      # The 'load: true' flag makes the image available to subsequent steps in the same job.
-      - name: Build and cache Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: tests/ublox_control/Dockerfile
-          load: true # Makes the image available for the next step
-          tags: panoseti-grpc-test-ublox-control:latest
-          cache-from: type=gha # Pulls cache from GitHub Actions cache
-          cache-to: type=gha,mode=max # Pushes cache to GitHub Actions cache
-
-      # Run tests inside the now-cached Docker container
-      - name: Run Pytest in container
-        run: docker run --rm panoseti-grpc-test-ublox-control:latest
-  real-daq-robustness-tests:
-    name: Real DAQ Robustness Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+          enable-cache: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+      
+      - name: Pre-build and Cache All Test Images
+        run: |
+          BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
+            -f docker-bake.hcl \
+            --pull=false \
+            --set *.cache-from=type=gha,scope=pseti-grpc-ci \
+            --set *.cache-to=type=gha,mode=max,scope=pseti-grpc-ci
 
-      - name: Build and cache Docker image for real DAQ tests
-        uses: docker/build-push-action@v5
+  # 2. Run All Tests
+  test-suite:
+    needs: prepare-base
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
         with:
-          context: .
-          file: tests/daq_data_hashpipe/Dockerfile
-          load: true
-          tags: panoseti-grpc-test-real-daq:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          enable-cache: true
 
-      - name: Run Real DAQ Robustness Tests in container
-        env:
-          # This environment variable enables the hashpipe_pcap_runner fixture
-          RUN_REAL_DATA_TESTS: "1"
+      - name: Install host dependencies
+        run: uv sync --all-extras
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Run Full Test Suite via pseti-grpc CLI
         run: |
-          docker run --rm \
-            --shm-size=2g \
-            --env RUN_REAL_DATA_TESTS=${RUN_REAL_DATA_TESTS} \
-            panoseti-grpc-test-real-daq:latest \
-            python3 -m pytest -s -v --maxfail=2 tests/daq_data_hashpipe/
-
-  telemetry-service-build-and-test:
-    name: Telemetry Service Integration Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      # We can leverage the existing cache setup by building the test runner image via buildx first,
-      # but for simplicity and reliability with multi-container setups,
-      # we will let Docker Compose handle the build.
-
-      - name: Run Telemetry Docker Compose Tests
-        run: |
-          cd tests/telemetry
-          # Run the compose stack.
-          # --abort-on-container-exit: stops Redis/Influx once pytest finishes
-          # --exit-code-from test_runner: fails the CI job if pytest fails
-          docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from test_runner
-  
-  daq-control-service-build-and-test:
-    name: Daq Control Service Integration Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Run Daq Control Docker Compose Tests
-        run: |
-          cd tests/daq_control
-          # Run the compose stack.
-          # --abort-on-container-exit: stops Redis/Influx once pytest finishes
-          # --exit-code-from test_runner: fails the CI job if pytest fails
-          docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from test_runner
-
+          # Use pseti-grpc CLI to run tests defined in tests/qa.toml
+          # The CLI handles the docker bake/run orchestration internally
+          PYTHONPATH=src uv run python3 -m panoseti_grpc.cli test all

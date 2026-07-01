@@ -9,14 +9,20 @@
 #
 # On success, print OK.  Otherwise print an error message
 
-import os, signal, sys
-sys.path.append('/app/')
-from panoseti_util import control_utils as util
+import os
+import sys
 
-def main():
+sys.path.append("/app/")
+import contextlib
+
+from panoseti_grpc.panoseti_util import control_utils as util
+
+
+def main() -> None:
     try:
-        f = open(util.daq_hashpipe_pid_filename, 'r')
-    except:
+        with open(util.daq_hashpipe_pid_filename) as f:
+            pass
+    except Exception:
         f = None
     if f:
         pid = int(f.read())
@@ -31,11 +37,10 @@ def main():
     # But it shouldn't be there, so kill it
     util.kill_hk_recorder()
 
-    try:
+    with contextlib.suppress(Exception):
         os.unlink(util.daq_run_name_filename)
-    except:
-        pass
 
-    print('stop_daq.py: OK')
+    print("stop_daq.py: OK")
+
 
 main()

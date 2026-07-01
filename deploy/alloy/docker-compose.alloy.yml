@@ -1,0 +1,12 @@
+services:
+  alloy:
+    image: grafana/alloy:latest
+    container_name: panoseti_alloy
+    restart: unless-stopped
+    volumes:
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+      - /var/log/panoseti:/var/log/panoseti:ro
+    command: ["run", "/etc/alloy/config.alloy"]
+    environment:
+      - HOSTNAME=${HOSTNAME}
+    network_mode: host
