@@ -1,58 +1,68 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=82.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "panoseti-grpc"
-version = "0.1.2"
+version = "0.4.11"
 description = "gRPC for the PANOSETI project."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.14"
 authors = [
-    { name="Nicolas Rault-Wang", email="nraultwang@berkeley.edu" },
+    { name="Nicolas Rault-Wang"},
+    { name="Ben Godfrey"},
+    { name="Wei Liu"}
 ]
-license = { file="LICENSE" }
+license-files = [ "LICENSE" ]
 keywords = [
     "panoseti", "gRPC", "observatory", "data-acquisition", "astronomy", "real-time"
 ]
 classifiers = [
-    "Programming Language :: Python :: 3",
-    "Operating System :: OS Independent",
-    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: Unix",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Astronomy",
     "Framework :: AsyncIO",
 ]
 
 dependencies = [
-    "grpcio>=1.73.0",
-    "grpcio-reflection>=1.73.0",
-    "grpcio-tools>=1.73.0",
-    "protobuf>=6.30.0,<7.0.0",
-    "coverage>=4.0",
-    "cython>=3.1.1",
-    "wheel>=0.29",
-    "rich>=14.0.0",
-    "redis>=3.5.3",
-    "snakeviz>=2.2.2",
-    "json5>=0.12.0",
-    "pyserial>=3.5",
-    "pyubx2>=1.2.43",
-    "seaborn>=0.13.2",
-    "matplotlib>=3.8.4",
-    "pandas>=2.3.0",
-    "numpy>=1.26.4",
-    "netifaces>=0.11.0",
-    "psutil>=7.0.0",
-    "watchfiles>=1.1.0",
-    "aiofiles>=24.1.0"
+    "grpcio==1.78.0",
+    "grpcio-tools==1.78.0",
+    "grpcio-reflection==1.78.0",
+
+    # Pin Protobuf to the v5 series (Stable)
+    "protobuf>=6.31.1,<7.0.0",
+    "grpcio-health-checking",
+    "mypy-protobuf",
+    "types-protobuf",
+    "coverage>=7.10.7",
+    "cython",
+    "wheel",
+    "rich",
+    "redis>=7",
+    "json5",
+    "pyserial",
+    "pyubx2",
+    "pandas",
+    "numpy",
+    "psutil",
+    "anyio",
+    "pydantic>=2.12",
+    "typer",
+    "requests",
+    "GitPython",
+    "blake3",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
-    "black",
-    "flake8",
+    "pytest-asyncio>=0.23",
+    "pytest-timeout",
+    "ruff>=0.15",
+    "mypy>=1.20.0",
+    "mypy-protobuf",
+    "types-protobuf",
     "ipython",
 ]
 docs = [
@@ -61,6 +71,9 @@ docs = [
     "sphinx-autodoc-typehints",
 ]
 
+[project.scripts]
+pseti-grpc           = "panoseti_grpc.cli:standalone_app"
+
 [project.urls]
 Homepage = "https://github.com/panoseti/panoseti_grpc"
 Documentation = "https://github.com/panoseti/panoseti_grpc/blob/main/README.md"
@@ -68,31 +81,65 @@ Repository = "https://github.com/panoseti/panoseti_grpc"
 Issues = "https://github.com/panoseti/panoseti_grpc/issues"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = [
-    "daq_data*",
-    "panoseti_util*",
-]
+where = ["src"]
+exclude = ["*logs*", "*.pcapng", "*.png"]
+
+# Include non-python data files:
+[tool.setuptools.package-data]
+"*" = ["*.json", "*.json5", "*.txt", "*.csv", "*.pff", "*.pffd", "*.toml"]
+"panoseti_grpc.daq_data" = ["simulated_data_dir/**/*"]
 
 [tool.setuptools]
 include-package-data = true
 
-[tool.setuptools.package-data]
-daq_data = ["config/*", "simulated_data_dir/*.pffd/*"]
+[tool.ruff]
+line-length = 120
+target-version = "py314"
+exclude = [
+    "src/panoseti_grpc/generated",
+    "src/panoseti_grpc/ublox_control",
+    "**/*.ipynb",
+]
 
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "RUF", "SIM"]
 
-[tool.black]
-line-length = 88
-target-version = ["py39"]
+[tool.ruff.lint.per-file-ignores]
+"**/migrations/*" = ["E501"]
+"tests/**/*" = ["E501"] # Allow long lines in tests (especially for data strings)
+"src/panoseti_grpc/ublox_control/initialize/**/*" = ["E501"]
+"src/panoseti_grpc/ublox_control/resources.py" = ["E501"]
 
-[tool.flake8]
-max-line-length = 88
-extend-ignore = ["E203", "W503"]
+[tool.mypy]
+python_version = "3.14"
+strict = true
+ignore_missing_imports = true
+exclude = ["src/panoseti_grpc/generated", "src/panoseti_grpc/ublox_control"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "panoseti_grpc.generated.*"
+ignore_errors = true
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = "panoseti_grpc.ublox_control.*"
+ignore_errors = true
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
 
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = "-ra -q"
+asyncio_mode = "auto"
+timeout = 120
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
 testpaths = [
     "tests",
 ]
-

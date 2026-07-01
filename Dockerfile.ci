@@ -1,0 +1,251 @@
+# Dockerfile.ci — Unified CI test image for all PANOSETI gRPC services.
+#
+# Optimized with uv for blazing-fast builds and layer caching. Docker
+# BuildKit reuses shared stages across all targets.
+#
+# Usage:
+#   docker build --target <stage> -f Dockerfile.ci -t <tag> .
+#
+# Stages exposed for --target:
+#   daq-data-test            pytest tests/daq_data
+#   daq-data-hashpipe-test   pytest tests/daq_data_hashpipe  (needs --shm-size=2g)
+#   daq-control-test         pytest tests/daq_control/{integration,unit}
+#   telemetry-runner         pytest tests/telemetry  (used by docker-compose)
+#   telemetry-client         dummy_worker.py  (used by docker-compose for workers)
+#   unified-server-test      pytest tests/unified_server  (requires Redis sidecar)
+#   qa-linter                ruff + mypy checks
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: base
+# Python venv + all panoseti-grpc dev dependencies (includes pytest suite).
+# Inherited by test stages.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM python:3.14-slim AS base
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT="/opt/venv" \
+    PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /app
+
+# Build deps needed for compiling Python extension wheels (e.g. grpcio).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        iputils-ping \
+        curl \
+        gcc build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv binary from official image
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Dependency Caching Layer
+# If pyproject.toml or uv.lock change, this layer rebuilds.
+# Using BuildKit cache mount for fast re-installs.
+COPY pyproject.toml uv.lock* ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-install-project --all-extras
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: hashpipe-builder
+# Compiles hashpipe from source. Both daq-data-hashpipe and daq-control
+# COPY from this stage, so hashpipe is built exactly once.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM python:3.14-slim AS hashpipe-builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential git autoconf automake libtool g++ make \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+RUN git clone --depth 1 https://github.com/david-macmahon/hashpipe.git hashpipe
+WORKDIR /build/hashpipe/src
+RUN autoreconf -is && \
+    ./configure --prefix=/usr/local && \
+    make && \
+    make install
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: daq-data-hashpipe-plugin-builder
+# Clones panoseti_daq and compiles it with the daq_data_hashpipe Makefile.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM hashpipe-builder AS daq-data-hashpipe-plugin-builder
+
+WORKDIR /build
+RUN git clone --depth 1 --branch dev https://github.com/panoseti/panoseti_daq.git panoseti_daq
+WORKDIR /build/panoseti_daq
+COPY tests/daq_data_hashpipe/Makefile .
+COPY tests/daq_data_hashpipe/databuf.h .
+RUN make
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: daq-control-plugin-builder
+# Clones panoseti_daq and compiles it with the daq_control Makefile.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM hashpipe-builder AS daq-control-plugin-builder
+
+WORKDIR /build
+RUN git clone --depth 1 --branch dev https://github.com/panoseti/panoseti_daq.git panoseti_daq
+WORKDIR /build/panoseti_daq
+COPY tests/daq_control/Makefile .
+COPY tests/daq_control/databuf.h .
+RUN make && make install
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: daq-data-test
+# Pure-Python test runner for the daq_data service (simulation only, no C).
+# ═══════════════════════════════════════════════════════════════════════════
+FROM base AS daq-data-test
+
+# Install project source code
+COPY . .
+RUN uv sync --all-extras
+
+CMD ["python", "-m", "pytest", "-v", "tests/daq_data"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: daq-data-hashpipe-test
+# Test runner for daq_data_hashpipe (requires real hashpipe + tcpreplay).
+# ═══════════════════════════════════════════════════════════════════════════
+FROM base AS daq-data-hashpipe-test
+
+# tcpreplay for packet replay.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        tcpreplay \
+    && rm -rf /var/lib/apt/lists/*
+
+# Hashpipe binary and shared libraries.
+COPY --from=hashpipe-builder /usr/local/bin/hashpipe /usr/local/bin/
+COPY --from=hashpipe-builder /usr/local/lib/libhashpipe.so* /usr/local/lib/
+COPY --from=hashpipe-builder /usr/local/lib/libhashpipestatus.so* /usr/local/lib/
+
+# Compiled panoseti_daq plugin.
+COPY --from=daq-data-hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so* /usr/local/lib/
+
+RUN ldconfig
+
+# Install project source code
+COPY . .
+RUN uv sync --all-extras
+
+# Test data (pcapng capture for tcpreplay-based tests).
+COPY tests/data/TEST_10k-pkts_MM+PH_flasher_20260321.pcapng /app/test_data.pcapng
+
+CMD ["python", "-m", "pytest", "-v", "-s", "--maxfail=2", "tests/daq_data_hashpipe/"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: daq-control-test
+# Test runner for the daq_control service (requires hashpipe binary).
+# ═══════════════════════════════════════════════════════════════════════════
+FROM base AS daq-control-test
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        tcpreplay \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=hashpipe-builder /usr/local/bin/hashpipe /usr/local/bin/
+COPY --from=hashpipe-builder /usr/local/lib/libhashpipe.so* /usr/local/lib/
+COPY --from=hashpipe-builder /usr/local/lib/libhashpipestatus.so* /usr/local/lib/
+COPY --from=daq-control-plugin-builder /build/panoseti_daq/hashpipe.so* /usr/local/lib/
+
+RUN ldconfig
+
+# Data directory required by the daq_control server at runtime.
+RUN mkdir -p /app/data && chmod 755 /app/data
+COPY --from=daq-control-plugin-builder /build/panoseti_daq/hashpipe.so /app/data/
+
+ENV GRPC_PORT=50051
+
+# Install project source code
+COPY . .
+RUN uv sync --all-extras
+
+CMD ["python", "-m", "pytest", "-v", "tests/daq_control/"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: telemetry-runner
+# Test runner for the telemetry service (requires Redis + InfluxDB sidecars).
+# Writes structured .jsonl logs to /var/log/panoseti/<hostname>/ so the
+# Alloy sidecar (in docker-compose.test.yml) can ship them to Loki.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM base AS telemetry-runner
+
+# Install project source code
+COPY . .
+RUN uv sync --all-extras
+
+# Install influxdb (not in pyproject.toml) using uv
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install influxdb
+
+COPY src/panoseti_grpc/telemetry/telemetry_config.toml .
+
+# Create the log root; the per-host subdirectory is created at runtime by get_logger.
+RUN mkdir -p /var/log/panoseti && chmod 1777 /var/log/panoseti
+
+# PANOSETI_LOG_DIR is overridden by docker-compose to include the per-host path,
+# but set a sensible default for standalone runs.
+ENV PANOSETI_LOG_DIR=/var/log/panoseti
+
+CMD ["python", "-m", "pytest", "-v", "tests/telemetry"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: telemetry-client
+# Minimal worker image used as the distributed test client.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM base AS telemetry-client
+
+# Install project source code
+COPY . .
+RUN uv sync --all-extras
+
+RUN mkdir -p /var/log/panoseti && chmod 1777 /var/log/panoseti
+ENV PANOSETI_LOG_DIR=/var/log/panoseti
+
+CMD ["python", "tests/telemetry/dummy_worker.py"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: unified-server-test
+# Tests all three services co-hosted on a single port.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM base AS unified-server-test
+
+# Install project source code
+COPY . .
+RUN uv sync --all-extras
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+CMD ["python", "-m", "pytest", "-v", "--timeout=90", "tests/unified_server/"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: qa-linter
+# Runs Ruff and MyPy to verify code quality and type safety.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM base AS qa-linter
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Install project source code
+COPY . .
+RUN uv sync --all-extras
+
+# Default command: check everything.
+CMD ["sh", "-c", "python -m ruff check src/ tests/ scripts/ && python -m ruff format --check src/ tests/ scripts/ && python -m mypy src/ tests/ scripts/"]

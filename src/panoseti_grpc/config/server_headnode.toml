@@ -1,0 +1,32 @@
+# ============================================================
+# PANOSETI Unified gRPC Server — Headnode Profile
+# Runs the telemetry service only.  DAQ nodes connect here
+# for centralized log ingestion.
+#
+# Usage:
+#   pseti-grpc server --profile headnode
+#   pseti-grpc server --config /path/to/server_headnode.toml
+# ============================================================
+
+[server]
+port = 50051
+shutdown_grace_period = 5.0
+
+[server.services]
+telemetry    = true
+daq_data     = false
+daq_control  = false
+# Enable ml_inference on the head node when running pa-stream-cloud in attach mode.
+# Exposes EmitPrediction / StreamPredictions / SubscribeAlerts for real-time scoring.
+ml_inference = false
+
+# -------------------------------------------------------
+# Telemetry service settings
+# -------------------------------------------------------
+[telemetry]
+redis_host = "localhost"
+redis_port = 6379
+redis_db   = 0
+shutdown_grace_period = 5.0
+log_level  = "INFO"
+# telemetry_config_path = ""  # leave empty to use the bundled device registry

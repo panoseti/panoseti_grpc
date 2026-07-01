@@ -1,0 +1,104 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.grpc.panoseti.telemetry";
+option java_outer_classname = "TelemetryProto";
+option objc_class_prefix = "PANO_TLM";
+
+package panoseti.telemetry;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+service Telemetry {
+  rpc Log (LogMessage) returns (StatusResponse) {}
+  rpc ReportStatus(StatusRequest) returns (StatusResponse) {}
+}
+
+message LogMessage {
+  // --- Indexing ---
+  string host = 1;
+  string service_name = 2;
+
+  // --- Metadata ---
+  google.protobuf.Timestamp timestamp = 3;
+  // Severity enum (1=DEBUG, 2=INFO, etc) matches Python logging
+  int32 severity = 4;
+
+  // --- Context ---
+  string file_path = 5;
+  uint32 line_number = 6;
+  string function_name = 7;
+
+  // --- Runtime Metadata ---
+  int64 process_id = 8;
+  string thread_name = 9;
+
+  // --- Software Versioning (NEW) ---
+  string git_commit = 10;
+  string git_branch = 11;
+
+  // --- Payload ---
+  string payload_json = 12;
+}
+
+message LogResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  DEBUG = 1;
+  INFO = 2;
+  WARNING = 3;
+  ERROR = 4;
+  CRITICAL = 5;
+}
+
+
+message StatusRequest {
+  string device_type = 1; // e.g. "gnss", "dew", "test"
+  string device_id = 2;   // e.g. "dome_a"
+  google.protobuf.Timestamp timestamp = 3;
+
+  oneof payload {
+    // Mode A: Pure R&D (No schema validation)
+    google.protobuf.Struct flexible = 10;
+
+    // Mode B: Strict Production Types
+    GnssPayload gnss = 11;
+    DewPayload dew = 12;
+    TestPayload test = 13; // For CI/Healthchecks
+  }
+}
+
+message GnssPayload {
+  int32 satellites = 1;
+  double lat = 2;
+  double lon = 3;
+  string fix_mode = 4;
+  // Hook for future experimentation
+  google.protobuf.Struct extra_data = 15;
+}
+
+message DewPayload {
+  double temp_c = 1;
+  double humidity = 2;
+  // Hook for future experimentation
+  google.protobuf.Struct extra_data = 15;
+}
+
+message TestPayload {
+  int32 iteration = 1;
+  double value = 2;
+  string message = 3;
+  bool active = 4;
+  // Hook for future experimentation
+  google.protobuf.Struct extra_data = 15;
+}
+
+message StatusResponse {
+  bool success = 1;
+  string message = 2;
+}

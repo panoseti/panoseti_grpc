@@ -1,0 +1,9 @@
+services:
+  test_runner:
+    build:
+      context: ../../
+      dockerfile: Dockerfile.ci
+      target: daq-control-test
+    environment:
+      - GRPC_PORT=50051
+    command: ["sleep", "infinity"]

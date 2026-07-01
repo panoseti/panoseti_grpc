@@ -11,7 +11,10 @@ package ubloxcontrol;
 import "google/protobuf/struct.proto"; // standard type for JSON data structures
 import "google/protobuf/timestamp.proto"; // standard type for JSON data structures
 
-// Interface exported by the server connected to the ublox chip
+// DEPRECATED: UbloxControl is in maintenance-only mode and will be removed in
+// the next major release. Use the Telemetry service ReportStatus path with
+// GnssPayload for GNSS data ingestion, or read GNSS data directly via the
+// capture_gps.py daemon which stores to Redis.
 service UbloxControl {
   // Configures a ZED-F9T chip and verifies all desired packets are being received.
   rpc InitF9t(InitF9tRequest) returns (InitF9tResponse) {}
@@ -46,12 +49,12 @@ message CaptureUbloxResponse {
 }
 
 
-message PollCfgRequest {
+message PollRequest {
   // regex patterns specifying which messages to poll
   repeated string cfg_key_patterns = 1;
 }
 
-message PollCfgResponse {
+message PollResponse {
   // list of messages for each message matching the patterns sent in PollRequest
   google.protobuf.Struct parsed_data = 1;
 

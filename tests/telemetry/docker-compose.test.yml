@@ -1,0 +1,119 @@
+services:
+  redis:
+    image: redis:alpine
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - panoseti-net
+
+  influxdb:
+    image: influxdb:1.8
+    environment:
+      - INFLUXDB_DB=metadata
+      - INFLUXDB_ADMIN_USER=root
+      - INFLUXDB_ADMIN_PASSWORD=root
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8086/ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - panoseti-net
+
+  loki:
+    image: grafana/loki:3.6.0
+    user: "0:0"
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - panoseti-net
+
+  alloy:
+    image: grafana/alloy:latest
+    volumes:
+      - ../../deploy/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - panoseti-logs:/var/log/panoseti
+    command: ["run", "/etc/alloy/config.alloy"]
+    environment:
+      - HOSTNAME=headnode-runner
+    depends_on:
+      loki:
+        condition: service_started
+    networks:
+      - panoseti-net
+
+# --- THE HEADNODE (Test Runner) ---
+  test_runner:
+    build:
+      context: ../../
+      dockerfile: Dockerfile.ci
+      target: telemetry-runner
+    hostname: headnode-runner
+    environment:
+      - REDIS_HOST=redis
+      - INFLUX_HOST=influxdb
+      - LOKI_URL=http://loki:3100
+      - ALLOY_HOST=alloy
+      - ALLOY_PORT=12345
+      - GRPC_PORT=50051
+      - HEADNODE_IP=localhost
+      - PANOSETI_LOG_DIR=/var/log/panoseti/headnode-runner
+    volumes:
+      - panoseti-logs:/var/log/panoseti
+      - ..:/app/tests:ro
+      - ../../src:/app/src:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      influxdb:
+        condition: service_started
+      loki:
+        condition: service_started
+      alloy:
+        condition: service_started
+    command: ["sleep", "infinity"]
+    healthcheck:
+      test: [ "CMD", "true" ]
+    networks:
+      - panoseti-net
+
+  # --- THE WORKERS (Minimal Clients) ---
+  worker-1: &worker
+    build:
+      context: ../../
+      dockerfile: Dockerfile.ci
+      target: telemetry-client
+    hostname: worker-1
+    environment:
+      - HEADNODE_IP=test_runner
+      - HEADNODE_GRPC_PORT=50051
+      - REDIS_HOST=redis
+      - REDIS_DB=1
+    depends_on:
+      test_runner:
+        condition: service_healthy
+    networks:
+      - panoseti-net
+    command: ["python3", "tests/telemetry/dummy_worker.py"]
+    restart: on-failure
+
+  worker-2:
+    <<: *worker
+    hostname: worker-2
+
+  worker-3:
+    <<: *worker
+    hostname: worker-3
+
+  worker-4:
+    <<: *worker
+    hostname: worker-4
+
+volumes:
+  panoseti-logs:
+
+networks:
+  panoseti-net:
+    driver: bridge

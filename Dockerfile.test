@@ -1,0 +1,30 @@
+# Dockerfile.test
+FROM python:3.9-slim
+
+# 1. Copy your package into the container
+WORKDIR /app
+COPY pyproject.toml LICENSE README.md .
+COPY src ./src
+RUN pip install .
+
+# 2. Install the package strictly from the source files
+# This tests your pyproject.toml dependencies!
+#RUN pip install panoseti-grpc==0.2.3
+
+
+# 3. Run a simple smoke test
+#Fails if imports are broken
+# RUN python3 -c "import site; print(site.getsitepackages())"
+RUN python -c "import os; print(os.system('pip list'))"
+
+# Attempt to import submodules
+RUN python -c "import panoseti_grpc; print('found panoseti_grpc')"
+
+RUN python -c "import panoseti_grpc.daq_data; print('found panoseti_grpc.daq_data')"
+RUN python -c "from panoseti_grpc.daq_data.client import DaqDataClient; print('DaqDataClient Import Success')"
+
+RUN python -c "import panoseti_grpc.ublox_control; print('found panoseti_grpc.ublox_control')"
+RUN python -c "import panoseti_grpc.ublox_control.client; print('found panoseti_grpc.ublox_control.client')"
+RUN python -c "from panoseti_grpc.ublox_control.client import UbloxControlClient; print('UbloxControlClient Import Success')"
+
+CMD ["python", "-c", "print('All systems operational')"]

@@ -1,13 +1,16 @@
 # tests/test_integration.py
 
-import pytest
-import pytest_asyncio
-import grpc
 import copy
-from ublox_control import ublox_control_pb2, ublox_control_pb2_grpc
-from ublox_control.resources import default_f9t_cfg
+
+import grpc
+import pytest
 from google.protobuf.json_format import ParseDict
 from google.protobuf.struct_pb2 import Struct
+
+from panoseti_grpc.generated import ublox_control_pb2, ublox_control_pb2_grpc
+from panoseti_grpc.ublox_control.resources import default_f9t_cfg
+
+pytestmark = pytest.mark.skip(reason="ublox_control deprecated — tests preserved for the removal PR")
 
 TIMEOUT = 5.0
 
@@ -22,14 +25,12 @@ async def test_initf9t_error_no_device(live_server):
         stub = ublox_control_pb2_grpc.UbloxControlStub(channel)
 
         bad_config = copy.deepcopy(default_f9t_cfg)
-        chip_config = bad_config['f9t_chips'][0]
-        del chip_config['device']
+        chip_config = bad_config["f9t_chips"][0]
+        del chip_config["device"]
         bad_config.update(chip_config)
-        del bad_config['f9t_chips']
+        del bad_config["f9t_chips"]
 
-        request = ublox_control_pb2.InitF9tRequest(
-            f9t_config=ParseDict(bad_config, Struct())
-        )
+        request = ublox_control_pb2.InitF9tRequest(f9t_config=ParseDict(bad_config, Struct()))
 
         with pytest.raises(grpc.aio.AioRpcError) as e:
             await stub.InitF9t(request, timeout=TIMEOUT)
@@ -48,14 +49,12 @@ async def test_initf9t_error_invalid_device(live_server):
         stub = ublox_control_pb2_grpc.UbloxControlStub(channel)
 
         bad_config = copy.deepcopy(default_f9t_cfg)
-        chip_config = bad_config['f9t_chips'][0]
-        chip_config['device'] = "/dev/nonexistentdevice12345"
+        chip_config = bad_config["f9t_chips"][0]
+        chip_config["device"] = "/dev/nonexistentdevice12345"
         bad_config.update(chip_config)
-        del bad_config['f9t_chips']
+        del bad_config["f9t_chips"]
 
-        request = ublox_control_pb2.InitF9tRequest(
-            f9t_config=ParseDict(bad_config, Struct())
-        )
+        request = ublox_control_pb2.InitF9tRequest(f9t_config=ParseDict(bad_config, Struct()))
 
         with pytest.raises(grpc.aio.AioRpcError) as e:
             await stub.InitF9t(request, timeout=TIMEOUT)
@@ -63,27 +62,3 @@ async def test_initf9t_error_invalid_device(live_server):
         # The server will hang trying to access the invalid device,
         # causing the client to time out.
         assert e.value.code() == grpc.StatusCode.INVALID_ARGUMENT
-
-
-# @pytest.mark.asyncio
-# async def test_initf9t_error_uid_mismatch(live_server):
-#     """
-#     Tests that InitF9t fails if the detected UID doesn't match the client's.
-#
-#     NOTE: This test requires a virtual serial port setup to mock the hardware
-#     response. For this example, we'll assume the server's get_f9t_unique_id
-#     could be patched, but in a real scenario, `socat` would be used.
-#     Since patching a running server process is complex, this test outlines
-#     the principle. A full implementation would require more setup.
-#     """
-#     # This is a placeholder for a more complex test.
-#     # The server would need to be started with a mocked `get_f9t_unique_id`
-#     # or connected to a virtual serial port controlled by the test.
-#
-#     # Principle of the test:
-#     # 1. Start server connected to a virtual serial port.
-#     # 2. Test sends a fake UBX-SEC-UNIQID response with UID "AAAAAAAAAA" to the port.
-#     # 3. Client sends InitF9t request with expected UID "BBBBBBBBBB".
-#     # 4. Assert server returns INVALID_ARGUMENT with a UID mismatch error.
-#     pytest.skip("Full UID mismatch test requires advanced setup (e.g., socat).")
-#

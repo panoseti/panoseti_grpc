@@ -1,0 +1,93 @@
+"""
+Daq Control Service configuration classes for validation
+"""
+
+import os
+from enum import StrEnum
+from pathlib import Path
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, Field, IPvAnyAddress, model_validator
+
+
+class DaqControlServerConfig(BaseModel):
+    """Server-level configuration for the DaqControl gRPC service."""
+
+    grpc_port: int = Field(50051, ge=1024, le=65535)
+    log_dir: str = "/var/log/panoseti"
+    grpc_logging: bool = True
+    shutdown_grace_period: float = Field(5.0, ge=0)
+    log_level: str = Field("INFO", pattern="^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$")
+    hashpipe_path: str = Field(
+        default_factory=lambda: os.getenv("PSETI_DAQ_CONTROL_HASHPIPE_PATH", "hashpipe"),
+        description="Path or command to execute for hashpipe.",
+    )
+    hashpipe_name: str = Field(
+        default_factory=lambda: os.getenv("PSETI_DAQ_CONTROL_HASHPIPE_NAME", "hashpipe"),
+        description="Expected process name for hashpipe (used for liveness checks).",
+    )
+
+
+Uint8 = Annotated[int, Field(ge=0, le=255)]
+
+
+class StartDaqModel(BaseModel):
+    data_dir: Path = Field(...)
+    daq_ip_addr: IPvAnyAddress
+    bindhost: str = Field(..., min_length=1, max_length=16)
+    max_file_size_mb: float = Field(ge=0, le=99999)
+    group_ph_frames: bool
+    run_dir: str = Field(..., min_length=1)
+    obs: str = Field(..., min_length=1, max_length=16)
+    module_id: list[Uint8] = Field(...)
+    force: bool = False
+
+    @model_validator(mode="after")
+    def create_run_dir(self) -> StartDaqModel:
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        full_path = self.data_dir / self.run_dir
+        full_path.mkdir(parents=True, exist_ok=True)
+        return self
+
+
+class StopDaqModel(BaseModel):
+    data_dir: Path = Field(...)
+    run_dir: str = Field(..., min_length=1)
+
+
+class StatusDaqModel(BaseModel):
+    data_dir: Path = Field(...)
+    check_hashpipe_running: bool = Field(...)
+    check_disk_usage: bool = Field(...)
+    check_run_dirs: bool = Field(...)
+
+
+class CleanupMode(StrEnum):
+    CLEANUP_FULL = "CLEANUP_FULL"
+    CLEANUP_SELECTIVE = "CLEANUP_SELECTIVE"
+
+
+class CleanupDataModel(BaseModel):
+    data_dir: Path = Field(...)
+    run_dir: str = Field(..., min_length=1)
+    module_id: list[Uint8] = Field(...)
+    force: bool = False
+    mode: CleanupMode = CleanupMode.CLEANUP_FULL
+    delete_patterns: list[str] = []
+    preserve_patterns: list[str] = []
+
+    @model_validator(mode="after")
+    def check_selective_requires_patterns(self) -> CleanupDataModel:
+        if self.mode == CleanupMode.CLEANUP_SELECTIVE and not self.delete_patterns:
+            raise ValueError("CLEANUP_SELECTIVE requires at least one delete_pattern")
+        return self
+
+
+class GenerateManifestModel(BaseModel):
+    data_dir: Path = Field(...)
+    run_dir: str = Field(..., min_length=1)
+    module_id: list[Uint8] = Field(default_factory=list)
+    algorithm: Literal["blake3", "xxh3_128"] = "blake3"
+    include_patterns: list[str] = Field(
+        default=["*.pff", "*.json", "*.jsonl", "*.log", "*.toml", "*.config"], min_length=1
+    )

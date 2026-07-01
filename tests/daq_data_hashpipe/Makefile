@@ -11,13 +11,12 @@ TARGET   = hashpipe.so
 SOURCES  = net_thread.c \
     compute_thread.c \
     output_thread.c \
-    process_frame.c \
     databuf.c \
     snapshot.c \
     ./util/pff.cpp \
 	./util/image.cpp
 
-INCLUDES = databuf.h compute_thread.h process_frame.h snapshot.h
+INCLUDES = databuf.h compute_thread.h snapshot.h
 
 N_INPUT_BLOCKS=64
 N_OUTPUT_BLOCKS=1
@@ -32,4 +31,4 @@ tags:
 clean:
 	rm -f $(TARGET) tags
 
-.PHONY: all tags clean install install-lib
+.PHONY: all tags clean
