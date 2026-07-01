@@ -29,9 +29,8 @@ jobs:
       - name: Pre-build and Cache All Test Images
         run: |
           BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
-            -f tests/qa.toml \
+            -f docker-bake.hcl \
             --pull=false \
-            --set *.context=. \
             --set *.cache-from=type=gha,scope=pseti-grpc-ci \
             --set *.cache-to=type=gha,mode=max,scope=pseti-grpc-ci
 
