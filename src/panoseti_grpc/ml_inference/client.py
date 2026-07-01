@@ -91,7 +91,7 @@ class MLInferenceClient:
             calibration_maturity=calibration_maturity,
             emitted_at=ts,
         )
-        return self.stub.EmitPrediction(prediction, timeout=timeout)
+        return self.stub.EmitPrediction(prediction, timeout=timeout)  # type: ignore[no-any-return]
 
     def stream_predictions(
         self,
@@ -175,7 +175,7 @@ class AioMLInferenceClient:
         t_start_ns: int,
         t_end_ns: int,
         calibration_maturity: float = 1.0,
-        timeout: float = 10.0,
+        timeout_s: float = 10.0,
     ) -> ml_inference_pb2.EmitAck:
         """Async emit of a scored window prediction."""
         from google.protobuf.timestamp_pb2 import Timestamp
@@ -196,7 +196,7 @@ class AioMLInferenceClient:
             calibration_maturity=calibration_maturity,
             emitted_at=ts,
         )
-        return await self.stub.EmitPrediction(prediction, timeout=timeout)
+        return await self.stub.EmitPrediction(prediction, timeout=timeout_s)  # type: ignore[no-any-return]
 
     def stream_predictions(
         self,
@@ -211,7 +211,7 @@ class AioMLInferenceClient:
             data_products=data_products or [],
             model_names=model_names or [],
         )
-        return self.stub.StreamPredictions(request)
+        return self.stub.StreamPredictions(request)  # type: ignore[no-any-return]
 
     def subscribe_alerts(
         self,
@@ -226,4 +226,4 @@ class AioMLInferenceClient:
             data_products=data_products or [],
             alert_threshold=alert_threshold,
         )
-        return self.stub.SubscribeAlerts(request)
+        return self.stub.SubscribeAlerts(request)  # type: ignore[no-any-return]

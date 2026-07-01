@@ -113,9 +113,7 @@ def _matches_prediction_filter(
         return False
     if request.data_products and prediction.data_product not in request.data_products:
         return False
-    if request.model_names and prediction.model_name not in request.model_names:
-        return False
-    return True
+    return not (request.model_names and prediction.model_name not in request.model_names)
 
 
 def _matches_alert_filter(
@@ -129,9 +127,7 @@ def _matches_alert_filter(
         return False
     if request.module_ids and prediction.module_id not in request.module_ids:
         return False
-    if request.data_products and prediction.data_product not in request.data_products:
-        return False
-    return True
+    return not (request.data_products and prediction.data_product not in request.data_products)
 
 
 class MLInferenceServicer(ml_inference_pb2_grpc.MLInferenceServicer):
