@@ -20,10 +20,10 @@ from panoseti_grpc.server import (
 # ---------------------------------------------------------------------------
 
 
-def test_all_three_services_registered() -> None:
-    """All three built-in services are registered at module import time."""
+def test_all_services_registered() -> None:
+    """All built-in services are registered at module import time."""
     names = set(ServiceRegistry.all().keys())
-    assert names == {"telemetry", "daq_data", "daq_control"}
+    assert names == {"telemetry", "daq_data", "daq_control", "ml_inference"}
 
 
 def test_init_order_telemetry_first() -> None:
@@ -73,6 +73,15 @@ def test_registry_get_daq_control() -> None:
     assert desc.config_field == "daq_control"
 
 
+def test_registry_get_ml_inference() -> None:
+    """ml_inference descriptor has correct name and config_field."""
+    desc = ServiceRegistry.get("ml_inference")
+    assert desc.name == "ml_inference"
+    assert desc.config_field == "ml_inference"
+    assert callable(desc.servicer_factory)
+    assert callable(desc.add_to_server_fn)
+
+
 def test_registry_service_names_for_reflection_telemetry() -> None:
     """Telemetry reflection names contain the fully-qualified service name."""
     desc = ServiceRegistry.get("telemetry")
@@ -89,6 +98,12 @@ def test_registry_service_names_for_reflection_daq_control() -> None:
     """DaqControl reflection names contain the fully-qualified service name."""
     desc = ServiceRegistry.get("daq_control")
     assert any("DaqControl" in n for n in desc.service_names_for_reflection)
+
+
+def test_registry_service_names_for_reflection_ml_inference() -> None:
+    """MLInference reflection names contain the fully-qualified service name."""
+    desc = ServiceRegistry.get("ml_inference")
+    assert any("MLInference" in n for n in desc.service_names_for_reflection)
 
 
 def test_registry_all_returns_copy() -> None:
@@ -153,29 +168,32 @@ def test_registry_register_overwrites_existing() -> None:
 
 
 def test_service_toggles_all_true_by_default() -> None:
-    """Default ServiceToggles enables all three services."""
+    """Default ServiceToggles enables core services, disables ml_inference."""
     t = ServiceToggles()
     assert t.telemetry and t.daq_data and t.daq_control
+    assert not t.ml_inference
 
 
 def test_service_toggles_partial() -> None:
-    """ServiceToggles can selectively disable services."""
-    t = ServiceToggles(telemetry=False, daq_data=True, daq_control=False)
+    """ServiceToggles can selectively disable/enable services."""
+    t = ServiceToggles(telemetry=False, daq_data=True, daq_control=False, ml_inference=True)
     assert not t.telemetry
     assert t.daq_data
     assert not t.daq_control
+    assert t.ml_inference
 
 
 def test_service_toggles_all_false() -> None:
     """All-false ServiceToggles is a valid model (server will raise at start time)."""
-    t = ServiceToggles(telemetry=False, daq_data=False, daq_control=False)
+    t = ServiceToggles(telemetry=False, daq_data=False, daq_control=False, ml_inference=False)
     assert not t.telemetry
     assert not t.daq_data
     assert not t.daq_control
+    assert not t.ml_inference
 
 
 def test_service_toggles_equality() -> None:
     """Two ServiceToggles with identical fields compare as equal."""
-    t1 = ServiceToggles(telemetry=True, daq_data=False, daq_control=True)
-    t2 = ServiceToggles(telemetry=True, daq_data=False, daq_control=True)
+    t1 = ServiceToggles(telemetry=True, daq_data=False, daq_control=True, ml_inference=True)
+    t2 = ServiceToggles(telemetry=True, daq_data=False, daq_control=True, ml_inference=True)
     assert t1 == t2
