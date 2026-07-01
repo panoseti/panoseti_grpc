@@ -57,3 +57,10 @@ jobs:
           # Use pseti-grpc CLI to run tests defined in tests/qa.toml
           # The CLI handles the docker bake/run orchestration internally
           PYTHONPATH=src uv run python3 -m panoseti_grpc.cli test all
+
+  continuous-integration:
+    name: Continuous-Integration Tests Must Pass
+    runs-on: ubuntu-latest
+    needs: [prepare-base, test-suite]
+    steps:
+      - run: echo "All checks passed!"
