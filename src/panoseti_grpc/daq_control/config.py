@@ -2,6 +2,8 @@
 Daq Control Service configuration classes for validation
 """
 
+from __future__ import annotations
+
 import os
 from enum import StrEnum
 from pathlib import Path

@@ -54,7 +54,7 @@ def test_concurrent_start_daq_rejected(grpc_client: Any) -> None:
         def _start(_: Any) -> None:
             try:
                 return grpc_client.StartDaq(START_PARAMS)
-            except ValueError, Exception:
+            except (ValueError, Exception):
                 return False
 
         with ThreadPoolExecutor(max_workers=3) as pool:

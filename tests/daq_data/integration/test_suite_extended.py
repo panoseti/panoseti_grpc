@@ -98,7 +98,7 @@ async def test_stream_terminates_when_server_stops(n_sim_servers_fixture_factory
                 async for _ in stream:
                     pass
             ended = True  # Clean StopAsyncIteration
-        except TimeoutError, PanosetiRpcError, StopAsyncIteration:
+        except (TimeoutError, PanosetiRpcError, StopAsyncIteration):
             ended = True
         assert ended
 
@@ -171,7 +171,7 @@ async def test_client_handles_one_server_failure(gateway_factory):
                     received_after.add(mid)
                 if received_after >= remaining_modules:
                     break
-        except PanosetiRpcError, StopAsyncIteration:
+        except (PanosetiRpcError, StopAsyncIteration):
             pass
 
         assert received_after.issubset(remaining_modules)

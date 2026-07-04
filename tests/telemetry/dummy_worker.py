@@ -34,7 +34,7 @@ def run_worker() -> None:
             with socket.create_connection((target_host, target_port), timeout=1):
                 print(f"✅ [Worker {my_host}] Linked to {target_host}:{target_port}", flush=True)
                 break
-        except OSError, ConnectionRefusedError:
+        except (OSError, ConnectionRefusedError):
             time.sleep(1)
 
     service_name = "Distributed_Worker"

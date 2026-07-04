@@ -29,7 +29,7 @@ def fetch_logs(redis_client: Any, session_id: str) -> list[dict[str, Any]]:
                 # Attach envelope metadata for better debugging
                 worker_payload["_remote_host"] = envelope.get("host")
                 parsed_logs.append(worker_payload)
-        except json.JSONDecodeError, TypeError:
+        except (json.JSONDecodeError, TypeError):
             continue
     return parsed_logs
 
@@ -182,7 +182,7 @@ def test_mixed_traffic_stability(redis_client: Any, distributed_session: Any) ->
 
                 rogue_count += 1
 
-        except json.JSONDecodeError, TypeError:
+        except (json.JSONDecodeError, TypeError):
             continue
 
     assert rogue_count >= 20, "Server dropped the complex payloads!"

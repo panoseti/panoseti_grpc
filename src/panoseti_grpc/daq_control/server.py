@@ -145,7 +145,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                     pids.append(pid)
                     continue
 
-            except psutil.NoSuchProcess, psutil.AccessDenied:
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
         return len(pids), pids
 
@@ -590,7 +590,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
         try:
             parsed_pid = int(self.hashpipe_pid)
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             if self.hashpipe_pid != -1:
                 uncertain = True
 
@@ -787,7 +787,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 resolved_root = await root_run_dir_async.resolve()
                 if await resolved_root.is_dir():
                     break
-            except OSError, FileNotFoundError:
+            except (OSError, FileNotFoundError):
                 pass
 
             if attempt < 9:

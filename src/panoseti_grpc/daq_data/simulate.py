@@ -153,7 +153,7 @@ class UdsStrategy(BaseSimulationStrategy):
                     _, writer = await asyncio.open_unix_connection(socket_path)
                     self._writers[dp_name] = writer
                     self.logger.info(f"UDS sim: Connected to {socket_path}")
-                except ConnectionRefusedError, FileNotFoundError:
+                except (ConnectionRefusedError, FileNotFoundError):
                     self.logger.warning(f"UDS sim (attempt {i + 1}/{num_retries}): Could not connect to {socket_path}.")
                     all_connected = False
                     break  # Break inner loop to retry all after a delay
