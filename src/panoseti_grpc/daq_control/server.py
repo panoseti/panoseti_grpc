@@ -46,7 +46,12 @@ from .config import CleanupDataModel, CleanupMode, GenerateManifestModel, StartD
 from .manifest import compute_manifest
 
 # Local Imports
-from .util import is_hashpipe_running
+from .util import (
+    EXPECTED_HASHPIPE_THREADS,
+    cleanup_stale_hashpipe_semaphores,
+    hashpipe_thread_count,
+    is_hashpipe_running,
+)
 
 PROCESS = "hashpipe"
 SERVER_LOG_DIR = "/var/log/panoseti"
@@ -329,6 +334,20 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                     return daq_control_pb2.StartDaqResponse(success=False, message=msg)
 
                 vreq_dict = vreq.model_dump(mode="json", exclude_unset=True)
+
+                # No hashpipe process is running (checked in step 1), so it's
+                # safe to clear a semaphore leaked by a prior process that was
+                # killed rather than stopped cleanly -- otherwise the new
+                # process blocks forever in hashpipe_databuf_create with no
+                # error. Opt-in only: this is a manual recovery action, not
+                # something to run on every start.
+                if vreq.force_clean_semaphores:
+                    removed = cleanup_stale_hashpipe_semaphores()
+                    if removed:
+                        self.logger.warning(f"Removed stale hashpipe semaphore(s) before start: {removed}")
+                    else:
+                        self.logger.info("force_clean_semaphores requested but no stale semaphore found.")
+
                 # 3. get the parameters
                 datadir = vreq.data_dir
                 run_dir = vreq.run_dir
@@ -431,6 +450,43 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
                 await asyncio.sleep(POLL_INTERVAL)
             self.logger.info(f"{self.hashpipe_name} instance status: {success}; PID: {self.hashpipe_pid}")
             msg = f"{self.hashpipe_name} start failed. \n{vreq_dict=} \n{cmd=}" if not success else ""
+
+            # A live PID isn't enough: hashpipe can block forever inside
+            # hashpipe_databuf_create() during shared-memory/semaphore init
+            # (see cleanup_stale_hashpipe_semaphores) without ever spawning
+            # net_thread/compute_thread/output_thread, and it looks
+            # identical to a healthy process from a PID-existence check
+            # alone. Give it a longer window to reach full thread count --
+            # startup is legitimately staggered (output/compute/net threads
+            # start several seconds apart) -- before declaring it stuck.
+            if success:
+                THREAD_WAIT_TIMEOUT = 10  # seconds
+                threads = hashpipe_thread_count(self.hashpipe_pid)
+                for _ in range(int(THREAD_WAIT_TIMEOUT / POLL_INTERVAL)):
+                    threads = hashpipe_thread_count(self.hashpipe_pid)
+                    if threads >= EXPECTED_HASHPIPE_THREADS:
+                        break
+                    await asyncio.sleep(POLL_INTERVAL)
+                if threads < EXPECTED_HASHPIPE_THREADS:
+                    self.logger.error(
+                        f"{self.hashpipe_name} pid {self.hashpipe_pid} stuck at {threads}/"
+                        f"{EXPECTED_HASHPIPE_THREADS} threads after {THREAD_WAIT_TIMEOUT}s -- "
+                        "likely blocked on a stale shared-memory semaphore. Killing it and "
+                        "clearing the semaphore so the next StartDaq starts clean."
+                    )
+                    self.kill_processes([self.hashpipe_pid])
+                    self.hashpipe_pid = -1
+                    removed = cleanup_stale_hashpipe_semaphores()
+                    if removed:
+                        self.logger.warning(f"Removed stale hashpipe semaphore(s) after stuck start: {removed}")
+                    success = False
+                    msg = (
+                        f"{self.hashpipe_name} started (pid alive) but only reached {threads}/"
+                        f"{EXPECTED_HASHPIPE_THREADS} threads after {THREAD_WAIT_TIMEOUT}s -- "
+                        f"net_thread/compute_thread/output_thread never fully came up. "
+                        "Process killed and stale semaphore cleared; retry StartDaq."
+                    )
+
             return daq_control_pb2.StartDaqResponse(success=success, message=msg)
         finally:
             if ht:
@@ -531,6 +587,8 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
 
         datadir = vreq.data_dir
         hashpipe_pid = -1
+        thread_count = 0
+        hashpipe_healthy = True
         # check hashpipe status
         if vreq.check_hashpipe_running:
             self.logger.debug(f"Checking {self.hashpipe_name} status...")
@@ -542,6 +600,14 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             # Update tracked pid if exactly one found and we didn't have one
             if n == 1 and self.hashpipe_pid == -1:
                 self.hashpipe_pid = pids[0]
+            if hashpipe_running:
+                thread_count = await asyncio.to_thread(hashpipe_thread_count, hashpipe_pid)
+                # No data flowing is not itself a failure (a run may have just
+                # started, or triggers may simply be quiet) -- but a running
+                # process stuck below its expected thread count means
+                # net_thread/compute_thread/output_thread never came up, or one
+                # of them died. That's an unambiguous fault worth surfacing.
+                hashpipe_healthy = thread_count >= EXPECTED_HASHPIPE_THREADS
         else:
             hashpipe_running = False
         # check free space
@@ -570,6 +636,8 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             disk_usage=disk_usage_struct,
             run_dirs=run_dirs,
             hashpipe_pid=hashpipe_pid,
+            hashpipe_thread_count=thread_count,
+            hashpipe_healthy=hashpipe_healthy,
         )
 
     @grpc_error_handler

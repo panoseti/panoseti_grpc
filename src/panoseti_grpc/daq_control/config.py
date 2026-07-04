@@ -43,6 +43,11 @@ class StartDaqModel(BaseModel):
     obs: str = Field(..., min_length=1, max_length=16)
     module_id: list[Uint8] = Field(...)
     force: bool = False
+    force_clean_semaphores: bool = Field(
+        False,
+        description="Remove leaked hashpipe POSIX semaphores before launching, when no "
+        "hashpipe instance is currently running. Manual recovery action, off by default.",
+    )
 
     @model_validator(mode="after")
     def create_run_dir(self) -> StartDaqModel:
