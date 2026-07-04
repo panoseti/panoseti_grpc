@@ -9,4 +9,5 @@ services:
     command: ["run", "/etc/alloy/config.alloy"]
     environment:
       - HOSTNAME=${HOSTNAME}
+      - HEADNODE_IP=${HEADNODE_IP:-192.168.88.103}
     network_mode: host

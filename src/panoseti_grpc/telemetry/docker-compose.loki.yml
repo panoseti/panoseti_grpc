@@ -6,8 +6,11 @@ services:
   loki:
     image: grafana/loki:3.6.0
     container_name: loki_logger
-    # Run as the 'loki' user (UID 10001) for security
-#    user: "10001:10001"
+    # Run as root so `./loki-data` is always writable regardless of the host
+    # directory's pre-existing ownership (isolation is not a concern here).
+    # Switch to "10001:10001" (the image's default non-root user) once
+    # ./loki-data is pre-chowned to that UID/GID on the host.
+    user: "0:0"
     ports:
       - "3100:3100"
     command:
@@ -17,7 +20,7 @@ services:
       - ./loki-data:/loki
     networks:
       - panoseti-net
-#    restart: unless-stopped
+    restart: unless-stopped
     mem_limit: 4g
 
 
@@ -38,7 +41,8 @@ services:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     volumes:
-      # Mount your provisioning files here if you have them
-      - /Users/nico/panoseti/panoseti_grafana/grafana_provisioning/:/etc/grafana/provisioning
+      # Point GRAFANA_PROVISIONING_DIR at your dashboards/datasources provisioning
+      # directory (e.g. the panoseti repo's grafana/grafana_provisioning/).
+      - ${GRAFANA_PROVISIONING_DIR:-./grafana_provisioning}:/etc/grafana/provisioning
     networks:
       - panoseti-net

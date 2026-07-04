@@ -35,6 +35,9 @@ loki.process "panoseti" {
 }
 
 loki.write "headnode" {
-  endpoint { url = "http://loki:3100/loki/api/v1/push" }
+  // Alloy runs with network_mode: host, so the bridge-network DNS name "loki"
+  // does not resolve here (and Loki lives on the headnode, not this DAQ node).
+  // Point at the headnode's IP instead.
+  endpoint { url = string.format("http://%s:3100/loki/api/v1/push", sys.env("HEADNODE_IP")) }
   external_labels = { cluster = "panoseti" }
 }
