@@ -1,0 +1,65 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: hashpipe-builder
+# ═══════════════════════════════════════════════════════════════════════════
+FROM python:3.14-slim AS hashpipe-builder
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential git autoconf automake libtool g++ make \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+RUN git clone --depth 1 https://github.com/david-macmahon/hashpipe.git hashpipe
+WORKDIR /build/hashpipe/src
+RUN autoreconf -is && ./configure --prefix=/usr/local && make && make install
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: hashpipe-plugin-builder
+# ═══════════════════════════════════════════════════════════════════════════
+FROM hashpipe-builder AS hashpipe-plugin-builder
+ENV PANOSETI_DAQ_BRANCH="dev"
+WORKDIR /build
+RUN git clone --depth 1 --branch ${PANOSETI_DAQ_BRANCH} https://github.com/panoseti/panoseti_daq.git panoseti_daq
+WORKDIR /build/panoseti_daq
+# We download the required Makefile and databuf.h from the main panoseti repo
+RUN curl -o Makefile https://raw.githubusercontent.com/panoseti/panoseti/main/control/src/ci/fixtures/build/Makefile
+RUN curl -o databuf.h https://raw.githubusercontent.com/panoseti/panoseti/main/control/src/ci/fixtures/build/databuf.h
+RUN make
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: daqnode
+# ═══════════════════════════════════════════════════════════════════════════
+FROM python:3.14-slim AS daqnode
+
+ARG LOCAL_UID=1000
+ARG LOCAL_GID=1000
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    socat tcpreplay procps curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy core hashpipe binaries and libraries
+COPY --from=hashpipe-builder /usr/local/bin/hashpipe /usr/local/bin/hashpipe
+COPY --from=hashpipe-builder /usr/local/lib/libhashpipe* /usr/local/lib/
+RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/usr-local-lib.conf && ldconfig
+
+# Create panoseti user
+RUN groupadd -o -g ${LOCAL_GID} panoseti \
+ && useradd -o -u ${LOCAL_UID} -o -g ${LOCAL_GID} -m -s /bin/bash panoseti \
+ && (getent group docker || groupadd -o -g 999 docker || groupadd docker) \
+ && usermod -aG docker panoseti
+
+RUN mkdir -p /data /app /var/log/panoseti \
+ && chown -R panoseti:panoseti /data /app /var/log/panoseti
+
+USER panoseti
+
+COPY --from=hashpipe-plugin-builder --chown=panoseti:panoseti /build/panoseti_daq/hashpipe.so /data/hashpipe.so
+COPY --from=hashpipe-plugin-builder --chown=panoseti:panoseti /build/panoseti_daq/hashpipe.so /usr/local/lib/panoseti_hashpipe.so
+
+# Install panoseti-grpc from PyPI (no local source code needed!)
+RUN pip install --no-cache-dir panoseti-grpc
+
+ENTRYPOINT ["pseti-grpc", "server"]
+CMD ["--profile", "daq_node"]

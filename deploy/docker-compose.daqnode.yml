@@ -1,0 +1,30 @@
+services:
+  daqnode-server:
+    image: pseti-daqnode:production
+    build:
+      context: .
+      dockerfile: Dockerfile.daqnode
+      args:
+        LOCAL_UID: "${LOCAL_UID:-1000}"
+        LOCAL_GID: "${LOCAL_GID:-1000}"
+    network_mode: host
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+      - IPC_LOCK
+      - SYS_NICE
+    shm_size: '2gb'
+    volumes:
+      - ${DAQ_DATA_DIR:-/mnt/panoseti-data}/:/mnt/panoseti-data/
+      # Mount the logs directory so it can be shipped via Alloy (or accessible bare metal)
+      - /var/log/panoseti:/var/log/panoseti
+    environment:
+      HEADNODE_IP: "${HEADNODE_IP:-192.168.88.103}"
+      GRPC_PORT: "50051"
+      HEADNODE_GRPC_PORT: "50051"
+      PSETI_LOGS: "/var/log/panoseti"
+      DAQ_DATA_DIR: "${DAQ_DATA_DIR:-/mnt/panoseti-data}"
+      LOCAL_UID: "${LOCAL_UID:-1000}"
+      LOCAL_GID: "${LOCAL_GID:-1000}"
+    restart: always
