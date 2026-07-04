@@ -285,7 +285,7 @@ async def test_uds_partial_server_failure_tolerance(gateway_factory, num_servers
                     drain_counts[img["module_id"]] += 1
                 if all(c >= 3 for c in drain_counts.values()):
                     break
-            except StopAsyncIteration, PanosetiRpcError:
+            except (StopAsyncIteration, PanosetiRpcError):
                 break
 
         # Collect post-failure frames
@@ -294,7 +294,7 @@ async def test_uds_partial_server_failure_tolerance(gateway_factory, num_servers
             try:
                 img = await stream.__anext__()
                 seen_after.add(img["module_id"])
-            except StopAsyncIteration, PanosetiRpcError:
+            except (StopAsyncIteration, PanosetiRpcError):
                 break
 
         assert stopped["module_id"] not in seen_after
