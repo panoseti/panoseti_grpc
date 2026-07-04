@@ -125,10 +125,17 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
     def _get_pids_by_name(self, name: str) -> tuple[int, list[int]]:
         pids = []
         my_pid = os.getpid()
-        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+        for proc in psutil.process_iter(["pid", "name", "cmdline", "status"]):
             try:
                 pid = proc.info["pid"]
                 if pid == my_pid:
+                    continue
+
+                # A zombie is already dead (exited, awaiting reap by its parent);
+                # it can't be "running" and can't be signaled. Counting it would
+                # permanently block every future StartDaq once one is left behind
+                # (e.g. by a monitor task that hasn't reaped it yet).
+                if proc.info["status"] == psutil.STATUS_ZOMBIE:
                     continue
 
                 p_name = proc.info["name"] or ""
