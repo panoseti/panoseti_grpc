@@ -38,6 +38,10 @@ services:
     command: ["run", "/etc/alloy/config.alloy"]
     environment:
       - HOSTNAME=headnode-runner
+      # This test stack runs alloy on the shared bridge network (unlike the
+      # production deploy, which uses network_mode: host and needs the real
+      # headnode IP), so the loki service name resolves directly.
+      - HEADNODE_IP=loki
     depends_on:
       loki:
         condition: service_started

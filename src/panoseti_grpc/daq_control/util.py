@@ -32,7 +32,7 @@ def is_hashpipe_running(pid: int, name: str = "hashpipe") -> bool:
 def hashpipe_thread_count(pid: int) -> int:
     """Number of live threads for *pid*, or 0 if the process is gone."""
     try:
-        return psutil.Process(pid).num_threads()
+        return int(psutil.Process(pid).num_threads())
     except (psutil.NoSuchProcess, psutil.AccessDenied):
         return 0
 
