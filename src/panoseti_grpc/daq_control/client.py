@@ -147,6 +147,8 @@ class AsyncDaqControlClient:
         status["disk_usage"] = dict(resp.disk_usage)
         status["run_dirs"] = list(resp.run_dirs)
         status["hashpipe_pid"] = int(resp.hashpipe_pid) if resp.hashpipe_pid > 0 else None
+        status["hashpipe_thread_count"] = int(resp.hashpipe_thread_count)
+        status["hashpipe_healthy"] = bool(resp.hashpipe_healthy)
         return bool(resp.success), status
 
     @grpc_call
@@ -364,6 +366,8 @@ class DaqControlClient:
         status["disk_usage"] = dict(resp.disk_usage)
         status["run_dirs"] = list(resp.run_dirs)
         status["hashpipe_pid"] = int(resp.hashpipe_pid) if resp.hashpipe_pid > 0 else None
+        status["hashpipe_thread_count"] = int(resp.hashpipe_thread_count)
+        status["hashpipe_healthy"] = bool(resp.hashpipe_healthy)
         return bool(resp.success), status
 
     @grpc_call

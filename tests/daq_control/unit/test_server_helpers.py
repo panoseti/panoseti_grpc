@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from panoseti_grpc.daq_control.server import DaqControlServicer, _monitor_hashpipe, _read_stream
+from panoseti_grpc.daq_control.util import EXPECTED_HASHPIPE_THREADS
+from panoseti_grpc.generated import daq_control_pb2
 
 
 @pytest.fixture
@@ -251,3 +253,59 @@ class TestMonitorHashpipe:
 
         assert stdout_calls == ["out"]
         assert stderr_calls == ["err"]
+
+
+# ---------------------------------------------------------------------------
+# StatusDaq -- hashpipe thread-count health reporting
+# ---------------------------------------------------------------------------
+
+
+class TestStatusDaqHashpipeHealth:
+    """StatusDaq must distinguish 'not running' (fine, no data is not a
+    failure) from 'running but stuck below its expected thread count'
+    (the exact failure mode a stale hashpipe semaphore causes: a live PID
+    that never spawned net_thread/compute_thread/output_thread)."""
+
+    def _request(self, data_dir: str) -> daq_control_pb2.DaqStatusRequest:
+        return daq_control_pb2.DaqStatusRequest(
+            data_dir=data_dir,
+            check_hashpipe_running=True,
+            check_disk_usage=False,
+            check_run_dirs=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_not_running_is_healthy(self, servicer: Any, tmp_path: Any) -> None:
+        with patch.object(servicer, "_get_pids_by_name", return_value=(0, [])):
+            resp = await servicer.StatusDaq(self._request(str(tmp_path)), MagicMock())
+        assert resp.hashpipe_running is False
+        assert resp.hashpipe_thread_count == 0
+        assert resp.hashpipe_healthy is True
+
+    @pytest.mark.asyncio
+    async def test_running_with_full_threads_is_healthy(self, servicer: Any, tmp_path: Any) -> None:
+        with (
+            patch.object(servicer, "_get_pids_by_name", return_value=(1, [4242])),
+            patch(
+                "panoseti_grpc.daq_control.server.hashpipe_thread_count",
+                return_value=EXPECTED_HASHPIPE_THREADS,
+            ),
+        ):
+            resp = await servicer.StatusDaq(self._request(str(tmp_path)), MagicMock())
+        assert resp.hashpipe_running is True
+        assert resp.hashpipe_pid == 4242
+        assert resp.hashpipe_thread_count == EXPECTED_HASHPIPE_THREADS
+        assert resp.hashpipe_healthy is True
+
+    @pytest.mark.asyncio
+    async def test_running_stuck_at_one_thread_is_unhealthy(self, servicer: Any, tmp_path: Any) -> None:
+        """Reproduces the stale-semaphore symptom: hashpipe alive with only
+        its main thread, never having spawned the pipeline workers."""
+        with (
+            patch.object(servicer, "_get_pids_by_name", return_value=(1, [4242])),
+            patch("panoseti_grpc.daq_control.server.hashpipe_thread_count", return_value=1),
+        ):
+            resp = await servicer.StatusDaq(self._request(str(tmp_path)), MagicMock())
+        assert resp.hashpipe_running is True
+        assert resp.hashpipe_thread_count == 1
+        assert resp.hashpipe_healthy is False

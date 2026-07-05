@@ -4,7 +4,7 @@
 FROM python:3.14-slim AS hashpipe-builder
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential git autoconf automake libtool g++ make \
+        build-essential git autoconf automake libtool g++ make curl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 RUN git clone --depth 1 https://github.com/david-macmahon/hashpipe.git hashpipe
@@ -20,8 +20,7 @@ WORKDIR /build
 RUN git clone --depth 1 --branch ${PANOSETI_DAQ_BRANCH} https://github.com/panoseti/panoseti_daq.git panoseti_daq
 WORKDIR /build/panoseti_daq
 # We download the required Makefile and databuf.h from the main panoseti repo
-RUN curl -o Makefile https://raw.githubusercontent.com/panoseti/panoseti/main/control/src/ci/fixtures/build/Makefile
-RUN curl -o databuf.h https://raw.githubusercontent.com/panoseti/panoseti/main/control/src/ci/fixtures/build/databuf.h
+COPY Makefile databuf.h ./
 RUN make
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -59,7 +58,7 @@ COPY --from=hashpipe-plugin-builder --chown=panoseti:panoseti /build/panoseti_da
 COPY --from=hashpipe-plugin-builder --chown=panoseti:panoseti /build/panoseti_daq/hashpipe.so /usr/local/lib/panoseti_hashpipe.so
 
 # Install panoseti-grpc from PyPI (no local source code needed!)
-RUN pip install --no-cache-dir panoseti-grpc
+RUN pip install --no-cache-dir panoseti-grpc click typer rich pydantic pydantic-settings
 
-ENTRYPOINT ["pseti-grpc", "server"]
+ENTRYPOINT ["/home/panoseti/.local/bin/pseti-grpc", "server"]
 CMD ["--profile", "daq_node"]

@@ -163,6 +163,41 @@ class TestManifestEntry:
         assert entry.mtime_ns == 1_700_000_000_000_000_000
 
 
+class TestStartDaqRequestExtensions:
+    def test_force_clean_semaphores_field_exists(self) -> None:
+        req = daq_control_pb2.StartDaqRequest()
+        assert hasattr(req, "force_clean_semaphores")
+
+    def test_force_clean_semaphores_defaults_false(self) -> None:
+        req = daq_control_pb2.StartDaqRequest()
+        assert req.force_clean_semaphores is False
+
+    def test_force_clean_semaphores_settable(self) -> None:
+        req = daq_control_pb2.StartDaqRequest(force_clean_semaphores=True)
+        assert req.force_clean_semaphores is True
+
+
+class TestDaqStatusResponseHashpipeHealth:
+    def test_thread_count_field_exists(self) -> None:
+        resp = daq_control_pb2.DaqStatusResponse()
+        assert hasattr(resp, "hashpipe_thread_count")
+
+    def test_thread_count_settable(self) -> None:
+        resp = daq_control_pb2.DaqStatusResponse(hashpipe_thread_count=4)
+        assert resp.hashpipe_thread_count == 4
+
+    def test_healthy_field_exists(self) -> None:
+        resp = daq_control_pb2.DaqStatusResponse()
+        assert hasattr(resp, "hashpipe_healthy")
+
+    def test_healthy_settable_false(self) -> None:
+        """The stuck-hashpipe symptom this feature exists to surface."""
+        resp = daq_control_pb2.DaqStatusResponse(
+            hashpipe_running=True, hashpipe_thread_count=1, hashpipe_healthy=False
+        )
+        assert resp.hashpipe_healthy is False
+
+
 class _FakeChannel:
     """Minimal fake channel for stub instantiation in unit tests."""
 

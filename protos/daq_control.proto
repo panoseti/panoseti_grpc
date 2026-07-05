@@ -37,6 +37,11 @@ message StartDaqRequest {
     string  obs = 7;
     /* each daq node may support more that one telescopes */
     repeated uint32  module_id = 8 [packed=true];
+    /* Opt-in: remove leaked hashpipe POSIX semaphores (from a prior process
+       that was killed rather than stopped cleanly) before launching, when
+       no hashpipe instance is currently running. Off by default -- this is
+       a manual recovery action, not something to run on every start. */
+    bool    force_clean_semaphores = 9;
 }
 
 message StartDaqResponse {
@@ -73,6 +78,15 @@ message DaqStatusResponse {
     repeated string run_dirs = 4;
     string  message = 5;
     int32   hashpipe_pid = 6;
+    /* Live thread count for hashpipe_pid (psutil), 0 if not running.
+       A healthy pipeline has 1 main + net/compute/output = 4 threads;
+       fewer than that while "running" means it is stuck mid-init or
+       a thread has died -- see hashpipe_healthy. */
+    int32   hashpipe_thread_count = 7;
+    /* False only when hashpipe_running is true AND thread_count is
+       below the expected pipeline thread count. Always true when
+       hashpipe is not running (no data is not itself a failure). */
+    bool    hashpipe_healthy = 8;
 }
 
 enum CleanupMode {

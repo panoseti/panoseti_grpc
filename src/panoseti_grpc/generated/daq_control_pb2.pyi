@@ -49,6 +49,7 @@ class StartDaqRequest(_message.Message):
     RUN_DIR_FIELD_NUMBER: _builtins.int
     OBS_FIELD_NUMBER: _builtins.int
     MODULE_ID_FIELD_NUMBER: _builtins.int
+    FORCE_CLEAN_SEMAPHORES_FIELD_NUMBER: _builtins.int
     data_dir: _builtins.str
     """daq_ip_addr is not necessary"""
     daq_ip_addr: _builtins.str
@@ -58,6 +59,12 @@ class StartDaqRequest(_message.Message):
     group_ph_frames: _builtins.bool
     run_dir: _builtins.str
     obs: _builtins.str
+    force_clean_semaphores: _builtins.bool
+    """Opt-in: remove leaked hashpipe POSIX semaphores (from a prior process
+    that was killed rather than stopped cleanly) before launching, when
+    no hashpipe instance is currently running. Off by default -- this is
+    a manual recovery action, not something to run on every start.
+    """
     @_builtins.property
     def module_id(self) -> _containers.RepeatedScalarFieldContainer[_builtins.int]:
         """each daq node may support more that one telescopes"""
@@ -73,10 +80,11 @@ class StartDaqRequest(_message.Message):
         run_dir: _builtins.str = ...,
         obs: _builtins.str = ...,
         module_id: _abc.Iterable[_builtins.int] | None = ...,
+        force_clean_semaphores: _builtins.bool = ...,
     ) -> None: ...
     _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["bindhost", b"bindhost", "daq_ip_addr", b"daq_ip_addr", "data_dir", b"data_dir", "group_ph_frames", b"group_ph_frames", "max_file_size_mb", b"max_file_size_mb", "module_id", b"module_id", "obs", b"obs", "run_dir", b"run_dir"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["bindhost", b"bindhost", "daq_ip_addr", b"daq_ip_addr", "data_dir", b"data_dir", "force_clean_semaphores", b"force_clean_semaphores", "group_ph_frames", b"group_ph_frames", "max_file_size_mb", b"max_file_size_mb", "module_id", b"module_id", "obs", b"obs", "run_dir", b"run_dir"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
@@ -190,11 +198,24 @@ class DaqStatusResponse(_message.Message):
     RUN_DIRS_FIELD_NUMBER: _builtins.int
     MESSAGE_FIELD_NUMBER: _builtins.int
     HASHPIPE_PID_FIELD_NUMBER: _builtins.int
+    HASHPIPE_THREAD_COUNT_FIELD_NUMBER: _builtins.int
+    HASHPIPE_HEALTHY_FIELD_NUMBER: _builtins.int
     success: _builtins.bool
     hashpipe_running: _builtins.bool
     """response to check_hashpipe_running"""
     message: _builtins.str
     hashpipe_pid: _builtins.int
+    hashpipe_thread_count: _builtins.int
+    """Live thread count for hashpipe_pid (psutil), 0 if not running.
+    A healthy pipeline has 1 main + net/compute/output = 4 threads;
+    fewer than that while "running" means it is stuck mid-init or
+    a thread has died -- see hashpipe_healthy.
+    """
+    hashpipe_healthy: _builtins.bool
+    """False only when hashpipe_running is true AND thread_count is
+    below the expected pipeline thread count. Always true when
+    hashpipe is not running (no data is not itself a failure).
+    """
     @_builtins.property
     def disk_usage(self) -> _struct_pb2.Struct:
         """response to check_disk_usage"""
@@ -212,10 +233,12 @@ class DaqStatusResponse(_message.Message):
         run_dirs: _abc.Iterable[_builtins.str] | None = ...,
         message: _builtins.str = ...,
         hashpipe_pid: _builtins.int = ...,
+        hashpipe_thread_count: _builtins.int = ...,
+        hashpipe_healthy: _builtins.bool = ...,
     ) -> None: ...
     _HasFieldArgType: _TypeAlias = _typing.Literal["disk_usage", b"disk_usage"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["disk_usage", b"disk_usage", "hashpipe_pid", b"hashpipe_pid", "hashpipe_running", b"hashpipe_running", "message", b"message", "run_dirs", b"run_dirs", "success", b"success"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["disk_usage", b"disk_usage", "hashpipe_healthy", b"hashpipe_healthy", "hashpipe_pid", b"hashpipe_pid", "hashpipe_running", b"hashpipe_running", "hashpipe_thread_count", b"hashpipe_thread_count", "message", b"message", "run_dirs", b"run_dirs", "success", b"success"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
     def WhichOneof(self, oneof_group: _Never) -> None: ...
 
