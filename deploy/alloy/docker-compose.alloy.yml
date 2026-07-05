@@ -1,10 +1,69 @@
+# Alloy's config is declared inline (not bind-mounted from ./config.alloy)
+# because `pseti admin deploy --mode docker` runs this via
+# `docker --context <node> compose -f this-file up -d --build` -- a bind
+# mount source is resolved against the *remote* Docker daemon's filesystem,
+# and DAQ nodes have no local checkout of this repo at this relative path.
+# Inline config content ships over the Docker API regardless of context.
+# Keep this in sync with config.alloy if you change one (same content is
+# also inlined in control/src/ci/docker-compose.hw-sw.yml for the HITL
+# test path -- three copies now; if this drifts again, consider generating
+# both compose files' configs blocks from config.alloy at deploy time
+# instead of hand-copying).
+configs:
+  alloy_config:
+    content: |
+      // Unified log aggregation for PANOSETI components.
+      // Reads per-host .jsonl files written by panoseti_grpc get_logger().
+      // Directory layout: /var/log/panoseti/{hostname}/{service}.jsonl
+
+      local.file_match "panoseti" {
+        path_targets = [{ "__path__" = "/var/log/panoseti/*/*.jsonl", "job" = "panoseti" }]
+      }
+
+      loki.source.file "panoseti" {
+        targets    = local.file_match.panoseti.targets
+        forward_to = [loki.process.panoseti.receiver]
+      }
+
+      loki.process "panoseti" {
+        stage.json {
+          expressions = {
+            message    = "message",
+            service    = "service",
+            level      = "level",
+            hostname   = "hostname",
+            git_commit = "git_commit",
+            run_id     = "run_id",
+          }
+        }
+        stage.labels {
+          values = {
+            service    = "service",
+            level      = "level",
+            hostname   = "hostname",
+            git_commit = "git_commit",
+          }
+        }
+        forward_to = [loki.write.headnode.receiver]
+      }
+
+      loki.write "headnode" {
+        // Alloy runs with network_mode: host, so the bridge-network DNS name
+        // "loki" does not resolve here (and Loki lives on the headnode, not
+        // this DAQ node). Point at the headnode's IP instead.
+        endpoint { url = string.format("http://%s:3100/loki/api/v1/push", sys.env("HEADNODE_IP")) }
+        external_labels = { cluster = "panoseti" }
+      }
+
 services:
   alloy:
     image: grafana/alloy:latest
     container_name: panoseti_alloy
     restart: unless-stopped
+    configs:
+      - source: alloy_config
+        target: /etc/alloy/config.alloy
     volumes:
-      - ./config.alloy:/etc/alloy/config.alloy:ro
       - /var/log/panoseti:/var/log/panoseti:ro
     command: ["run", "/etc/alloy/config.alloy"]
     environment:
