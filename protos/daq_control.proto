@@ -66,6 +66,12 @@ message DaqStatusRequest {
     bool    check_hashpipe_running = 2;
     bool    check_disk_usage = 3;
     bool    check_run_dirs = 4;
+    /* Read hashpipe's FITS-style status shared-memory buffer (the same
+       one net_thread/compute_thread/output_thread write NETDROPS,
+       TPKTLST, per-thread state, etc. into) and return it in
+       hashpipe_status_buffer. No-op (empty map returned) if hashpipe
+       isn't running or the buffer doesn't exist. */
+    bool    check_status_buffer = 5;
 }
 
 message DaqStatusResponse {
@@ -87,6 +93,11 @@ message DaqStatusResponse {
        below the expected pipeline thread count. Always true when
        hashpipe is not running (no data is not itself a failure). */
     bool    hashpipe_healthy = 8;
+    /* Raw key/value pairs from hashpipe's status shared-memory buffer,
+       response to check_status_buffer. Keys/values are whatever the
+       running plugin's threads wrote (e.g. NETSTAT, NETDROPS, NPACKETS,
+       TPKTLST, M1PKTLST.., COMSTAT, OUTSTAT) -- not a fixed schema. */
+    map<string, string> hashpipe_status_buffer = 9;
 }
 
 enum CleanupMode {

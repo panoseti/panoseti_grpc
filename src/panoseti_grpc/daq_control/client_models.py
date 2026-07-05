@@ -36,6 +36,7 @@ class StatusDaqParameters(BaseModel):
     check_hashpipe_running: bool = True
     check_disk_usage: bool = True
     check_run_dirs: bool = True
+    check_status_buffer: bool = False
 
 
 class CleanupMode(StrEnum):

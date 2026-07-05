@@ -139,6 +139,7 @@ class AsyncDaqControlClient:
         request.check_hashpipe_running = v_params.check_hashpipe_running
         request.check_disk_usage = v_params.check_disk_usage
         request.check_run_dirs = v_params.check_run_dirs
+        request.check_status_buffer = v_params.check_status_buffer
         resp: daq_control_pb2.DaqStatusResponse = await self.stub.StatusDaq(request, timeout=timeout)
         if not resp.success:
             raise ValueError(f"Server rejected data: {resp.message}")
@@ -149,6 +150,7 @@ class AsyncDaqControlClient:
         status["hashpipe_pid"] = int(resp.hashpipe_pid) if resp.hashpipe_pid > 0 else None
         status["hashpipe_thread_count"] = int(resp.hashpipe_thread_count)
         status["hashpipe_healthy"] = bool(resp.hashpipe_healthy)
+        status["hashpipe_status_buffer"] = dict(resp.hashpipe_status_buffer)
         return bool(resp.success), status
 
     @grpc_call
@@ -358,6 +360,7 @@ class DaqControlClient:
         request.check_hashpipe_running = v_params.check_hashpipe_running
         request.check_disk_usage = v_params.check_disk_usage
         request.check_run_dirs = v_params.check_run_dirs
+        request.check_status_buffer = v_params.check_status_buffer
         resp: daq_control_pb2.DaqStatusResponse = self.stub.StatusDaq(request, timeout=timeout)
         if not resp.success:
             raise ValueError(f"Server rejected data: {resp.message}")
@@ -368,6 +371,7 @@ class DaqControlClient:
         status["hashpipe_pid"] = int(resp.hashpipe_pid) if resp.hashpipe_pid > 0 else None
         status["hashpipe_thread_count"] = int(resp.hashpipe_thread_count)
         status["hashpipe_healthy"] = bool(resp.hashpipe_healthy)
+        status["hashpipe_status_buffer"] = dict(resp.hashpipe_status_buffer)
         return bool(resp.success), status
 
     @grpc_call

@@ -8,9 +8,11 @@ import psutil
 
 from panoseti_grpc.daq_control.util import (
     EXPECTED_HASHPIPE_THREADS,
+    _parse_status_buffer,
     cleanup_stale_hashpipe_semaphores,
     hashpipe_thread_count,
     is_hashpipe_running,
+    read_hashpipe_status_buffer,
 )
 
 
@@ -124,3 +126,49 @@ class TestCleanupStaleHashpipeSemaphores:
             "panoseti_grpc.daq_control.util.glob.glob", lambda pattern: [str(missing)]
         )
         assert cleanup_stale_hashpipe_semaphores(instance_id=0) == []
+
+
+def _make_card(text: str) -> bytes:
+    return text.ljust(80)[:80].encode("ascii")
+
+
+class TestParseStatusBuffer:
+    def test_parses_int_and_string_values(self) -> None:
+        buf = (
+            _make_card("NETDROPS=          12345")
+            + _make_card("BINDHOST= 'eth0    '")
+            + _make_card("END")
+        )
+        result = _parse_status_buffer(buf)
+        assert result["NETDROPS"] == "12345"
+        assert result["BINDHOST"] == "eth0"
+
+    def test_stops_at_end_card(self) -> None:
+        buf = _make_card("A       = 1") + _make_card("END") + _make_card("B       = 2")
+        result = _parse_status_buffer(buf)
+        assert result == {"A": "1"}
+        assert "B" not in result
+
+    def test_ignores_cards_without_equals(self) -> None:
+        buf = _make_card("COMMENT this has no equals sign") + _make_card("END")
+        assert _parse_status_buffer(buf) == {}
+
+    def test_strips_inline_comment(self) -> None:
+        buf = _make_card("NPACKETS=      42 / total packets received") + _make_card("END")
+        assert _parse_status_buffer(buf)["NPACKETS"] == "42"
+
+    def test_empty_buffer_returns_empty_dict(self) -> None:
+        assert _parse_status_buffer(b"") == {}
+
+
+class TestReadHashpipeStatusBuffer:
+    def test_returns_empty_dict_when_shmget_fails(self) -> None:
+        with patch("panoseti_grpc.daq_control.util._libc") as mock_libc:
+            mock_libc.ftok.return_value = 12345
+            mock_libc.shmget.return_value = -1
+            assert read_hashpipe_status_buffer(instance_id=0) == {}
+
+    def test_returns_empty_dict_on_ftok_failure(self) -> None:
+        with patch("panoseti_grpc.daq_control.util._libc") as mock_libc:
+            mock_libc.ftok.return_value = -1
+            assert read_hashpipe_status_buffer(instance_id=0) == {}

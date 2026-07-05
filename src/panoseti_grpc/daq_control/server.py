@@ -51,6 +51,7 @@ from .util import (
     cleanup_stale_hashpipe_semaphores,
     hashpipe_thread_count,
     is_hashpipe_running,
+    read_hashpipe_status_buffer,
 )
 
 PROCESS = "hashpipe"
@@ -629,6 +630,13 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         if vreq.check_run_dirs:
             self.logger.debug("Checking run dirs")
             run_dirs = self._check_run_dirs(datadir)
+
+        # check hashpipe's status shared-memory buffer
+        status_buffer: dict[str, str] = {}
+        if vreq.check_status_buffer:
+            self.logger.debug("Reading hashpipe status buffer...")
+            status_buffer = await asyncio.to_thread(read_hashpipe_status_buffer)
+
         # return
         return daq_control_pb2.DaqStatusResponse(
             success=True,
@@ -638,6 +646,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
             hashpipe_pid=hashpipe_pid,
             hashpipe_thread_count=thread_count,
             hashpipe_healthy=hashpipe_healthy,
+            hashpipe_status_buffer=status_buffer,
         )
 
     @grpc_error_handler
