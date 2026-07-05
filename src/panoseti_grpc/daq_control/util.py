@@ -32,7 +32,7 @@ def _hashpipe_status_key(instance_id: int) -> int:
     """Reproduce hashpipe_status_key() from hashpipe_ipckey.c."""
     keyfile = os.environ.get("HASHPIPE_KEYFILE") or os.environ.get("HOME") or "/tmp"
     proj_id = (instance_id & 0x3F) | _STATUS_PROJ_ID_MASK
-    key = _libc.ftok(keyfile.encode(), proj_id)
+    key = int(_libc.ftok(keyfile.encode(), proj_id))
     if key == -1:
         errno = ctypes.get_errno()
         raise OSError(errno, f"ftok({keyfile!r}, {proj_id}) failed: {os.strerror(errno)}")
