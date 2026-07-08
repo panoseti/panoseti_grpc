@@ -17,7 +17,53 @@ import argparse
 import asyncio
 import contextlib
 import logging
+import os
 from pathlib import Path
+from typing import Protocol
+
+
+class _PortArgs(Protocol):
+    """The subset of parsed CLI args resolve_bind_port needs.
+
+    A Protocol (rather than the full ``argparse.Namespace``, whose
+    attributes are all typed ``Any``) keeps ``resolve_bind_port`` honestly
+    typed and lets tests pass any object with these two attributes
+    (a real ``Namespace`` included) without a cast.
+    """
+
+    port: int | None
+    port_env: str | None
+
+
+def resolve_bind_port(args: _PortArgs, cfg_port: int) -> int:
+    """Resolve the port the unified server should actually bind.
+
+    There must be exactly one seam where server-bind-port precedence is
+    decided, so it can never desync from the client-side resolver
+    (``control.utils.util.resolve_grpc_port``) that picks the *same* env
+    vars in the *same* order. Precedence, highest first:
+
+    1. ``--port`` — explicit CLI override.
+    2. ``os.getenv(args.port_env)`` — the role-scoped var the deployment
+       (compose ``command:``, systemd unit, or operator) names via
+       ``--port-env`` (e.g. ``HEADNODE_GRPC_PORT`` or ``DAQNODE_GRPC_PORT``).
+       This can win over an *explicit* TOML port, deliberately: a
+       deploy-time env var is a more specific, more recent signal than a
+       config file that ships with the package/checkout.
+    3. ``cfg_port`` — whatever ``PanosetiServerConfig`` already resolved
+       (an explicit TOML value, or its own ``GRPC_PORT``-env
+       ``default_factory`` fallback, or the built-in 50051 default).
+
+    Kept as a small pure function (no I/O beyond ``os.getenv``) so it's
+    unit-testable without starting a real server.
+    """
+    if args.port is not None:
+        return args.port
+    if args.port_env:
+        env_val = os.getenv(args.port_env)
+        if env_val is not None:
+            return int(env_val)
+    return cfg_port
 
 
 def main() -> None:
@@ -34,13 +80,15 @@ def main() -> None:
     )
     parser.add_argument(
         "--profile",
-        choices=["default", "daq_node", "headnode"],
+        choices=["default", "daq_node", "headnode", "gateway"],
         default="default",
         help=(
             "Bundled deployment profile: "
             "'default' (all services), "
             "'daq_node' (daq_data + daq_control), "
-            "'headnode' (telemetry only). "
+            "'headnode' (telemetry + daq_data gateway), "
+            "'gateway' (telemetry + daq_data gateway; same shape as 'headnode', "
+            "kept separate for sites that want telemetry-only vs. gateway split later). "
             "Ignored when --config is provided."
         ),
     )
@@ -52,6 +100,32 @@ def main() -> None:
         help=(
             "Comma-separated list of services to enable, overriding the config toggle. "
             "Example: --services telemetry,daq_data"
+        ),
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        metavar="PORT",
+        help=(
+            "Explicit bind port, highest precedence. Prefer --port-env "
+            "(or the HEADNODE_GRPC_PORT/DAQNODE_GRPC_PORT env vars) for "
+            "deployments so the same .env drives both server and clients."
+        ),
+    )
+    parser.add_argument(
+        "--port-env",
+        type=str,
+        default=None,
+        metavar="VAR",
+        help=(
+            "Name of the environment variable that overrides the bind port "
+            "(e.g. HEADNODE_GRPC_PORT for a headnode/gateway profile, "
+            "DAQNODE_GRPC_PORT for a daq_node profile). This is how one "
+            "shared PanosetiServerConfig serves two different roles without "
+            "profile-sniffing -- the deployment (compose command:, systemd "
+            "unit, or operator) names the applicable var explicitly. See "
+            "resolve_bind_port() for full precedence."
         ),
     )
     parser.add_argument(
@@ -84,10 +158,23 @@ def main() -> None:
             if hasattr(cfg.services, name):
                 setattr(cfg.services, name, name in enabled)
 
+    # Bind-port resolution: the one seam where an env var (or --port) can
+    # reconfigure the server without editing TOML. Must run after config
+    # load (need cfg.port as the lowest-priority fallback) and before
+    # PanosetiServer.run (which binds cfg.port verbatim).
+    cfg.port = resolve_bind_port(args, cfg.port)
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S",
+    )
+    logging.getLogger("panoseti_grpc.unified_main").info(
+        "Binding port %d (--port=%s --port-env=%s -> %s)",
+        cfg.port,
+        args.port,
+        args.port_env,
+        os.getenv(args.port_env) if args.port_env else None,
     )
 
     with contextlib.suppress(KeyboardInterrupt):
