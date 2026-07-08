@@ -14,7 +14,7 @@ from rich.tree import Tree
 
 def walk_commands(node: click.Group | click.Command, tree: Tree) -> None:
     """Recursively walk click commands and add them to the rich tree."""
-    if isinstance(node, click.Group):
+    if hasattr(node, "list_commands"):
         ctx = click.Context(node)
         for cmd_name in node.list_commands(ctx):
             # get_command handles lazy-loading logic automatically
