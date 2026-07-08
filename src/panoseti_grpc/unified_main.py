@@ -19,23 +19,9 @@ import contextlib
 import logging
 import os
 from pathlib import Path
-from typing import Protocol
 
 
-class _PortArgs(Protocol):
-    """The subset of parsed CLI args resolve_bind_port needs.
-
-    A Protocol (rather than the full ``argparse.Namespace``, whose
-    attributes are all typed ``Any``) keeps ``resolve_bind_port`` honestly
-    typed and lets tests pass any object with these two attributes
-    (a real ``Namespace`` included) without a cast.
-    """
-
-    port: int | None
-    port_env: str | None
-
-
-def resolve_bind_port(args: _PortArgs, cfg_port: int) -> int:
+def resolve_bind_port(port: int | None, port_env: str | None, cfg_port: int) -> int:
     """Resolve the port the unified server should actually bind.
 
     There must be exactly one seam where server-bind-port precedence is
@@ -43,8 +29,8 @@ def resolve_bind_port(args: _PortArgs, cfg_port: int) -> int:
     (``control.utils.util.resolve_grpc_port``) that picks the *same* env
     vars in the *same* order. Precedence, highest first:
 
-    1. ``--port`` — explicit CLI override.
-    2. ``os.getenv(args.port_env)`` — the role-scoped var the deployment
+    1. ``port`` — explicit CLI override (``--port``).
+    2. ``os.getenv(port_env)`` — the role-scoped var the deployment
        (compose ``command:``, systemd unit, or operator) names via
        ``--port-env`` (e.g. ``HEADNODE_GRPC_PORT`` or ``DAQNODE_GRPC_PORT``).
        This can win over an *explicit* TOML port, deliberately: a
@@ -54,13 +40,20 @@ def resolve_bind_port(args: _PortArgs, cfg_port: int) -> int:
        (an explicit TOML value, or its own ``GRPC_PORT``-env
        ``default_factory`` fallback, or the built-in 50051 default).
 
-    Kept as a small pure function (no I/O beyond ``os.getenv``) so it's
-    unit-testable without starting a real server.
+    Plain parameters (not an argparse.Namespace/Typer context) so this one
+    function can be shared verbatim by *both* CLI entry points that start
+    the unified server -- ``unified_main.main()`` (argparse, reached via
+    ``python -m panoseti_grpc``) and ``_cli/server.py`` (Typer, reached via
+    the actual ``pseti-grpc server`` console script). These independently
+    duplicate the config-load/service-toggle/run sequence; having drifted
+    once already (the Typer one never gained --port/--port-env when this
+    function was first added here), duplicating the resolution logic itself
+    inline in each would only invite the same drift again.
     """
-    if args.port is not None:
-        return args.port
-    if args.port_env:
-        env_val = os.getenv(args.port_env)
+    if port is not None:
+        return port
+    if port_env:
+        env_val = os.getenv(port_env)
         if env_val is not None:
             return int(env_val)
     return cfg_port
@@ -162,7 +155,7 @@ def main() -> None:
     # reconfigure the server without editing TOML. Must run after config
     # load (need cfg.port as the lowest-priority fallback) and before
     # PanosetiServer.run (which binds cfg.port verbatim).
-    cfg.port = resolve_bind_port(args, cfg.port)
+    cfg.port = resolve_bind_port(args.port, args.port_env, cfg.port)
 
     logging.basicConfig(
         level=logging.INFO,

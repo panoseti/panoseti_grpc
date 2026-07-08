@@ -299,34 +299,39 @@ def test_telemetry_config_invalid_log_level() -> None:
 # source of truth for gRPC ports (control.utils.util.resolve_grpc_port is
 # the client-side half; they must agree on precedence or server and client
 # desync exactly like the headnode profile's old hardcoded 50052 did).
+#
+# Plain (port, port_env, cfg_port) params, not an argparse.Namespace/Typer
+# context object -- this function is shared verbatim by BOTH CLI entry
+# points that start the unified server: unified_main.main() (argparse,
+# `python -m panoseti_grpc`) and _cli/server.py (Typer, the actual
+# `pseti-grpc server` console script). They independently duplicate the
+# config-load/service-toggle/run sequence and had already drifted once
+# (_cli/server.py never gained --port/--port-env at all until this was
+# noticed live against real hardware -- pseti-grpc server IS _cli/server.py,
+# not unified_main.py, so a fix only applied there is dead code from the
+# real CLI's perspective).
 # ---------------------------------------------------------------------------
-
-
-def _args(port: int | None = None, port_env: str | None = None) -> Any:
-    import argparse
-
-    return argparse.Namespace(port=port, port_env=port_env)
 
 
 def test_resolve_bind_port_no_override_falls_back_to_cfg_port(monkeypatch: Any) -> None:
     from panoseti_grpc.unified_main import resolve_bind_port
 
     monkeypatch.delenv("DAQNODE_GRPC_PORT", raising=False)
-    assert resolve_bind_port(_args(port_env="DAQNODE_GRPC_PORT"), cfg_port=12345) == 12345
+    assert resolve_bind_port(port=None, port_env="DAQNODE_GRPC_PORT", cfg_port=12345) == 12345
 
 
 def test_resolve_bind_port_env_var_wins_over_cfg_port(monkeypatch: Any) -> None:
     from panoseti_grpc.unified_main import resolve_bind_port
 
     monkeypatch.setenv("DAQNODE_GRPC_PORT", "50055")
-    assert resolve_bind_port(_args(port_env="DAQNODE_GRPC_PORT"), cfg_port=12345) == 50055
+    assert resolve_bind_port(port=None, port_env="DAQNODE_GRPC_PORT", cfg_port=12345) == 50055
 
 
 def test_resolve_bind_port_explicit_flag_wins_over_env_var(monkeypatch: Any) -> None:
     from panoseti_grpc.unified_main import resolve_bind_port
 
     monkeypatch.setenv("DAQNODE_GRPC_PORT", "50055")
-    assert resolve_bind_port(_args(port=60000, port_env="DAQNODE_GRPC_PORT"), cfg_port=12345) == 60000
+    assert resolve_bind_port(port=60000, port_env="DAQNODE_GRPC_PORT", cfg_port=12345) == 60000
 
 
 def test_resolve_bind_port_no_port_env_ignores_env(monkeypatch: Any) -> None:
@@ -334,7 +339,7 @@ def test_resolve_bind_port_no_port_env_ignores_env(monkeypatch: Any) -> None:
     from panoseti_grpc.unified_main import resolve_bind_port
 
     monkeypatch.setenv("DAQNODE_GRPC_PORT", "50055")
-    assert resolve_bind_port(_args(port_env=None), cfg_port=12345) == 12345
+    assert resolve_bind_port(port=None, port_env=None, cfg_port=12345) == 12345
 
 
 def test_resolve_bind_port_distinguishes_head_and_daq_roles(monkeypatch: Any) -> None:
@@ -343,11 +348,31 @@ def test_resolve_bind_port_distinguishes_head_and_daq_roles(monkeypatch: Any) ->
 
     monkeypatch.setenv("HEADNODE_GRPC_PORT", "50051")
     monkeypatch.setenv("DAQNODE_GRPC_PORT", "50052")
-    head_port = resolve_bind_port(_args(port_env="HEADNODE_GRPC_PORT"), cfg_port=50051)
-    daq_port = resolve_bind_port(_args(port_env="DAQNODE_GRPC_PORT"), cfg_port=50051)
+    head_port = resolve_bind_port(port=None, port_env="HEADNODE_GRPC_PORT", cfg_port=50051)
+    daq_port = resolve_bind_port(port=None, port_env="DAQNODE_GRPC_PORT", cfg_port=50051)
     assert head_port == 50051
     assert daq_port == 50052
     assert head_port != daq_port
+
+
+def test_cli_server_app_exposes_port_env_option() -> None:
+    """Regression guard: `pseti-grpc server` is _cli/server.py's Typer app,
+    NOT unified_main.py's argparse parser (that's only reached via
+    `python -m panoseti_grpc`). A --port-env fix applied solely to
+    unified_main.py is invisible to the real console script and every
+    docker-compose `command:` / systemd unit that passes it -- confirmed
+    live against real hardware (container crash-looped with "No such
+    option: --port-env"). This test fails loudly if the two entry points
+    drift apart on their CLI surface again.
+    """
+    from typer.testing import CliRunner
+
+    from panoseti_grpc._cli.server import app
+
+    result = CliRunner().invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "--port-env" in result.output
+    assert "--port " in result.output or "--port\n" in result.output or "--port]" in result.output
 
 
 # ---------------------------------------------------------------------------
