@@ -114,15 +114,16 @@ class DaqConfig(BaseStrictModel):
 
     @model_validator(mode="after")
     def check_head_node_data_dir_match(self) -> DaqConfig:
-        # If the head node and the DAQ node are the same machine, data_dir must match.
+        # If the head node and the DAQ node are the same machine, data_dir must NOT match.
         if self.head_node_ip_addr is None or self.head_node_data_dir is None:
             return self
         head_ip = str(self.head_node_ip_addr)
         for node in self.daq_nodes:
-            if str(node.ip_addr) == head_ip and node.data_dir != self.head_node_data_dir:
+            if str(node.ip_addr) == head_ip and node.data_dir == self.head_node_data_dir:
                 raise ValueError(
                     f"DAQ Node IP ({node.ip_addr}) matches head node, but "
-                    f"data_dir ({node.data_dir}) differs from head_node_data_dir ({self.head_node_data_dir})."
+                    f"data_dir ({node.data_dir}) is identical to head_node_data_dir. "
+                    "They MUST be different directories to prevent the transfer cleanup step from deleting the data!"
                 )
         return self
 
