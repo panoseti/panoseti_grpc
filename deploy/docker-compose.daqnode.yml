@@ -27,7 +27,7 @@ services:
       - /var/log/panoseti:/var/log/panoseti
     environment:
       HEADNODE_IP: "${HEADNODE_IP:-192.168.88.103}"
-      GRPC_PORT: "50051"
+      GRPC_PORT: "${DAQNODE_GRPC_PORT:-50051}"
       HEADNODE_GRPC_PORT: "50051"
       PSETI_LOGS: "/var/log/panoseti"
       DAQ_DATA_DIR: "${DAQ_DATA_DIR:-/mnt/panoseti-test}"

@@ -28,9 +28,6 @@ RUN make
 # ═══════════════════════════════════════════════════════════════════════════
 FROM python:3.14-slim AS daqnode
 
-ARG LOCAL_UID=1000
-ARG LOCAL_GID=1000
-
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1
 
@@ -42,6 +39,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=hashpipe-builder /usr/local/bin/hashpipe /usr/local/bin/hashpipe
 COPY --from=hashpipe-builder /usr/local/lib/libhashpipe* /usr/local/lib/
 RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/usr-local-lib.conf && ldconfig
+
+ARG LOCAL_UID=1000
+ARG LOCAL_GID=1000
 
 # Create panoseti user
 RUN groupadd -o -g ${LOCAL_GID} panoseti \
