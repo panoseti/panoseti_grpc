@@ -37,11 +37,47 @@ def test_load_daq_node_profile() -> None:
 
 
 def test_load_headnode_profile() -> None:
-    """Headnode profile enables only telemetry."""
+    """Headnode profile enables telemetry + daq_data (gateway role), not daq_control.
+
+    daq_data must be *wired* as gateway role (role="gateway" + a
+    [daq_data.gateway] section), not just toggled on -- without that it
+    silently defaults to role="edge", which expects local Hashpipe UDS
+    sockets that don't exist on a head node.
+    """
     cfg = PanosetiServerConfig.load_profile("headnode")
     assert cfg.services.telemetry
-    assert not cfg.services.daq_data
+    assert cfg.services.daq_data
     assert not cfg.services.daq_control
+    assert cfg.daq_data.role == "gateway"
+
+
+def test_load_gateway_profile_same_shape_as_headnode() -> None:
+    """'gateway' and 'headnode' profiles enable the same services/role."""
+    headnode = PanosetiServerConfig.load_profile("headnode")
+    gateway = PanosetiServerConfig.load_profile("gateway")
+    assert headnode.services == gateway.services
+    assert headnode.daq_data.role == gateway.daq_data.role == "gateway"
+
+
+def test_no_profile_hardcodes_a_port(monkeypatch: Any) -> None:
+    """No bundled profile TOML sets an explicit [server].port.
+
+    An explicit TOML port silently wins over every env var (see
+    unified_main.resolve_bind_port's docstring) and is exactly how the
+    headnode profile desynced from HEADNODE_GRPC_PORT-driven clients in the
+    past (it shipped with `port = 50052` hardcoded). Every profile must
+    resolve its port from GRPC_PORT (or the default), never a TOML literal,
+    so `--port-env` in unified_main.py is the only thing that can move it.
+    """
+    monkeypatch.delenv("GRPC_PORT", raising=False)
+    for profile in ("default", "daq_node", "headnode", "gateway"):
+        cfg = PanosetiServerConfig.load_profile(profile)
+        assert cfg.port == 50051, f"profile {profile!r} did not fall back to the 50051 default"
+
+    monkeypatch.setenv("GRPC_PORT", "50099")
+    for profile in ("default", "daq_node", "headnode", "gateway"):
+        cfg = PanosetiServerConfig.load_profile(profile)
+        assert cfg.port == 50099, f"profile {profile!r} ignored GRPC_PORT -- an explicit TOML port line leaked back in"
 
 
 def test_load_profile_alias_default() -> None:
@@ -256,3 +292,108 @@ def test_telemetry_config_invalid_log_level() -> None:
     """TelemetryServerConfig rejects an invalid log_level string."""
     with pytest.raises(ValidationError, match="log_level"):
         TelemetryServerConfig(log_level="TRACE")
+
+
+# ---------------------------------------------------------------------------
+# unified_main.resolve_bind_port — the server-side half of the single
+# source of truth for gRPC ports (control.utils.util.resolve_grpc_port is
+# the client-side half; they must agree on precedence or server and client
+# desync exactly like the headnode profile's old hardcoded 50052 did).
+#
+# Plain (port, port_env, cfg_port) params, not an argparse.Namespace/Typer
+# context object -- this function is shared verbatim by BOTH CLI entry
+# points that start the unified server: unified_main.main() (argparse,
+# `python -m panoseti_grpc`) and _cli/server.py (Typer, the actual
+# `pseti-grpc server` console script). They independently duplicate the
+# config-load/service-toggle/run sequence and had already drifted once
+# (_cli/server.py never gained --port/--port-env at all until this was
+# noticed live against real hardware -- pseti-grpc server IS _cli/server.py,
+# not unified_main.py, so a fix only applied there is dead code from the
+# real CLI's perspective).
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_bind_port_no_override_falls_back_to_cfg_port(monkeypatch: Any) -> None:
+    from panoseti_grpc.unified_main import resolve_bind_port
+
+    monkeypatch.delenv("DAQNODE_GRPC_PORT", raising=False)
+    assert resolve_bind_port(port=None, port_env="DAQNODE_GRPC_PORT", cfg_port=12345) == 12345
+
+
+def test_resolve_bind_port_env_var_wins_over_cfg_port(monkeypatch: Any) -> None:
+    from panoseti_grpc.unified_main import resolve_bind_port
+
+    monkeypatch.setenv("DAQNODE_GRPC_PORT", "50055")
+    assert resolve_bind_port(port=None, port_env="DAQNODE_GRPC_PORT", cfg_port=12345) == 50055
+
+
+def test_resolve_bind_port_explicit_flag_wins_over_env_var(monkeypatch: Any) -> None:
+    from panoseti_grpc.unified_main import resolve_bind_port
+
+    monkeypatch.setenv("DAQNODE_GRPC_PORT", "50055")
+    assert resolve_bind_port(port=60000, port_env="DAQNODE_GRPC_PORT", cfg_port=12345) == 60000
+
+
+def test_resolve_bind_port_no_port_env_ignores_env(monkeypatch: Any) -> None:
+    """Without --port-env, an env var of the same name has no effect (must be named explicitly)."""
+    from panoseti_grpc.unified_main import resolve_bind_port
+
+    monkeypatch.setenv("DAQNODE_GRPC_PORT", "50055")
+    assert resolve_bind_port(port=None, port_env=None, cfg_port=12345) == 12345
+
+
+def test_resolve_bind_port_distinguishes_head_and_daq_roles(monkeypatch: Any) -> None:
+    """The whole reason for --port-env: two roles, two vars, no collision on a co-located node."""
+    from panoseti_grpc.unified_main import resolve_bind_port
+
+    monkeypatch.setenv("HEADNODE_GRPC_PORT", "50051")
+    monkeypatch.setenv("DAQNODE_GRPC_PORT", "50052")
+    head_port = resolve_bind_port(port=None, port_env="HEADNODE_GRPC_PORT", cfg_port=50051)
+    daq_port = resolve_bind_port(port=None, port_env="DAQNODE_GRPC_PORT", cfg_port=50051)
+    assert head_port == 50051
+    assert daq_port == 50052
+    assert head_port != daq_port
+
+
+def test_cli_server_app_exposes_port_env_option() -> None:
+    """Regression guard: `pseti-grpc server` is _cli/server.py's Typer app,
+    NOT unified_main.py's argparse parser (that's only reached via
+    `python -m panoseti_grpc`). A --port-env fix applied solely to
+    unified_main.py is invisible to the real console script and every
+    docker-compose `command:` / systemd unit that passes it -- confirmed
+    live against real hardware (container crash-looped with "No such
+    option: --port-env"). This test fails loudly if the two entry points
+    drift apart on their CLI surface again.
+    """
+    from typer.testing import CliRunner
+
+    from panoseti_grpc._cli.server import app
+
+    result = CliRunner().invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "--port-env" in result.output
+    assert "--port " in result.output or "--port\n" in result.output or "--port]" in result.output
+
+
+# ---------------------------------------------------------------------------
+# DaqDataGatewayConfig.edge_port — must track DAQNODE_GRPC_PORT so a
+# fleet-wide port change doesn't require also editing the gateway's TOML.
+# ---------------------------------------------------------------------------
+
+
+def test_gateway_edge_port_defaults_from_daqnode_grpc_port_env(monkeypatch: Any) -> None:
+    from panoseti_grpc.daq_data.config import DaqDataGatewayConfig
+
+    monkeypatch.delenv("DAQNODE_GRPC_PORT", raising=False)
+    assert DaqDataGatewayConfig().edge_port == 50051
+
+    monkeypatch.setenv("DAQNODE_GRPC_PORT", "50077")
+    assert DaqDataGatewayConfig().edge_port == 50077
+
+
+def test_gateway_edge_port_explicit_value_still_overrides(monkeypatch: Any) -> None:
+    """An explicit edge_port (e.g. from a per-site TOML) still wins -- only the *default* is env-driven."""
+    from panoseti_grpc.daq_data.config import DaqDataGatewayConfig
+
+    monkeypatch.setenv("DAQNODE_GRPC_PORT", "50077")
+    assert DaqDataGatewayConfig(edge_port=51234).edge_port == 51234

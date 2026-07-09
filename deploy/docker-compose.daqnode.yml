@@ -27,10 +27,22 @@ services:
       - /var/log/panoseti:/var/log/panoseti
     environment:
       HEADNODE_IP: "${HEADNODE_IP:-192.168.88.103}"
+      # GRPC_PORT is a legacy fallback read by PanosetiServerConfig itself;
+      # DAQNODE_GRPC_PORT is the canonical var, named explicitly via
+      # `--port-env` below so it wins even over an explicit TOML port.
       GRPC_PORT: "${DAQNODE_GRPC_PORT:-50051}"
-      HEADNODE_GRPC_PORT: "50051"
+      # Was hardcoded to "50051" -- that silently ignored a non-default
+      # HEADNODE_GRPC_PORT (e.g. the co-located single-machine setup, where
+      # HEADNODE_GRPC_PORT and DAQNODE_GRPC_PORT must differ), breaking this
+      # node's telemetry-log-shipping client and any daq_data gateway link
+      # back to the head. Must stay env-driven like every other port here.
+      HEADNODE_GRPC_PORT: "${HEADNODE_GRPC_PORT:-50051}"
       PSETI_LOGS: "/var/log/panoseti"
       DAQ_DATA_DIR: "${DAQ_DATA_DIR:-/mnt/panoseti-test}"
       LOCAL_UID: "${LOCAL_UID:-1000}"
       LOCAL_GID: "${LOCAL_GID:-1000}"
+    # Overrides Dockerfile.daqnode's CMD (["--profile","daq_node"]) to also
+    # name which env var reconfigures the bind port -- see
+    # unified_main.py's resolve_bind_port().
+    command: ["--profile", "daq_node", "--port-env", "DAQNODE_GRPC_PORT"]
     restart: always

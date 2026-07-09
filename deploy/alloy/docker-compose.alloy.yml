@@ -58,7 +58,11 @@ configs:
 services:
   alloy:
     image: grafana/alloy:latest
-    container_name: panoseti_alloy
+    # No fixed container_name: a hardcoded name collides if this compose
+    # file is ever brought up under two different `-p <project>` scopes on
+    # the same Docker host (the exact co-located head+daq node case this
+    # deploy is meant to support). Compose derives a project-scoped name
+    # (e.g. "<project>-alloy-1") automatically when this is left unset.
     restart: unless-stopped
     configs:
       - source: alloy_config
