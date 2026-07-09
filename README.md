@@ -85,14 +85,18 @@ All three active services (`daq_data`, `daq_control`, `telemetry`) can run on a 
 # See the options
 pseti-grpc -h
 
-# DAQ node: daq_data + daq_control only
-pseti-grpc server --profile daq_node
+# DAQ node: daq_data (edge role) + daq_control
+# --port-env names DAQNODE_GRPC_PORT as the var that reconfigures the bind
+# port -- see unified_main.resolve_bind_port(). Every docker-compose file
+# and systemd unit in this repo already passes this; do it explicitly for
+# any other launcher.
+pseti-grpc server --profile daq_node --port-env DAQNODE_GRPC_PORT
 
-# Head node: telemetry only
-pseti-grpc server --profile headnode
+# Head node: telemetry + daq_data (gateway role, fans in every edge node)
+pseti-grpc server --profile headnode --port-env HEADNODE_GRPC_PORT
 
 # Custom config file
-pseti-grpc server --config /etc/panoseti/server.toml
+pseti-grpc server --config /etc/panoseti/server.toml --port-env HEADNODE_GRPC_PORT
 
 # List all registered services
 pseti-grpc server --list-services
@@ -106,8 +110,11 @@ pseti-grpc daqnode --log-dir /var/log/panoseti
 | Profile | Services | Machine |
 |---------|----------|---------|
 | `default` | telemetry + daq_data + daq_control | Single-machine dev / test |
-| `daq_node` | daq_data + daq_control | Each DAQ compute node |
-| `headnode` | telemetry | Observatory head node |
+| `daq_node` | daq_data (edge) + daq_control | Each DAQ compute node |
+| `headnode` | telemetry + daq_data (gateway) | Observatory head node |
+| `gateway` | telemetry + daq_data (gateway) | Same shape as `headnode`; kept separate for sites that want a telemetry-only vs. gateway split later |
+
+None of these profiles hardcode `[server].port` — it resolves at startup from (highest priority first) `--port`, the env var named by `--port-env`, the legacy `GRPC_PORT` env var, then the built-in 50051 default (`unified_main.resolve_bind_port()`). An explicit `port =` line in a custom `--config` TOML always wins over every env var, so don't add one if you want the deployment's `.env` to control it — this is exactly how a hardcoded `port = 50052` in an earlier version of the `headnode` profile silently desynced from every client still assuming 50051.
 
 On DAQ nodes (`telemetry = false`), services configured with `grpc_logging = true` automatically forward logs to the head node's telemetry endpoint via the `HEADNODE_IP` / `HEADNODE_GRPC_PORT` environment variables.
 

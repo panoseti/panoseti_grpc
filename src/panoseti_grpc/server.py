@@ -37,6 +37,7 @@ from __future__ import annotations
 import asyncio
 import importlib.resources as _importlib_resources
 import logging
+import os
 import signal
 import tomllib
 from collections.abc import Callable, Coroutine
@@ -140,7 +141,7 @@ class PanosetiServerConfig(BaseModel):
     nested Pydantic models here.  Unrecognised keys are ignored.
     """
 
-    port: int = Field(50051, ge=1024, le=65535)
+    port: int = Field(default_factory=lambda: int(os.getenv("GRPC_PORT", 50051)), ge=1024, le=65535)
     shutdown_grace_period: float = Field(5.0, ge=0)
     log_dir: str | None = None
     grpc_logging: bool = True
