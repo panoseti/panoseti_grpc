@@ -14,6 +14,29 @@ from panoseti_grpc.daq_control.config import DaqControlServerConfig
 from panoseti_grpc.server import PanosetiServerConfig, ServiceToggles
 from panoseti_grpc.telemetry.config import TelemetryServerConfig
 
+_PORT_ENV_VARS = ("GRPC_PORT", "HEADNODE_GRPC_PORT", "DAQNODE_GRPC_PORT")
+
+
+@pytest.fixture(autouse=True)
+def _clean_port_env(monkeypatch: Any) -> None:
+    """Every test in this file starts with none of the port env vars set.
+
+    PanosetiServerConfig.port's default_factory reads GRPC_PORT (added in
+    33ff557 to make the port configurable without a TOML edit), so a
+    literal `assert cfg.port == 50051` is only deterministic if GRPC_PORT
+    is actually unset. It usually is on a bare `pytest` invocation, but
+    this suite's own docker-compose.test.yml sets `GRPC_PORT=50055` for
+    the sibling integration tests that need a real server listening on a
+    known, collision-avoiding port -- confirmed live in CI: these tests
+    failed with "assert 50055 == 50051" the first time they actually ran
+    in that container instead of a bare host `pytest`. This file is
+    pure-unit (no running server, per the module docstring), so clearing
+    the var here can't affect the integration tests that need it set.
+    """
+    for var in _PORT_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
+
 # ---------------------------------------------------------------------------
 # Bundled profile loading
 # ---------------------------------------------------------------------------
