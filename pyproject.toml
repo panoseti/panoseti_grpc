@@ -49,6 +49,13 @@ dependencies = [
     "anyio",
     "pydantic>=2.12",
     "typer",
+    # util/cli.py imports click directly (BaseLazyGroup subclasses
+    # typer.core.TyperGroup, which is itself a click.Group) -- typer
+    # doesn't always pull in a compatible click version transitively, and
+    # relying on that made this an implicit dependency that Dockerfile.daqnode
+    # was working around by installing click alongside panoseti-grpc
+    # explicitly. Declare it for real instead.
+    "click",
     "requests",
     "GitPython",
     "blake3",

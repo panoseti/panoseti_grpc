@@ -1,0 +1,17 @@
+# This context (grpc/) is shared by multiple Dockerfiles -- Dockerfile.ci
+# (the CI test-image builder, which COPYs fixtures/Makefiles out of tests/)
+# and deploy/Dockerfile.daqnode (which now installs panoseti-grpc from this
+# local source instead of PyPI). .dockerignore applies to ALL of them, so
+# this list is deliberately conservative: only exclude paths that are safe
+# to drop for every Dockerfile using this context. Do NOT add tests/, docs/,
+# or *.ipynb here -- Dockerfile.ci's daq-control-test/daq-data-hashpipe-test
+# targets COPY specific files out of tests/ and fail outright without it
+# (confirmed: broke CI build #10 on dev when this was tried).
+.git
+.venv
+.mypy_cache
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+*.swp

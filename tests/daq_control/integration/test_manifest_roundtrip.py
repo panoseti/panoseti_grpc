@@ -39,7 +39,7 @@ def manifest_server(tmp_path_factory):
         try:
             with socket.create_connection(("localhost", TEST_PORT), timeout=0.1):
                 break
-        except OSError, ConnectionRefusedError:
+        except (OSError, ConnectionRefusedError):
             time.sleep(0.05)
     else:
         proc.terminate()

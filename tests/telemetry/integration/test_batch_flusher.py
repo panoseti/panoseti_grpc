@@ -97,7 +97,7 @@ def test_batch_flush_delivers_logs_in_order(grpc_client: Any, redis_client: Any)
             text = json.loads(parsed.get("payload_json", "{}")).get("text", "")
             suffix = text.split(tag + "_")[-1][:4]
             indices.append(int(suffix))
-        except ValueError, KeyError, json.JSONDecodeError:
+        except (ValueError, KeyError, json.JSONDecodeError):
             pass
 
     if len(indices) >= 2:

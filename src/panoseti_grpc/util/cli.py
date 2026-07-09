@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 import sys
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import click
 import typer
@@ -14,11 +14,19 @@ from rich.tree import Tree
 
 def walk_commands(node: click.Group | click.Command, tree: Tree) -> None:
     """Recursively walk click commands and add them to the rich tree."""
-    if isinstance(node, click.Group):
-        ctx = click.Context(node)
-        for cmd_name in node.list_commands(ctx):
+    if hasattr(node, "list_commands"):
+        # hasattr (not isinstance(node, click.Group)) is deliberate: some
+        # Typer-wrapped lazy command objects support the MultiCommand
+        # protocol (list_commands/get_command) without being strict
+        # click.Group instances, and isinstance excluded them here before
+        # (see git history). cast tells mypy what the hasattr check already
+        # verified at runtime, rather than switching back to the narrower
+        # (and previously broken) isinstance check.
+        group = cast(click.Group, node)
+        ctx = click.Context(group)
+        for cmd_name in group.list_commands(ctx):
             # get_command handles lazy-loading logic automatically
-            cmd = node.get_command(ctx, cmd_name)
+            cmd = group.get_command(ctx, cmd_name)
             if cmd:
                 help_text = cmd.help.split("\n")[0] if cmd.help else ""
                 # Truncate help text if too long

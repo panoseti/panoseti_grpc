@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x11\x64\x61q_control.proto\x12\x14panoseti.daq_control\x1a\x1cgoogle/protobuf/struct.proto\"\xb2\x01\n\x0fStartDaqRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x61q_ip_addr\x18\x02 \x01(\t\x12\x10\n\x08\x62indhost\x18\x03 \x01(\t\x12\x18\n\x10max_file_size_mb\x18\x04 \x01(\r\x12\x17\n\x0fgroup_ph_frames\x18\x05 \x01(\x08\x12\x0f\n\x07run_dir\x18\x06 \x01(\t\x12\x0b\n\x03obs\x18\x07 \x01(\t\x12\x15\n\tmodule_id\x18\x08 \x03(\rB\x02\x10\x01\"4\n\x10StartDaqResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"3\n\x0eStopDaqRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\"3\n\x0fStopDaqResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"v\n\x10\x44\x61qStatusRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x1e\n\x16\x63heck_hashpipe_running\x18\x02 \x01(\x08\x12\x18\n\x10\x63heck_disk_usage\x18\x03 \x01(\x08\x12\x16\n\x0e\x63heck_run_dirs\x18\x04 \x01(\x08\"\xa4\x01\n\x11\x44\x61qStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x18\n\x10hashpipe_running\x18\x02 \x01(\x08\x12+\n\ndisk_usage\x18\x03 \x01(\x0b\x32\x17.google.protobuf.Struct\x12\x10\n\x08run_dirs\x18\x04 \x03(\t\x12\x0f\n\x07message\x18\x05 \x01(\t\x12\x14\n\x0chashpipe_pid\x18\x06 \x01(\x05\"\xec\x01\n\x12\x43leanupDataRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\x12\x15\n\tmodule_id\x18\x03 \x03(\rB\x02\x10\x01\x12\r\n\x05\x66orce\x18\x04 \x01(\x08\x12/\n\x04mode\x18\x05 \x01(\x0e\x32!.panoseti.daq_control.CleanupMode\x12\x17\n\x0f\x64\x65lete_patterns\x18\x06 \x03(\t\x12\x19\n\x11preserve_patterns\x18\x07 \x03(\t\x12\x17\n\x0fmanifest_digest\x18\x08 \x01(\x0c\x12\x0f\n\x07\x64ry_run\x18\x0b \x01(\x08\"|\n\x13\x43leanupDataResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x15\n\rdeleted_count\x18\x03 \x01(\r\x12\x13\n\x0b\x66reed_bytes\x18\x04 \x01(\x04\x12\x17\n\x0fpreserved_paths\x18\x05 \x03(\t\"\x80\x01\n\x17GenerateManifestRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\x12\x15\n\tmodule_id\x18\x03 \x03(\rB\x02\x10\x01\x12\x11\n\talgorithm\x18\x04 \x01(\t\x12\x18\n\x10include_patterns\x18\x05 \x03(\t\"\xa8\x01\n\x18GenerateManifestResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x15\n\rmanifest_path\x18\x03 \x01(\t\x12\x12\n\nfile_count\x18\x04 \x01(\r\x12\x13\n\x0btotal_bytes\x18\x05 \x01(\x04\x12\x17\n\x0f\x65lapsed_seconds\x18\x06 \x01(\x01\x12\x11\n\talgorithm\x18\x07 \x01(\t\"N\n\x12GetManifestRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\x12\x15\n\tmodule_id\x18\x03 \x03(\rB\x02\x10\x01\"`\n\rManifestEntry\x12\x15\n\rrelative_path\x18\x01 \x01(\t\x12\x12\n\ndigest_hex\x18\x02 \x01(\t\x12\x12\n\nsize_bytes\x18\x03 \x01(\x04\x12\x10\n\x08mtime_ns\x18\x04 \x01(\x03\"=\n\x18GetTransferStatusRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\"\xaa\x01\n\x19GetTransferStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x18\n\x10hashpipe_running\x18\x03 \x01(\x08\x12\x12\n\nfree_bytes\x18\x04 \x01(\x04\x12\x13\n\x0btotal_bytes\x18\x05 \x01(\x04\x12\x10\n\x08run_dirs\x18\x06 \x03(\t\x12\x16\n\x0emanifest_files\x18\x07 \x03(\t\"T\n\x18GetManifestDigestRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\x12\x15\n\tmodule_id\x18\x03 \x03(\rB\x02\x10\x01\"}\n\x19GetManifestDigestResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x12\n\ndigest_hex\x18\x03 \x01(\t\x12\x13\n\x0b\x61lgo_suffix\x18\x04 \x01(\t\x12\x15\n\rmanifest_path\x18\x05 \x01(\t\"i\n\x1aRetryFailedTransferRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\x12\x15\n\tmodule_id\x18\x03 \x03(\rB\x02\x10\x01\x12\x11\n\tfile_path\x18\x04 \x01(\t\"z\n\x1bRetryFailedTransferResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x12\n\nsize_bytes\x18\x03 \x01(\x04\x12\x12\n\ndigest_hex\x18\x04 \x01(\t\x12\x11\n\talgorithm\x18\x05 \x01(\t*6\n\x0b\x43leanupMode\x12\x10\n\x0c\x43LEANUP_FULL\x10\x00\x12\x15\n\x11\x43LEANUP_SELECTIVE\x10\x01\x32\xce\x07\n\nDaqControl\x12[\n\x08StartDaq\x12%.panoseti.daq_control.StartDaqRequest\x1a&.panoseti.daq_control.StartDaqResponse\"\x00\x12X\n\x07StopDaq\x12$.panoseti.daq_control.StopDaqRequest\x1a%.panoseti.daq_control.StopDaqResponse\"\x00\x12^\n\tStatusDaq\x12&.panoseti.daq_control.DaqStatusRequest\x1a\'.panoseti.daq_control.DaqStatusResponse\"\x00\x12\x64\n\x0b\x43leanupData\x12(.panoseti.daq_control.CleanupDataRequest\x1a).panoseti.daq_control.CleanupDataResponse\"\x00\x12s\n\x10GenerateManifest\x12-.panoseti.daq_control.GenerateManifestRequest\x1a..panoseti.daq_control.GenerateManifestResponse\"\x00\x12`\n\x0bGetManifest\x12(.panoseti.daq_control.GetManifestRequest\x1a#.panoseti.daq_control.ManifestEntry\"\x00\x30\x01\x12v\n\x11GetTransferStatus\x12..panoseti.daq_control.GetTransferStatusRequest\x1a/.panoseti.daq_control.GetTransferStatusResponse\"\x00\x12v\n\x11GetManifestDigest\x12..panoseti.daq_control.GetManifestDigestRequest\x1a/.panoseti.daq_control.GetManifestDigestResponse\"\x00\x12|\n\x13RetryFailedTransfer\x12\x30.panoseti.daq_control.RetryFailedTransferRequest\x1a\x31.panoseti.daq_control.RetryFailedTransferResponse\"\x00\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x11\x64\x61q_control.proto\x12\x14panoseti.daq_control\x1a\x1cgoogle/protobuf/struct.proto\"\xd2\x01\n\x0fStartDaqRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x61q_ip_addr\x18\x02 \x01(\t\x12\x10\n\x08\x62indhost\x18\x03 \x01(\t\x12\x18\n\x10max_file_size_mb\x18\x04 \x01(\r\x12\x17\n\x0fgroup_ph_frames\x18\x05 \x01(\x08\x12\x0f\n\x07run_dir\x18\x06 \x01(\t\x12\x0b\n\x03obs\x18\x07 \x01(\t\x12\x15\n\tmodule_id\x18\x08 \x03(\rB\x02\x10\x01\x12\x1e\n\x16\x66orce_clean_semaphores\x18\t \x01(\x08\"4\n\x10StartDaqResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"3\n\x0eStopDaqRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\"3\n\x0fStopDaqResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"\x93\x01\n\x10\x44\x61qStatusRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x1e\n\x16\x63heck_hashpipe_running\x18\x02 \x01(\x08\x12\x18\n\x10\x63heck_disk_usage\x18\x03 \x01(\x08\x12\x16\n\x0e\x63heck_run_dirs\x18\x04 \x01(\x08\x12\x1b\n\x13\x63heck_status_buffer\x18\x05 \x01(\x08\"\xfd\x02\n\x11\x44\x61qStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x18\n\x10hashpipe_running\x18\x02 \x01(\x08\x12+\n\ndisk_usage\x18\x03 \x01(\x0b\x32\x17.google.protobuf.Struct\x12\x10\n\x08run_dirs\x18\x04 \x03(\t\x12\x0f\n\x07message\x18\x05 \x01(\t\x12\x14\n\x0chashpipe_pid\x18\x06 \x01(\x05\x12\x1d\n\x15hashpipe_thread_count\x18\x07 \x01(\x05\x12\x18\n\x10hashpipe_healthy\x18\x08 \x01(\x08\x12\x61\n\x16hashpipe_status_buffer\x18\t \x03(\x0b\x32\x41.panoseti.daq_control.DaqStatusResponse.HashpipeStatusBufferEntry\x1a;\n\x19HashpipeStatusBufferEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xec\x01\n\x12\x43leanupDataRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\x12\x15\n\tmodule_id\x18\x03 \x03(\rB\x02\x10\x01\x12\r\n\x05\x66orce\x18\x04 \x01(\x08\x12/\n\x04mode\x18\x05 \x01(\x0e\x32!.panoseti.daq_control.CleanupMode\x12\x17\n\x0f\x64\x65lete_patterns\x18\x06 \x03(\t\x12\x19\n\x11preserve_patterns\x18\x07 \x03(\t\x12\x17\n\x0fmanifest_digest\x18\x08 \x01(\x0c\x12\x0f\n\x07\x64ry_run\x18\x0b \x01(\x08\"|\n\x13\x43leanupDataResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x15\n\rdeleted_count\x18\x03 \x01(\r\x12\x13\n\x0b\x66reed_bytes\x18\x04 \x01(\x04\x12\x17\n\x0fpreserved_paths\x18\x05 \x03(\t\"\x80\x01\n\x17GenerateManifestRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\x12\x15\n\tmodule_id\x18\x03 \x03(\rB\x02\x10\x01\x12\x11\n\talgorithm\x18\x04 \x01(\t\x12\x18\n\x10include_patterns\x18\x05 \x03(\t\"\xa8\x01\n\x18GenerateManifestResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x15\n\rmanifest_path\x18\x03 \x01(\t\x12\x12\n\nfile_count\x18\x04 \x01(\r\x12\x13\n\x0btotal_bytes\x18\x05 \x01(\x04\x12\x17\n\x0f\x65lapsed_seconds\x18\x06 \x01(\x01\x12\x11\n\talgorithm\x18\x07 \x01(\t\"N\n\x12GetManifestRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\x12\x15\n\tmodule_id\x18\x03 \x03(\rB\x02\x10\x01\"`\n\rManifestEntry\x12\x15\n\rrelative_path\x18\x01 \x01(\t\x12\x12\n\ndigest_hex\x18\x02 \x01(\t\x12\x12\n\nsize_bytes\x18\x03 \x01(\x04\x12\x10\n\x08mtime_ns\x18\x04 \x01(\x03\"=\n\x18GetTransferStatusRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\"\xaa\x01\n\x19GetTransferStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x18\n\x10hashpipe_running\x18\x03 \x01(\x08\x12\x12\n\nfree_bytes\x18\x04 \x01(\x04\x12\x13\n\x0btotal_bytes\x18\x05 \x01(\x04\x12\x10\n\x08run_dirs\x18\x06 \x03(\t\x12\x16\n\x0emanifest_files\x18\x07 \x03(\t\"T\n\x18GetManifestDigestRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\x12\x15\n\tmodule_id\x18\x03 \x03(\rB\x02\x10\x01\"}\n\x19GetManifestDigestResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x12\n\ndigest_hex\x18\x03 \x01(\t\x12\x13\n\x0b\x61lgo_suffix\x18\x04 \x01(\t\x12\x15\n\rmanifest_path\x18\x05 \x01(\t\"i\n\x1aRetryFailedTransferRequest\x12\x10\n\x08\x64\x61ta_dir\x18\x01 \x01(\t\x12\x0f\n\x07run_dir\x18\x02 \x01(\t\x12\x15\n\tmodule_id\x18\x03 \x03(\rB\x02\x10\x01\x12\x11\n\tfile_path\x18\x04 \x01(\t\"z\n\x1bRetryFailedTransferResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x12\n\nsize_bytes\x18\x03 \x01(\x04\x12\x12\n\ndigest_hex\x18\x04 \x01(\t\x12\x11\n\talgorithm\x18\x05 \x01(\t*6\n\x0b\x43leanupMode\x12\x10\n\x0c\x43LEANUP_FULL\x10\x00\x12\x15\n\x11\x43LEANUP_SELECTIVE\x10\x01\x32\xce\x07\n\nDaqControl\x12[\n\x08StartDaq\x12%.panoseti.daq_control.StartDaqRequest\x1a&.panoseti.daq_control.StartDaqResponse\"\x00\x12X\n\x07StopDaq\x12$.panoseti.daq_control.StopDaqRequest\x1a%.panoseti.daq_control.StopDaqResponse\"\x00\x12^\n\tStatusDaq\x12&.panoseti.daq_control.DaqStatusRequest\x1a\'.panoseti.daq_control.DaqStatusResponse\"\x00\x12\x64\n\x0b\x43leanupData\x12(.panoseti.daq_control.CleanupDataRequest\x1a).panoseti.daq_control.CleanupDataResponse\"\x00\x12s\n\x10GenerateManifest\x12-.panoseti.daq_control.GenerateManifestRequest\x1a..panoseti.daq_control.GenerateManifestResponse\"\x00\x12`\n\x0bGetManifest\x12(.panoseti.daq_control.GetManifestRequest\x1a#.panoseti.daq_control.ManifestEntry\"\x00\x30\x01\x12v\n\x11GetTransferStatus\x12..panoseti.daq_control.GetTransferStatusRequest\x1a/.panoseti.daq_control.GetTransferStatusResponse\"\x00\x12v\n\x11GetManifestDigest\x12..panoseti.daq_control.GetManifestDigestRequest\x1a/.panoseti.daq_control.GetManifestDigestResponse\"\x00\x12|\n\x13RetryFailedTransfer\x12\x30.panoseti.daq_control.RetryFailedTransferRequest\x1a\x31.panoseti.daq_control.RetryFailedTransferResponse\"\x00\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,6 +34,8 @@ if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_STARTDAQREQUEST'].fields_by_name['module_id']._loaded_options = None
   _globals['_STARTDAQREQUEST'].fields_by_name['module_id']._serialized_options = b'\020\001'
+  _globals['_DAQSTATUSRESPONSE_HASHPIPESTATUSBUFFERENTRY']._loaded_options = None
+  _globals['_DAQSTATUSRESPONSE_HASHPIPESTATUSBUFFERENTRY']._serialized_options = b'8\001'
   _globals['_CLEANUPDATAREQUEST'].fields_by_name['module_id']._loaded_options = None
   _globals['_CLEANUPDATAREQUEST'].fields_by_name['module_id']._serialized_options = b'\020\001'
   _globals['_GENERATEMANIFESTREQUEST'].fields_by_name['module_id']._loaded_options = None
@@ -44,44 +46,46 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_GETMANIFESTDIGESTREQUEST'].fields_by_name['module_id']._serialized_options = b'\020\001'
   _globals['_RETRYFAILEDTRANSFERREQUEST'].fields_by_name['module_id']._loaded_options = None
   _globals['_RETRYFAILEDTRANSFERREQUEST'].fields_by_name['module_id']._serialized_options = b'\020\001'
-  _globals['_CLEANUPMODE']._serialized_start=2226
-  _globals['_CLEANUPMODE']._serialized_end=2280
+  _globals['_CLEANUPMODE']._serialized_start=2505
+  _globals['_CLEANUPMODE']._serialized_end=2559
   _globals['_STARTDAQREQUEST']._serialized_start=74
-  _globals['_STARTDAQREQUEST']._serialized_end=252
-  _globals['_STARTDAQRESPONSE']._serialized_start=254
-  _globals['_STARTDAQRESPONSE']._serialized_end=306
-  _globals['_STOPDAQREQUEST']._serialized_start=308
-  _globals['_STOPDAQREQUEST']._serialized_end=359
-  _globals['_STOPDAQRESPONSE']._serialized_start=361
-  _globals['_STOPDAQRESPONSE']._serialized_end=412
-  _globals['_DAQSTATUSREQUEST']._serialized_start=414
-  _globals['_DAQSTATUSREQUEST']._serialized_end=532
-  _globals['_DAQSTATUSRESPONSE']._serialized_start=535
-  _globals['_DAQSTATUSRESPONSE']._serialized_end=699
-  _globals['_CLEANUPDATAREQUEST']._serialized_start=702
-  _globals['_CLEANUPDATAREQUEST']._serialized_end=938
-  _globals['_CLEANUPDATARESPONSE']._serialized_start=940
-  _globals['_CLEANUPDATARESPONSE']._serialized_end=1064
-  _globals['_GENERATEMANIFESTREQUEST']._serialized_start=1067
-  _globals['_GENERATEMANIFESTREQUEST']._serialized_end=1195
-  _globals['_GENERATEMANIFESTRESPONSE']._serialized_start=1198
-  _globals['_GENERATEMANIFESTRESPONSE']._serialized_end=1366
-  _globals['_GETMANIFESTREQUEST']._serialized_start=1368
-  _globals['_GETMANIFESTREQUEST']._serialized_end=1446
-  _globals['_MANIFESTENTRY']._serialized_start=1448
-  _globals['_MANIFESTENTRY']._serialized_end=1544
-  _globals['_GETTRANSFERSTATUSREQUEST']._serialized_start=1546
-  _globals['_GETTRANSFERSTATUSREQUEST']._serialized_end=1607
-  _globals['_GETTRANSFERSTATUSRESPONSE']._serialized_start=1610
-  _globals['_GETTRANSFERSTATUSRESPONSE']._serialized_end=1780
-  _globals['_GETMANIFESTDIGESTREQUEST']._serialized_start=1782
-  _globals['_GETMANIFESTDIGESTREQUEST']._serialized_end=1866
-  _globals['_GETMANIFESTDIGESTRESPONSE']._serialized_start=1868
-  _globals['_GETMANIFESTDIGESTRESPONSE']._serialized_end=1993
-  _globals['_RETRYFAILEDTRANSFERREQUEST']._serialized_start=1995
-  _globals['_RETRYFAILEDTRANSFERREQUEST']._serialized_end=2100
-  _globals['_RETRYFAILEDTRANSFERRESPONSE']._serialized_start=2102
-  _globals['_RETRYFAILEDTRANSFERRESPONSE']._serialized_end=2224
-  _globals['_DAQCONTROL']._serialized_start=2283
-  _globals['_DAQCONTROL']._serialized_end=3257
+  _globals['_STARTDAQREQUEST']._serialized_end=284
+  _globals['_STARTDAQRESPONSE']._serialized_start=286
+  _globals['_STARTDAQRESPONSE']._serialized_end=338
+  _globals['_STOPDAQREQUEST']._serialized_start=340
+  _globals['_STOPDAQREQUEST']._serialized_end=391
+  _globals['_STOPDAQRESPONSE']._serialized_start=393
+  _globals['_STOPDAQRESPONSE']._serialized_end=444
+  _globals['_DAQSTATUSREQUEST']._serialized_start=447
+  _globals['_DAQSTATUSREQUEST']._serialized_end=594
+  _globals['_DAQSTATUSRESPONSE']._serialized_start=597
+  _globals['_DAQSTATUSRESPONSE']._serialized_end=978
+  _globals['_DAQSTATUSRESPONSE_HASHPIPESTATUSBUFFERENTRY']._serialized_start=919
+  _globals['_DAQSTATUSRESPONSE_HASHPIPESTATUSBUFFERENTRY']._serialized_end=978
+  _globals['_CLEANUPDATAREQUEST']._serialized_start=981
+  _globals['_CLEANUPDATAREQUEST']._serialized_end=1217
+  _globals['_CLEANUPDATARESPONSE']._serialized_start=1219
+  _globals['_CLEANUPDATARESPONSE']._serialized_end=1343
+  _globals['_GENERATEMANIFESTREQUEST']._serialized_start=1346
+  _globals['_GENERATEMANIFESTREQUEST']._serialized_end=1474
+  _globals['_GENERATEMANIFESTRESPONSE']._serialized_start=1477
+  _globals['_GENERATEMANIFESTRESPONSE']._serialized_end=1645
+  _globals['_GETMANIFESTREQUEST']._serialized_start=1647
+  _globals['_GETMANIFESTREQUEST']._serialized_end=1725
+  _globals['_MANIFESTENTRY']._serialized_start=1727
+  _globals['_MANIFESTENTRY']._serialized_end=1823
+  _globals['_GETTRANSFERSTATUSREQUEST']._serialized_start=1825
+  _globals['_GETTRANSFERSTATUSREQUEST']._serialized_end=1886
+  _globals['_GETTRANSFERSTATUSRESPONSE']._serialized_start=1889
+  _globals['_GETTRANSFERSTATUSRESPONSE']._serialized_end=2059
+  _globals['_GETMANIFESTDIGESTREQUEST']._serialized_start=2061
+  _globals['_GETMANIFESTDIGESTREQUEST']._serialized_end=2145
+  _globals['_GETMANIFESTDIGESTRESPONSE']._serialized_start=2147
+  _globals['_GETMANIFESTDIGESTRESPONSE']._serialized_end=2272
+  _globals['_RETRYFAILEDTRANSFERREQUEST']._serialized_start=2274
+  _globals['_RETRYFAILEDTRANSFERREQUEST']._serialized_end=2379
+  _globals['_RETRYFAILEDTRANSFERRESPONSE']._serialized_start=2381
+  _globals['_RETRYFAILEDTRANSFERRESPONSE']._serialized_end=2503
+  _globals['_DAQCONTROL']._serialized_start=2562
+  _globals['_DAQCONTROL']._serialized_end=3536
 # @@protoc_insertion_point(module_scope)

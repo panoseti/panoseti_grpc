@@ -1,20 +1,27 @@
 # ============================================================
 # PANOSETI Unified gRPC Server — Headnode Profile
-# Runs the telemetry service only.  DAQ nodes connect here
-# for centralized log ingestion.
+# Runs telemetry + daq_data (gateway/aggregator role). DAQ nodes
+# connect here for centralized log ingestion, and this server
+# fans in each edge node's science-data stream to one endpoint.
+#
+# Bind port: intentionally NOT set here. It resolves from (highest
+# priority first) `pseti-grpc server --port`, the `--port-env`-named
+# env var (HEADNODE_GRPC_PORT for this profile), the legacy GRPC_PORT
+# env var, then the built-in default (50051) -- see unified_main.py's
+# resolve_bind_port(). Do not hardcode a port here: an explicit TOML
+# value silently wins over every env var and desyncs server/client.
 #
 # Usage:
-#   pseti-grpc server --profile headnode
-#   pseti-grpc server --config /path/to/server_headnode.toml
+#   pseti-grpc server --profile headnode --port-env HEADNODE_GRPC_PORT
+#   pseti-grpc server --config /path/to/server_headnode.toml --port-env HEADNODE_GRPC_PORT
 # ============================================================
 
 [server]
-port = 50051
 shutdown_grace_period = 5.0
 
 [server.services]
 telemetry    = true
-daq_data     = false
+daq_data     = true
 daq_control  = false
 # Enable ml_inference on the head node when running pa-stream-cloud in attach mode.
 # Exposes EmitPrediction / StreamPredictions / SubscribeAlerts for real-time scoring.
@@ -30,3 +37,25 @@ redis_db   = 0
 shutdown_grace_period = 5.0
 log_level  = "INFO"
 # telemetry_config_path = ""  # leave empty to use the bundled device registry
+
+# -------------------------------------------------------
+# DAQ Data service — gateway role
+# -------------------------------------------------------
+# Required so `daq_data = true` above actually runs as a gateway
+# (fanning in edge nodes) rather than defaulting to `role = "edge"`,
+# which expects local Hashpipe UDS sockets that don't exist on a
+# head node. Fill in daq_config_path for your site, or use `--config`
+# to point at a site-specific copy (see control/deploy/grpc-server-headnode.toml
+# for the production example).
+[daq_data]
+role = "gateway"
+
+[daq_data.gateway]
+# Required: path to the daq_config.json that lists all edge DAQ nodes.
+daq_config_path     = ""
+# Optional: path to network_config.json for port-forwarding overrides.
+network_config_path = ""
+# gRPC port on each edge node without an explicit port_forwarding/grpc_port
+# override. Intentionally NOT hardcoded here -- resolves from DAQNODE_GRPC_PORT
+# (see DaqDataGatewayConfig.edge_port's default_factory), matching whatever
+# port the daq_node profile actually bound.

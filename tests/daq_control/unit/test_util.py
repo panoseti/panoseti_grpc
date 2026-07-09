@@ -6,7 +6,14 @@ from unittest.mock import MagicMock, patch
 
 import psutil
 
-from panoseti_grpc.daq_control.util import is_hashpipe_running
+from panoseti_grpc.daq_control.util import (
+    EXPECTED_HASHPIPE_THREADS,
+    _parse_status_buffer,
+    cleanup_stale_hashpipe_semaphores,
+    hashpipe_thread_count,
+    is_hashpipe_running,
+    read_hashpipe_status_buffer,
+)
 
 
 class TestIsHashpipeRunning:
@@ -54,3 +61,114 @@ class TestIsHashpipeRunning:
             patch("panoseti_grpc.daq_control.util.psutil.Process", return_value=mock_proc),
         ):
             assert is_hashpipe_running(1234) is False
+
+
+class TestHashpipeThreadCount:
+    def test_returns_thread_count(self) -> None:
+        mock_proc = MagicMock()
+        mock_proc.num_threads.return_value = 4
+        with patch("panoseti_grpc.daq_control.util.psutil.Process", return_value=mock_proc):
+            assert hashpipe_thread_count(1234) == 4
+
+    def test_stuck_process_reports_fewer_than_expected(self) -> None:
+        """The exact symptom this feature exists to catch: hashpipe alive but
+        never spawned net_thread/compute_thread/output_thread."""
+        mock_proc = MagicMock()
+        mock_proc.num_threads.return_value = 1
+        with patch("panoseti_grpc.daq_control.util.psutil.Process", return_value=mock_proc):
+            count = hashpipe_thread_count(1234)
+            assert count == 1
+            assert count < EXPECTED_HASHPIPE_THREADS
+
+    def test_no_such_process_returns_zero(self) -> None:
+        with patch(
+            "panoseti_grpc.daq_control.util.psutil.Process",
+            side_effect=psutil.NoSuchProcess(pid=1234),
+        ):
+            assert hashpipe_thread_count(1234) == 0
+
+    def test_access_denied_returns_zero(self) -> None:
+        with patch(
+            "panoseti_grpc.daq_control.util.psutil.Process",
+            side_effect=psutil.AccessDenied(pid=1234),
+        ):
+            assert hashpipe_thread_count(1234) == 0
+
+
+class TestCleanupStaleHashpipeSemaphores:
+    def test_removes_matching_semaphore_files(self, tmp_path, monkeypatch) -> None:
+        shm = tmp_path / "dev_shm"
+        shm.mkdir()
+        stale = shm / "sem.home_panoseti_hashpipe_status_0"
+        stale.write_text("")
+        unrelated = shm / "sem.some_other_thing_0"
+        unrelated.write_text("")
+
+        monkeypatch.setattr(
+            "panoseti_grpc.daq_control.util.glob.glob",
+            lambda pattern: [str(stale)] if "hashpipe_status_0" in pattern else [],
+        )
+        removed = cleanup_stale_hashpipe_semaphores(instance_id=0)
+
+        assert removed == [str(stale)]
+        assert not stale.exists()
+        assert unrelated.exists()  # never touched -- pattern didn't match it
+
+    def test_no_stale_semaphore_is_a_noop(self, monkeypatch) -> None:
+        monkeypatch.setattr("panoseti_grpc.daq_control.util.glob.glob", lambda pattern: [])
+        assert cleanup_stale_hashpipe_semaphores(instance_id=0) == []
+
+    def test_tolerates_removal_failure(self, tmp_path, monkeypatch) -> None:
+        """A concurrent process removing the file first (or a permission
+        issue) must not raise -- this runs on the StartDaq hot path."""
+        missing = tmp_path / "sem.home_panoseti_hashpipe_status_0"  # never created
+        monkeypatch.setattr(
+            "panoseti_grpc.daq_control.util.glob.glob", lambda pattern: [str(missing)]
+        )
+        assert cleanup_stale_hashpipe_semaphores(instance_id=0) == []
+
+
+def _make_card(text: str) -> bytes:
+    return text.ljust(80)[:80].encode("ascii")
+
+
+class TestParseStatusBuffer:
+    def test_parses_int_and_string_values(self) -> None:
+        buf = (
+            _make_card("NETDROPS=          12345")
+            + _make_card("BINDHOST= 'eth0    '")
+            + _make_card("END")
+        )
+        result = _parse_status_buffer(buf)
+        assert result["NETDROPS"] == "12345"
+        assert result["BINDHOST"] == "eth0"
+
+    def test_stops_at_end_card(self) -> None:
+        buf = _make_card("A       = 1") + _make_card("END") + _make_card("B       = 2")
+        result = _parse_status_buffer(buf)
+        assert result == {"A": "1"}
+        assert "B" not in result
+
+    def test_ignores_cards_without_equals(self) -> None:
+        buf = _make_card("COMMENT this has no equals sign") + _make_card("END")
+        assert _parse_status_buffer(buf) == {}
+
+    def test_strips_inline_comment(self) -> None:
+        buf = _make_card("NPACKETS=      42 / total packets received") + _make_card("END")
+        assert _parse_status_buffer(buf)["NPACKETS"] == "42"
+
+    def test_empty_buffer_returns_empty_dict(self) -> None:
+        assert _parse_status_buffer(b"") == {}
+
+
+class TestReadHashpipeStatusBuffer:
+    def test_returns_empty_dict_when_shmget_fails(self) -> None:
+        with patch("panoseti_grpc.daq_control.util._libc") as mock_libc:
+            mock_libc.ftok.return_value = 12345
+            mock_libc.shmget.return_value = -1
+            assert read_hashpipe_status_buffer(instance_id=0) == {}
+
+    def test_returns_empty_dict_on_ftok_failure(self) -> None:
+        with patch("panoseti_grpc.daq_control.util._libc") as mock_libc:
+            mock_libc.ftok.return_value = -1
+            assert read_hashpipe_status_buffer(instance_id=0) == {}

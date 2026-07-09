@@ -8,6 +8,7 @@ has a bad value, rather than a KeyError buried in a call stack mid-observation.
 
 from __future__ import annotations
 
+import os
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -77,7 +78,18 @@ class DaqDataGatewayConfig(BaseModel):
     network_config_path: str | None = Field(
         None, description="Optional path to network_config.json for port forwarding."
     )
-    edge_port: int = Field(50051, ge=1, le=65535, description="gRPC port on each edge node.")
+    # Default sourced from DAQNODE_GRPC_PORT (mirrors PanosetiServerConfig.port's
+    # GRPC_PORT default_factory) rather than a bare 50051 literal, so a
+    # fleet-wide port change (env var only, no TOML edit) automatically keeps
+    # the gateway's fan-in pointed at the right port on every edge node that
+    # doesn't have an explicit per-node port_forwarding.grpc_port override in
+    # network_config.json (aggregator.py's per-node override still wins there).
+    edge_port: int = Field(
+        default_factory=lambda: int(os.getenv("DAQNODE_GRPC_PORT", "50051")),
+        ge=1,
+        le=65535,
+        description="gRPC port on each edge node without an explicit port_forwarding override.",
+    )
 
 
 class DaqDataServerConfig(BaseModel):

@@ -33,6 +33,23 @@ class TestStartDaqModel:
         )
         assert m.obs == "test-obs"
         assert m.module_id == [0, 128, 255]
+        # Opt-in recovery flag must default to False -- clearing semaphores
+        # is a manual action, not something StartDaq does on every call.
+        assert m.force_clean_semaphores is False
+
+    def test_force_clean_semaphores_explicit_true(self, tmp_path: Any) -> None:
+        m = StartDaqModel(
+            data_dir=str(tmp_path),
+            daq_ip_addr="192.168.1.1",
+            bindhost="eth0",
+            max_file_size_mb=100,
+            group_ph_frames=True,
+            run_dir="run001.pffd",
+            obs="test-obs",
+            module_id=[0],
+            force_clean_semaphores=True,
+        )
+        assert m.force_clean_semaphores is True
 
     def test_model_validator_creates_directories(self, tmp_path: Any) -> None:
         """model_validator should mkdir data_dir/run_dir."""

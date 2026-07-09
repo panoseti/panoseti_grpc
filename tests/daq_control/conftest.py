@@ -71,7 +71,7 @@ def start_grpc_server() -> Any:
             with socket.create_connection(("localhost", SERVER_PORT), timeout=0.1):
                 server_ready = True
                 break
-        except OSError, ConnectionRefusedError:
+        except (OSError, ConnectionRefusedError):
             time.sleep(0.1)
 
     if not server_ready:

@@ -2,6 +2,8 @@
 Daq Control Service configuration classes for validation
 """
 
+from __future__ import annotations
+
 import os
 from enum import StrEnum
 from pathlib import Path
@@ -41,6 +43,11 @@ class StartDaqModel(BaseModel):
     obs: str = Field(..., min_length=1, max_length=16)
     module_id: list[Uint8] = Field(...)
     force: bool = False
+    force_clean_semaphores: bool = Field(
+        False,
+        description="Remove leaked hashpipe POSIX semaphores before launching, when no "
+        "hashpipe instance is currently running. Manual recovery action, off by default.",
+    )
 
     @model_validator(mode="after")
     def create_run_dir(self) -> StartDaqModel:
@@ -60,6 +67,7 @@ class StatusDaqModel(BaseModel):
     check_hashpipe_running: bool = Field(...)
     check_disk_usage: bool = Field(...)
     check_run_dirs: bool = Field(...)
+    check_status_buffer: bool = Field(False)
 
 
 class CleanupMode(StrEnum):

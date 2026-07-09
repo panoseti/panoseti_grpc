@@ -14,7 +14,6 @@
 # ============================================================
 
 [server]
-port = 50051
 shutdown_grace_period = 5.0
 log_dir = "/var/log/panoseti"
 grpc_logging = true

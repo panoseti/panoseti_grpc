@@ -688,11 +688,12 @@ wheels = [
 
 [[package]]
 name = "panoseti-grpc"
-version = "0.4.11"
+version = "0.4.12"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },
     { name = "blake3" },
+    { name = "click" },
     { name = "coverage" },
     { name = "cython" },
     { name = "gitpython" },
@@ -701,6 +702,7 @@ dependencies = [
     { name = "grpcio-reflection" },
     { name = "grpcio-tools" },
     { name = "json5" },
+    { name = "mypy-protobuf" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "protobuf" },
@@ -712,6 +714,7 @@ dependencies = [
     { name = "requests" },
     { name = "rich" },
     { name = "typer" },
+    { name = "types-protobuf" },
     { name = "wheel" },
 ]
 
@@ -736,6 +739,7 @@ docs = [
 requires-dist = [
     { name = "anyio" },
     { name = "blake3" },
+    { name = "click" },
     { name = "coverage", specifier = ">=7.10.7" },
     { name = "cython" },
     { name = "gitpython" },
@@ -746,6 +750,7 @@ requires-dist = [
     { name = "ipython", marker = "extra == 'dev'" },
     { name = "json5" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.20.0" },
+    { name = "mypy-protobuf" },
     { name = "mypy-protobuf", marker = "extra == 'dev'" },
     { name = "myst-parser", marker = "extra == 'docs'" },
     { name = "numpy" },
@@ -765,6 +770,7 @@ requires-dist = [
     { name = "sphinx", marker = "extra == 'docs'" },
     { name = "sphinx-autodoc-typehints", marker = "extra == 'docs'" },
     { name = "typer" },
+    { name = "types-protobuf" },
     { name = "types-protobuf", marker = "extra == 'dev'" },
     { name = "wheel" },
 ]
