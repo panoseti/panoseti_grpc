@@ -2,8 +2,12 @@ services:
   daqnode-server:
     image: pseti-daqnode:production
     build:
-      context: .
-      dockerfile: Dockerfile.daqnode
+      # Context is grpc/ (not deploy/) so the Dockerfile can COPY the whole
+      # package and install panoseti-grpc from local source -- pinned to
+      # whatever commit is actually checked out here, not a PyPI release
+      # that may lag behind (see Dockerfile.daqnode's install step).
+      context: ..
+      dockerfile: deploy/Dockerfile.daqnode
       args:
         LOCAL_UID: "${LOCAL_UID:-1000}"
         LOCAL_GID: "${LOCAL_GID:-1000}"

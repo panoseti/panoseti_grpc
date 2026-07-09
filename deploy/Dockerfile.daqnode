@@ -20,7 +20,9 @@ WORKDIR /build
 RUN git clone --depth 1 --branch ${PANOSETI_DAQ_BRANCH} https://github.com/panoseti/panoseti_daq.git panoseti_daq
 WORKDIR /build/panoseti_daq
 # We download the required Makefile and databuf.h from the main panoseti repo
-COPY Makefile databuf.h ./
+# (paths are relative to the build context root, grpc/ -- see
+# docker-compose.daqnode.yml's build.context)
+COPY deploy/Makefile deploy/databuf.h ./
 RUN make
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -57,8 +59,20 @@ USER panoseti
 COPY --from=hashpipe-plugin-builder --chown=panoseti:panoseti /build/panoseti_daq/hashpipe.so /data/hashpipe.so
 COPY --from=hashpipe-plugin-builder --chown=panoseti:panoseti /build/panoseti_daq/hashpipe.so /usr/local/lib/panoseti_hashpipe.so
 
-# Install panoseti-grpc from PyPI (no local source code needed!)
-RUN pip install --no-cache-dir panoseti-grpc click typer rich pydantic pydantic-settings
+# Install panoseti-grpc from local source (the grpc/ build context -- see
+# docker-compose.daqnode.yml), not PyPI. A published PyPI release lags
+# behind whatever commit is actually checked out/pinned here by however
+# long it's been since the last `panoseti-grpc` version bump -- confirmed
+# live: a real fix landed in this repo was invisible to every `pseti admin
+# deploy`-built container until this changed, because the image kept
+# installing the last-published PyPI version regardless. Building from
+# local source means the image always matches the exact commit this
+# checkout has (e.g. the one pinned by panoseti/panoseti's grpc submodule
+# gitlink), with no publish step in between. PyPI remains the documented
+# install path for external client-script consumers (see grpc/README.md);
+# this only changes the internal deployment path.
+COPY --chown=panoseti:panoseti . /grpc/
+RUN pip install --no-cache-dir /grpc
 
 ENTRYPOINT ["/home/panoseti/.local/bin/pseti-grpc", "server"]
 CMD ["--profile", "daq_node"]

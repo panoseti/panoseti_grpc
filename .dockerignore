@@ -1,0 +1,14 @@
+# Keeps the build context lean now that deploy/Dockerfile.daqnode's build
+# context is the whole grpc/ package (needed to install panoseti-grpc from
+# local source instead of PyPI -- see that Dockerfile for why).
+.git
+.venv
+.mypy_cache
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+tests/
+docs/
+*.ipynb
+*.swp
