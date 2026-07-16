@@ -320,7 +320,15 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         try:
             async with self._lock:
                 # 1. check if we already have HASHPIPE running
-                n, pids = self._get_pids_by_name(self.hashpipe_name)
+                # asyncio.to_thread: _get_pids_by_name() does a full psutil.process_iter()
+                # scan (per-process /proc/[pid]/cmdline reads) -- calling it synchronously
+                # here, unlike every other call site of this method in this file, blocks
+                # the single event loop this grpc.aio.Server runs all RPCs on for the scan's
+                # duration, freezing StatusDaq/health checks/everything else server-wide.
+                # Confirmed live and in CI: repeated StartDaq calls (e.g. a HITL test suite
+                # running back-to-back) compound into gRPC DEADLINE_EXCEEDED across the
+                # whole server, not just this RPC.
+                n, pids = await asyncio.to_thread(self._get_pids_by_name, self.hashpipe_name)
                 if n > 0:
                     msg = f"Found {n} {self.hashpipe_name} instances running. pids: {pids}"
                     self.logger.warning(msg)
