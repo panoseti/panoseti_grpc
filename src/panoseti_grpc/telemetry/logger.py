@@ -33,6 +33,7 @@ import logging
 import os
 import sys
 import threading
+import uuid
 from collections.abc import Callable
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -134,11 +135,19 @@ class FileLogConfig(BaseModel):
     @field_validator("directory")
     @classmethod
     def validate_directory(cls, v: Path) -> Path:
-        """Ensures the log directory exists or falls back to a temporary location."""
+        """Ensures the log directory exists or falls back to a temporary location.
+
+        Uses a per-call unique probe filename -- a shared fixed name (e.g.
+        ".perm_test") races when multiple threads/processes validate the same
+        directory concurrently (get_logger() is called once per tftpw()
+        instance, and health.py's Quabo check fans out via ThreadPoolExecutor),
+        so one caller's unlink() can race another's touch()/unlink() and raise
+        a spurious FileNotFoundError that looks like "not writable".
+        """
         try:
             v.mkdir(parents=True, exist_ok=True)
             # Test write permission
-            test_file = v / ".perm_test"
+            test_file = v / f".perm_test_{uuid.uuid4().hex}"
             test_file.touch()
             test_file.unlink()
         except (PermissionError, OSError) as e:
