@@ -12,7 +12,16 @@ from typing import Annotated
 import psutil
 import typer
 
+from panoseti_grpc.telemetry.logger import get_logger
+
 app = typer.Typer(help="Manage and run the unified gRPC server.", no_args_is_help=True)
+
+logger = get_logger(
+    "pseti_grpc",
+    console=True,
+    log_dir=os.getenv("PSETI_LOGS", "/var/log/panoseti"),
+    grpc_enabled=False,
+)
 
 
 @app.callback(invoke_without_command=True)
@@ -77,10 +86,10 @@ def main(
     from panoseti_grpc.unified_main import resolve_bind_port
 
     if list_services:
-        print("Registered PANOSETI gRPC services:")
+        logger.info("Registered PANOSETI gRPC services:")
         for name, descriptor in ServiceRegistry.all().items():
             tag = "  [DEPRECATED]" if descriptor.deprecated else ""
-            print(f"  {name}{tag}")
+            logger.info(f"  {name}{tag}")
         return
 
     # Load config
@@ -176,10 +185,10 @@ def stop(
     """
     pids = _find_server_processes()
     if not pids:
-        print("No pseti-grpc server process is running.")
+        logger.info("No pseti-grpc server process is running.")
         return
 
-    print(f"Found {len(pids)} pseti-grpc server process(es): {pids}")
+    logger.info(f"Found {len(pids)} pseti-grpc server process(es): {pids}")
 
     remaining: list[int] = []
     permission_denied: list[int] = []
@@ -200,7 +209,7 @@ def stop(
 
     still_alive: list[int] = []
     if remaining:
-        print(f"{len(remaining)} process(es) did not exit within {grace_period}s; sending SIGKILL: {remaining}")
+        logger.info(f"{len(remaining)} process(es) did not exit within {grace_period}s; sending SIGKILL: {remaining}")
         kill_targets: list[int] = []
         for pid in remaining:
             try:
@@ -215,17 +224,17 @@ def stop(
 
     stopped_count = len(pids) - len(still_alive) - len(permission_denied)
     if stopped_count > 0:
-        print(f"Stopped {stopped_count} pseti-grpc server process(es).")
+        logger.info(f"Stopped {stopped_count} pseti-grpc server process(es).")
 
     if permission_denied:
-        print(
+        logger.info(
             f"Permission denied for process(es) {permission_denied} -- likely started by a "
             "different user. Ask that user to stop it, or re-run `pseti-grpc server stop` "
             "with sufficient privileges (e.g. sudo, or as the owning user)."
         )
 
     if still_alive:
-        print(f"Failed to stop process(es): {still_alive}")
+        logger.info(f"Failed to stop process(es): {still_alive}")
 
     if permission_denied or still_alive:
         raise typer.Exit(code=1)

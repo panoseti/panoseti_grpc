@@ -3,6 +3,9 @@
 Uses CliRunner + mocking (psutil.process_iter, os.kill, _is_process_alive) --
 no real processes are spawned. Mocking style matches
 tests/daq_control/unit/test_server_helpers.py's psutil.process_iter patching.
+`logger` is a module-level object (constructed once at import time), so it's
+patched directly rather than via get_logger -- patching get_logger wouldn't
+affect the already-constructed instance.
 """
 
 from __future__ import annotations
@@ -23,11 +26,19 @@ def _fake_proc(pid: int, cmdline: list[str], status: str = "running") -> MagicMo
     return proc
 
 
+def _logged(mock_logger: MagicMock) -> str:
+    """Concatenate all logger.info(...) call messages into one string for substring checks."""
+    return "\n".join(str(call.args[0]) for call in mock_logger.info.call_args_list)
+
+
 def test_stop_no_server_running_exits_zero() -> None:
-    with patch("panoseti_grpc._cli.server.psutil.process_iter", return_value=[]):
+    with (
+        patch("panoseti_grpc._cli.server.psutil.process_iter", return_value=[]),
+        patch("panoseti_grpc._cli.server.logger") as mock_logger,
+    ):
         result = runner.invoke(app, ["stop"])
     assert result.exit_code == 0
-    assert "No pseti-grpc server process is running" in result.output
+    assert "No pseti-grpc server process is running" in _logged(mock_logger)
 
 
 def test_stop_sends_sigterm_and_succeeds_within_grace_period() -> None:
@@ -37,10 +48,11 @@ def test_stop_sends_sigterm_and_succeeds_within_grace_period() -> None:
         patch("panoseti_grpc._cli.server.os.kill") as mock_kill,
         patch("panoseti_grpc._cli.server._is_process_alive", side_effect=[False]),
         patch("panoseti_grpc._cli.server.time.sleep"),
+        patch("panoseti_grpc._cli.server.logger") as mock_logger,
     ):
         result = runner.invoke(app, ["stop", "--grace-period", "1"])
     assert result.exit_code == 0
-    assert "Stopped 1 pseti-grpc server process" in result.output
+    assert "Stopped 1 pseti-grpc server process" in _logged(mock_logger)
     assert mock_kill.call_args_list[0].args == (4242, signal.SIGTERM)
 
 
@@ -53,10 +65,11 @@ def test_stop_escalates_to_sigkill_after_timeout() -> None:
         patch("panoseti_grpc._cli.server._is_process_alive", side_effect=[True, True, False]),
         patch("panoseti_grpc._cli.server.time.sleep"),
         patch("panoseti_grpc._cli.server.time.monotonic", side_effect=[0.0, 0.1, 0.2, 100.0]),
+        patch("panoseti_grpc._cli.server.logger") as mock_logger,
     ):
         result = runner.invoke(app, ["stop", "--grace-period", "1"])
     assert result.exit_code == 0
-    assert "SIGKILL" in result.output
+    assert "SIGKILL" in _logged(mock_logger)
     kill_signals = [c.args[1] for c in mock_kill.call_args_list]
     assert signal.SIGTERM in kill_signals
     assert signal.SIGKILL in kill_signals
@@ -68,11 +81,13 @@ def test_stop_reports_permission_denied() -> None:
         patch("panoseti_grpc._cli.server.psutil.process_iter", return_value=[fake]),
         patch("panoseti_grpc._cli.server.os.kill", side_effect=PermissionError),
         patch("panoseti_grpc._cli.server.time.sleep"),
+        patch("panoseti_grpc._cli.server.logger") as mock_logger,
     ):
         result = runner.invoke(app, ["stop", "--grace-period", "1"])
     assert result.exit_code == 1
-    assert "Permission denied" in result.output
-    assert "4242" in result.output
+    logged = _logged(mock_logger)
+    assert "Permission denied" in logged
+    assert "4242" in logged
 
 
 def test_find_server_processes_excludes_self_and_zombies() -> None:
