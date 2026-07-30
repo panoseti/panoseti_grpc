@@ -224,11 +224,10 @@ def stop(
         logger.info(f"Stopped {stopped_count} pseti-grpc server process(es).")
 
     if permission_denied:
-        logger.info(
-            f"Permission denied for process(es) {permission_denied} -- likely started by a "
-            "different user. Ask that user to stop it, or re-run `pseti-grpc server stop` "
-            "with sufficient privileges (e.g. sudo, or as the owning user)."
-        )
+        logger.warning(f"Permission denied for process(es) {permission_denied}.")
+        logger.warning("Likely started by a different user.")
+        logger.warning("Ask that user to stop it, or re-run `pseti-grpc server stop`")
+        logger.warning("with sufficient privileges (e.g. sudo, or as the owning user).")
 
     if still_alive:
         logger.info(f"Failed to stop process(es): {still_alive}")
