@@ -17,7 +17,7 @@ from panoseti_grpc.telemetry.logger import get_logger
 app = typer.Typer(help="Manage and run the unified gRPC server.", no_args_is_help=True)
 
 logger = get_logger(
-    "pseti_grpc",
+    "pseti_grpc.server",
     console=True,
     log_dir=os.getenv("PSETI_LOGS", "/var/log/panoseti"),
     grpc_enabled=False,

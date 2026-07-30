@@ -68,7 +68,7 @@ from panoseti_grpc.telemetry.config import TelemetryServerConfig
 from panoseti_grpc.telemetry.logger import get_logger
 
 _logger = get_logger(
-    "pseti_grpc",
+    "pseti_grpc.server",
     console=True,
     log_dir=os.getenv("PSETI_LOGS", "/var/log/panoseti"),
     grpc_enabled=False,
