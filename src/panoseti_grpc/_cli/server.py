@@ -112,12 +112,9 @@ def main(
         format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S",
     )
-    logging.getLogger("panoseti_grpc._cli.server").info(
-        "Binding port %d (--port=%s --port-env=%s -> %s)",
-        cfg.port,
-        port,
-        port_env,
-        os.getenv(port_env) if port_env else None,
+    logger.info(
+        f"Binding port {cfg.port} (--port={port} --port-env={port_env} -> "
+        f"{os.getenv(port_env) if port_env else None})"
     )
 
     with contextlib.suppress(KeyboardInterrupt):
