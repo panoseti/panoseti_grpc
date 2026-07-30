@@ -28,7 +28,7 @@ Files land in `{log_dir}/{hostname}/` — the per-host subdirectory lets Alloy g
 from panoseti_grpc.telemetry.logger import get_logger
 
 logger = get_logger(
-    "daq_control_server",
+    "daq_control.server",
     log_dir="/var/log/panoseti",   # writes to /var/log/panoseti/<hostname>/
     grpc_enabled=True,             # also forward via gRPC Log RPC
     console=True,
@@ -39,7 +39,7 @@ logger.info("Hashpipe started", extra={"run_id": "start_2026-01-01T120000Z", "mo
 
 `extra` fields are merged into the top-level JSON object and are queryable in LogQL:
 ```
-{service="daq_control_server"} | json | run_id = "start_2026-01-01T120000Z"
+{service="daq_control.server"} | json | run_id = "start_2026-01-01T120000Z"
 ```
 
 ### JSONL Record Format
@@ -47,7 +47,7 @@ logger.info("Hashpipe started", extra={"run_id": "start_2026-01-01T120000Z", "mo
 ```json
 {
     "timestamp": "2026-01-01 12:00:00,123",
-    "service": "daq_control_server",
+    "service": "daq_control.server",
     "level": "INFO",
     "message": "Hashpipe started",
     "hostname": "pseti-daqnode-0",

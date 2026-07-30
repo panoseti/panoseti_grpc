@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib.resources as _importlib_resources
-import logging
 import os
 import signal
 import tomllib
@@ -66,8 +65,14 @@ from panoseti_grpc.generated import (
 )
 from panoseti_grpc.ml_inference.config import MLInferenceServerConfig
 from panoseti_grpc.telemetry.config import TelemetryServerConfig
+from panoseti_grpc.telemetry.logger import get_logger
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger(
+    "pseti_grpc.server",
+    console=True,
+    log_dir=os.getenv("PSETI_LOGS", "/var/log/panoseti"),
+    grpc_enabled=False,
+)
 
 # ---------------------------------------------------------------------------
 # ServiceDescriptor & ServiceRegistry

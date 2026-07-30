@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "panoseti-grpc"
-version = "0.4.14"
+version = "0.4.15"
 description = "gRPC for the PANOSETI project."
 readme = "README.md"
 requires-python = ">=3.14"

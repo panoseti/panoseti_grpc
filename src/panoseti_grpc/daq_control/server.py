@@ -104,7 +104,7 @@ class DaqControlServicer(daq_control_pb2_grpc.DaqControlServicer):
         hashpipe_name: str = "hashpipe",
     ) -> None:
         self.logger = get_logger(
-            "daq_control_server",
+            "daq_control.server",
             level=level,
             console=True,
             log_dir=SERVER_LOG_DIR,
@@ -1193,7 +1193,7 @@ async def serve(grpc_port: int = 50051, level: int = logging.DEBUG) -> None:
     """
     # 0. create logger
     logger = get_logger(
-        "daq_control_server",
+        "daq_control.server",
         level=level,
         console=True,
         log_dir=SERVER_LOG_DIR,

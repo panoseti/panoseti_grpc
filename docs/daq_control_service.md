@@ -393,7 +393,7 @@ Request parameters are validated server-side via [Pydantic v2](https://docs.pyda
 
 | File | Location | Content |
 |---|---|---|
-| Server log | `/var/log/panoseti/daq_control_server.log` | Service lifecycle events, RPC results |
+| Server log | `/var/log/panoseti/daq_control.server.log` | Service lifecycle events, RPC results |
 | Hashpipe stdout | `{data_dir}/{run_dir}/hp_stdout.log` | Per-run Hashpipe standard output |
 | Hashpipe stderr | `{data_dir}/{run_dir}/hp_stderr.log` | Per-run Hashpipe standard error |
 | Manifest | `{data_dir}/{run_dir}/dp_manifest.node_<hostname>.algo_<algo>.txt` | Node-wide checksum manifest |
