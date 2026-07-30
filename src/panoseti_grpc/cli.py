@@ -9,6 +9,7 @@ scripts that need to verify service health or trigger one-off operations.
 
 from __future__ import annotations
 
+import importlib.metadata
 import logging
 import os
 from typing import Annotated, Any
@@ -18,6 +19,12 @@ import typer
 # Local Imports
 from ._cli.state import state
 from .util.cli import BaseLazyGroup, display_tree_callback
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        print(f"pseti-grpc {importlib.metadata.version('panoseti-grpc')}")
+        raise typer.Exit()
 
 
 class GrpcLazyGroup(BaseLazyGroup):
@@ -64,6 +71,15 @@ def main(
     tree: Annotated[
         bool,
         typer.Option("--tree", "-t", help="Display the command tree for PSETI gRPC.", callback=display_tree_callback),
+    ] = False,
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            help="Print the installed panoseti-grpc package version and exit.",
+            callback=_version_callback,
+            is_eager=True,
+        ),
     ] = False,
 ) -> None:
     """
