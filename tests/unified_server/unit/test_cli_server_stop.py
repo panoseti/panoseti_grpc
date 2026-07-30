@@ -27,8 +27,12 @@ def _fake_proc(pid: int, cmdline: list[str], status: str = "running") -> MagicMo
 
 
 def _logged(mock_logger: MagicMock) -> str:
-    """Concatenate all logger.info(...) call messages into one string for substring checks."""
-    return "\n".join(str(call.args[0]) for call in mock_logger.info.call_args_list)
+    """Concatenate all logger.info(...)/logger.warning(...) messages, in call order."""
+    return "\n".join(
+        str(call.args[0])
+        for call in mock_logger.mock_calls
+        if call[0] in ("info", "warning") and call.args
+    )
 
 
 def test_stop_no_server_running_exits_zero() -> None:
