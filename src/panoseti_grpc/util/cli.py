@@ -146,8 +146,16 @@ class BaseLazyGroup(TyperGroup):
                     temp_app.command(name=cmd_name, help=help_str)(obj)
                     click_cmd = typer.main.get_command(temp_app)
 
-                # Promote single-command groups to actual commands
-                if isinstance(click_cmd, click.Group):
+                # Promote single-command groups to actual commands -- but
+                # never when the group has its own invoke_without_command
+                # callback (e.g. `pseti-grpc server` starts a real server
+                # when called with no subcommand; collapsing it into its
+                # lone `stop` subcommand would silently discard the
+                # server-starting logic and every one of its options).
+                if (
+                    isinstance(click_cmd, click.Group)
+                    and not getattr(click_cmd, "invoke_without_command", False)
+                ):
                     command_names = click_cmd.list_commands(ctx)
                     if len(command_names) == 1:
                         actual_cmd = click_cmd.get_command(ctx, command_names[0])
