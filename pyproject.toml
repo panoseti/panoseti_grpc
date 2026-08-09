@@ -48,14 +48,25 @@ dependencies = [
     "psutil",
     "anyio",
     "pydantic>=2.12",
-    "typer",
+    # typer>=0.25 breaks typer.testing.CliRunner.invoke(): the StreamMixer
+    # backing captured stdout/stderr gets garbage-collected (closing its
+    # buffers) before invoke() reads outstreams[N].getvalue(), raising
+    # "ValueError: I/O operation on closed file" from inside typer's own
+    # vendored testing internals -- nothing wrong in the command or the test.
+    # Bisected against click: this is purely a typer regression (typer.testing
+    # ships its own vendored `_click`, not the installed click package's own
+    # testing module) -- typer 0.24.1/0.24.2 pass reliably with click either
+    # 8.3.2 or 8.3.3; typer 0.26.8 fails reliably with click either version.
+    # 0.25.x was never tested, so don't assume it's safe -- keep the upper
+    # bound at 0.25 until it's individually verified or upstream fixes this.
+    "typer>=0.24,<0.25",
     # util/cli.py imports click directly (BaseLazyGroup subclasses
     # typer.core.TyperGroup, which is itself a click.Group) -- typer
     # doesn't always pull in a compatible click version transitively, and
     # relying on that made this an implicit dependency that Dockerfile.daqnode
     # was working around by installing click alongside panoseti-grpc
     # explicitly. Declare it for real instead.
-    "click",
+    "click>=8.3,<8.4",
     "requests",
     "GitPython",
     "blake3",
