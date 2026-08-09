@@ -688,7 +688,7 @@ wheels = [
 
 [[package]]
 name = "panoseti-grpc"
-version = "0.4.16"
+version = "0.4.17"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },
@@ -739,7 +739,7 @@ docs = [
 requires-dist = [
     { name = "anyio" },
     { name = "blake3" },
-    { name = "click" },
+    { name = "click", specifier = ">=8.3,<8.4" },
     { name = "coverage", specifier = ">=7.10.7" },
     { name = "cython" },
     { name = "gitpython" },
@@ -769,7 +769,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15" },
     { name = "sphinx", marker = "extra == 'docs'" },
     { name = "sphinx-autodoc-typehints", marker = "extra == 'docs'" },
-    { name = "typer" },
+    { name = "typer", specifier = ">=0.24,<0.25" },
     { name = "types-protobuf" },
     { name = "types-protobuf", marker = "extra == 'dev'" },
     { name = "wheel" },
