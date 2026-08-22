@@ -15,9 +15,11 @@ The gateway reads ``daq_config_path`` / ``network_config_path`` from its config
 section, falling back to the ``PSETI_GRPC_DATA_CONFIG`` / ``PSETI_GRPC_NETWORK_CONFIG``
 environment variables when a field is left unset in the TOML (see
 :func:`_resolve_gateway_path`) so a fleet-wide value can be provided without
-hand-editing every node's ``server_gateway.toml``. It opens one persistent gRPC
-channel per edge node at startup, and keeps those channels alive for the
-lifetime of the process.
+hand-editing every node's ``server_gateway.toml``. Those env vars can come
+from a ``.env`` file -- the ``pseti-grpc`` CLI auto-loads one at startup, see
+:mod:`panoseti_grpc.util.env_loader` -- or from the process's real
+environment. It opens one persistent gRPC channel per edge node at startup,
+and keeps those channels alive for the lifetime of the process.
 """
 
 from __future__ import annotations

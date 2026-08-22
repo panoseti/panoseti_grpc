@@ -60,6 +60,14 @@ def resolve_bind_port(port: int | None, port_env: str | None, cfg_port: int) -> 
 
 
 def main() -> None:
+    from panoseti_grpc.util.env_loader import load_pseti_grpc_env
+
+    # Load .env variables (if any) before anything below reads os.environ --
+    # kept in sync with cli.py's own call so this entry point (`python -m
+    # panoseti_grpc`) doesn't drift from the real `pseti-grpc server`
+    # console script (see this module's own drift-risk note in CLAUDE.md).
+    load_pseti_grpc_env()
+
     parser = argparse.ArgumentParser(
         prog="pseti-grpc server",
         description="PANOSETI Unified gRPC Server — hosts multiple services on one port.",
