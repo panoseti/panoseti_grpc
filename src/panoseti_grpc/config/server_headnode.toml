@@ -47,7 +47,7 @@ log_level  = "INFO"
 # head node. Fill in daq_config_path for your site, or use `--config`
 # to point at a site-specific copy (see control/deploy/grpc-server-headnode.toml
 # for the production example) -- or leave it unset here and set the
-# PSETI_GRPC_DATA_CONFIG env var instead (PSETI_GRPC_NETWORK_CONFIG for
+# PSETI_GRPC_DAQ_CONFIG env var instead (PSETI_GRPC_NETWORK_CONFIG for
 # network_config_path) to provide a fleet-wide value without hand-editing
 # this file on every node.
 [daq_data]
@@ -55,7 +55,7 @@ role = "gateway"
 
 [daq_data.gateway]
 # Required: path to the daq_config.json that lists all edge DAQ nodes.
-# Falls back to PSETI_GRPC_DATA_CONFIG env var when left empty here.
+# Falls back to PSETI_GRPC_DAQ_CONFIG env var when left empty here.
 daq_config_path     = ""
 # Optional: path to network_config.json for port-forwarding overrides.
 # Falls back to PSETI_GRPC_NETWORK_CONFIG env var when left empty here.

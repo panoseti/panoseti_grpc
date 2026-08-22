@@ -12,7 +12,7 @@
 #   pseti-grpc server --config /path/to/server_gateway.toml
 #
 # Required: set daq_config_path to the site's daq_config.json -- or leave it
-# unset here and set the PSETI_GRPC_DATA_CONFIG env var instead (and
+# unset here and set the PSETI_GRPC_DAQ_CONFIG env var instead (and
 # PSETI_GRPC_NETWORK_CONFIG for network_config_path) to provide a fleet-wide
 # value without hand-editing this file on every node.
 # ============================================================
@@ -46,7 +46,7 @@ role = "gateway"
 
 [daq_data.gateway]
 # Required: path to the daq_config.json that lists all edge DAQ nodes.
-# Falls back to PSETI_GRPC_DATA_CONFIG env var when left empty here.
+# Falls back to PSETI_GRPC_DAQ_CONFIG env var when left empty here.
 daq_config_path     = ""
 # Optional: path to network_config.json for port-forwarding overrides.
 # Falls back to PSETI_GRPC_NETWORK_CONFIG env var when left empty here.

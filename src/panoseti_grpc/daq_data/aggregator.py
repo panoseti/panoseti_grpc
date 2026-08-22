@@ -12,7 +12,7 @@ Role selection is driven by ``DaqDataServerConfig.role``:
   - ``"gateway"`` — runs this :class:`DaqDataGatewayServicer`.
 
 The gateway reads ``daq_config_path`` / ``network_config_path`` from its config
-section, falling back to the ``PSETI_GRPC_DATA_CONFIG`` / ``PSETI_GRPC_NETWORK_CONFIG``
+section, falling back to the ``PSETI_GRPC_DAQ_CONFIG`` / ``PSETI_GRPC_NETWORK_CONFIG``
 environment variables when a field is left unset in the TOML (see
 :func:`_resolve_gateway_path`) so a fleet-wide value can be provided without
 hand-editing every node's ``server_gateway.toml``. Those env vars can come
@@ -117,7 +117,7 @@ class DaqDataGatewayServicer(daq_data_pb2_grpc.DaqDataServicer):
         """
         gw_cfg = self.cfg.gateway
         daq_config_path = _resolve_gateway_path(
-            self.logger, "daq_config_path", gw_cfg.daq_config_path, "PSETI_GRPC_DATA_CONFIG"
+            self.logger, "daq_config_path", gw_cfg.daq_config_path, "PSETI_GRPC_DAQ_CONFIG"
         )
         if not daq_config_path:
             self.logger.warning("Gateway has no daq_config_path resolved — no edge nodes will be contacted.")
