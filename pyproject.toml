@@ -70,6 +70,7 @@ dependencies = [
     "requests",
     "GitPython",
     "blake3",
+    "python-dotenv",
 ]
 
 [project.optional-dependencies]

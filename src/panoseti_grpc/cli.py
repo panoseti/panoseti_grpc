@@ -19,6 +19,13 @@ import typer
 # Local Imports
 from ._cli.state import state
 from .util.cli import BaseLazyGroup, display_tree_callback
+from .util.env_loader import load_pseti_grpc_env
+
+# Load .env variables (if any) before evaluating the option defaults below
+# (some read os.environ, e.g. HEADNODE_IP/HEADNODE_GRPC_PORT) and before any
+# subcommand runs -- mirrors panoseti's `pseti` CLI (control.pseti), which
+# does the same for the same reason.
+load_pseti_grpc_env()
 
 
 def _version_callback(value: bool) -> None:

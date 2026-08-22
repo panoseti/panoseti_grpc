@@ -12,14 +12,21 @@ Role selection is driven by ``DaqDataServerConfig.role``:
   - ``"gateway"`` — runs this :class:`DaqDataGatewayServicer`.
 
 The gateway reads ``daq_config_path`` / ``network_config_path`` from its config
-section, opens one persistent gRPC channel per edge node at startup, and keeps
-those channels alive for the lifetime of the process.
+section, falling back to the ``PSETI_GRPC_DAQ_CONFIG`` / ``PSETI_GRPC_NETWORK_CONFIG``
+environment variables when a field is left unset in the TOML (see
+:func:`_resolve_gateway_path`) so a fleet-wide value can be provided without
+hand-editing every node's ``server_gateway.toml``. Those env vars can come
+from a ``.env`` file -- the ``pseti-grpc`` CLI auto-loads one at startup, see
+:mod:`panoseti_grpc.util.env_loader` -- or from the process's real
+environment. It opens one persistent gRPC channel per edge node at startup,
+and keeps those channels alive for the lifetime of the process.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -46,6 +53,33 @@ def _load_json(path: str) -> dict[str, Any]:
 
     with open(path) as f:
         return json.load(f)  # type: ignore[no-any-return]
+
+
+def _resolve_gateway_path(
+    logger: logging.Logger, field_name: str, cfg_value: str | None, env_var: str
+) -> str | None:
+    """Resolve a ``[daq_data.gateway]`` path: config file value, then env var fallback.
+
+    Precedence: the TOML config value always wins when set (so operators don't
+    have to touch the environment to override it); when it's empty, fall back
+    to ``env_var`` so a fleet-wide value can be provided without hand-editing
+    every node's ``server_gateway.toml``. Logs where the value came from, or a
+    warning if neither source has it.
+    """
+    if cfg_value:
+        return cfg_value
+    env_value = os.getenv(env_var)
+    if env_value:
+        logger.info(
+            f"[daq_data.gateway] {field_name} not set in config; "
+            f"using {env_var}={env_value!r} from the environment."
+        )
+        return env_value
+    logger.warning(
+        f"[daq_data.gateway] {field_name} is not set in the server config, "
+        f"and {env_var} is not set in the environment either."
+    )
+    return None
 
 
 class DaqDataGatewayServicer(daq_data_pb2_grpc.DaqDataServicer):
@@ -82,17 +116,17 @@ class DaqDataGatewayServicer(daq_data_pb2_grpc.DaqDataServicer):
         edges were reached.
         """
         gw_cfg = self.cfg.gateway
-        if not gw_cfg.daq_config_path:
-            self.logger.warning(
-                "Gateway has no daq_config_path configured — no edge nodes will be contacted. "
-                "Set [daq_data.gateway] daq_config_path in the server config."
-            )
+        daq_config_path = _resolve_gateway_path(
+            self.logger, "daq_config_path", gw_cfg.daq_config_path, "PSETI_GRPC_DAQ_CONFIG"
+        )
+        if not daq_config_path:
+            self.logger.warning("Gateway has no daq_config_path resolved — no edge nodes will be contacted.")
             return
 
         try:
-            raw_daq: dict[str, Any] = await asyncio.to_thread(_load_json, gw_cfg.daq_config_path)
+            raw_daq: dict[str, Any] = await asyncio.to_thread(_load_json, daq_config_path)
         except OSError as exc:
-            self.logger.error(f"Cannot read daq_config_path={gw_cfg.daq_config_path!r}: {exc}")
+            self.logger.error(f"Cannot read daq_config_path={daq_config_path!r}: {exc}")
             return
 
         try:
@@ -100,14 +134,17 @@ class DaqDataGatewayServicer(daq_data_pb2_grpc.DaqDataServicer):
 
             daq_cfg = DaqConfig.model_validate(raw_daq)
 
+            network_config_path = _resolve_gateway_path(
+                self.logger, "network_config_path", gw_cfg.network_config_path, "PSETI_GRPC_NETWORK_CONFIG"
+            )
             network_cfg = None
-            if gw_cfg.network_config_path:
+            if network_config_path:
                 try:
-                    raw_net: dict[str, Any] = await asyncio.to_thread(_load_json, gw_cfg.network_config_path)
+                    raw_net: dict[str, Any] = await asyncio.to_thread(_load_json, network_config_path)
                     network_cfg = NetworkConfig.model_validate(raw_net)
                 except OSError as exc:
                     self.logger.warning(
-                        f"Cannot read network_config_path={gw_cfg.network_config_path!r}: {exc}. "
+                        f"Cannot read network_config_path={network_config_path!r}: {exc}. "
                         "Proceeding without port-forwarding overrides."
                     )
 
