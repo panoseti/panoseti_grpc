@@ -10,8 +10,12 @@ scripts that need to verify service health or trigger one-off operations.
 from __future__ import annotations
 
 import importlib.metadata
+import importlib.resources
 import logging
 import os
+import shutil
+from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Any
 
 import typer
@@ -32,6 +36,23 @@ def _version_callback(value: bool) -> None:
     if value:
         print(f"pseti-grpc {importlib.metadata.version('panoseti-grpc')}")
         raise typer.Exit()
+
+
+def _env_template_callback(value: bool) -> None:
+    if not value:
+        return
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    dest = Path.cwd() / f".env_grpc_{timestamp}"
+    if dest.exists():
+        print(f"Refusing to overwrite existing file: {dest}")
+        raise typer.Exit(code=1)
+    # importlib.resources (not a bare __file__-relative path) so this also
+    # works if the package is ever imported from a zipped wheel.
+    resource = importlib.resources.files("panoseti_grpc").joinpath(".env_example")
+    with importlib.resources.as_file(resource) as src:
+        shutil.copyfile(src, dest)
+    print(f"Wrote .env template to {dest}")
+    raise typer.Exit()
 
 
 class GrpcLazyGroup(BaseLazyGroup):
@@ -85,6 +106,15 @@ def main(
             "--version",
             help="Print the installed panoseti-grpc package version and exit.",
             callback=_version_callback,
+            is_eager=True,
+        ),
+    ] = False,
+    env_template: Annotated[
+        bool,
+        typer.Option(
+            "--env-template",
+            help="Copy the packaged .env_example to ./.env_grpc_<timestamp> and exit.",
+            callback=_env_template_callback,
             is_eager=True,
         ),
     ] = False,
