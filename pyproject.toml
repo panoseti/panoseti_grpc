@@ -106,6 +106,7 @@ exclude = ["*logs*", "*.pcapng", "*.png"]
 # Include non-python data files:
 [tool.setuptools.package-data]
 "*" = ["*.json", "*.json5", "*.txt", "*.csv", "*.pff", "*.pffd", "*.toml"]
+"panoseti_grpc" = [".env_example"]
 "panoseti_grpc.daq_data" = ["simulated_data_dir/**/*"]
 
 [tool.setuptools]
