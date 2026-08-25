@@ -24,6 +24,18 @@ Keep track of the latest changes, modernization efforts, and breaking changes in
 
 ---
 
+## 🖥️ Installation (Server Mode)
+
+If you're deploying the unified gRPC server (`pseti-grpc server`) on the head node or a DAQ node, install it as a standalone CLI tool with `uv` — this puts `pseti-grpc` on your `PATH`, isolated in its own environment, without needing a full dev setup:
+
+```bash
+uv tool install panoseti-grpc
+```
+
+See the "🚦 Unified Server" section below for how to configure and run it.
+
+---
+
 ## 📦 Installation (Client Mode)
 
 If you only need to write scripts to control the observatory or analyze data, install the package from PyPI:
@@ -85,18 +97,26 @@ All three active services (`daq_data`, `daq_control`, `telemetry`) can run on a 
 # See the options
 pseti-grpc -h
 
+# Copy the packaged server config templates (server*.toml) and a .env
+# template to the current directory, to customize
+pseti-grpc --config-template
+pseti-grpc --env-template
+
+# Simplest single-node setup: set PSETI_GRPC_PORT (and PSETI_GRPC_HOST for
+# clients not on the same host) once -- in a .env file or the environment --
+# and `pseti-grpc server` plus every client command (stat, reflect,
+# telemetry, daq-data, daq-control, ...) agree on the same host:port with
+# no flags needed.
+pseti-grpc server --profile default
+
 # DAQ node: daq_data (edge role) + daq_control
-# --port-env names DAQNODE_GRPC_PORT as the var that reconfigures the bind
-# port -- see unified_main.resolve_bind_port(). Every docker-compose file
-# and systemd unit in this repo already passes this; do it explicitly for
-# any other launcher.
-pseti-grpc server --profile daq_node --port-env DAQNODE_GRPC_PORT
+pseti-grpc server --profile daq_node
 
 # Head node: telemetry + daq_data (gateway role, fans in every edge node)
-pseti-grpc server --profile headnode --port-env HEADNODE_GRPC_PORT
+pseti-grpc server --profile headnode
 
 # Custom config file
-pseti-grpc server --config /etc/panoseti/server.toml --port-env HEADNODE_GRPC_PORT
+pseti-grpc server --config /etc/panoseti/server.toml
 
 # List all registered services
 pseti-grpc server --list-services
@@ -114,9 +134,15 @@ pseti-grpc daqnode --log-dir /var/log/panoseti
 | `headnode` | telemetry + daq_data (gateway) | Observatory head node |
 | `gateway` | telemetry + daq_data (gateway) | Same shape as `headnode`; kept separate for sites that want a telemetry-only vs. gateway split later |
 
-None of these profiles hardcode `[server].port` — it resolves at startup from (highest priority first) `--port`, the env var named by `--port-env`, the legacy `GRPC_PORT` env var, then the built-in 50051 default (`unified_main.resolve_bind_port()`). An explicit `port =` line in a custom `--config` TOML always wins over every env var, so don't add one if you want the deployment's `.env` to control it — this is exactly how a hardcoded `port = 50052` in an earlier version of the `headnode` profile silently desynced from every client still assuming 50051.
+None of these profiles hardcode `[server].port` — it resolves at startup from (highest priority first) `--port` (hidden, deployment/debug-only), the env var named by `--port-env` (also hidden — role-scoped fleet deployments, e.g. `HEADNODE_GRPC_PORT`/`DAQNODE_GRPC_PORT`), `PSETI_GRPC_PORT` (the simple single-node knob — read by both `pseti-grpc server`'s own default and every `pseti-grpc` client command's `--port` default), the legacy `GRPC_PORT` env var, then the built-in 50051 default (`PanosetiServerConfig.port` / `unified_main.resolve_bind_port()`). An explicit `port =` line in a custom `--config` TOML always wins over every env var, so don't add one if you want the deployment's `.env` to control it — this is exactly how a hardcoded `port = 50052` in an earlier version of the `headnode` profile silently desynced from every client still assuming 50051.
+
+`PSETI_GRPC_HOST` is the client-side counterpart to `PSETI_GRPC_PORT`: the default `--host` for every `pseti-grpc` command. Both are unrelated to `HEADNODE_IP`/`HEADNODE_GRPC_PORT` (below) — see `.env_example` (or `pseti-grpc --env-template`) for the full rundown.
 
 On DAQ nodes (`telemetry = false`), services configured with `grpc_logging = true` automatically forward logs to the head node's telemetry endpoint via the `HEADNODE_IP` / `HEADNODE_GRPC_PORT` environment variables.
+
+### Environment Configuration
+
+`pseti-grpc` (and `python -m panoseti_grpc`) auto-loads a `.env` file from the current working directory at startup (or a specific file via `PSETI_GRPC_ENV_FILE`) — plain `KEY=value` lines, no `export` needed. Run `pseti-grpc --env-template` to copy the packaged `.env_example` to `./.env_grpc_<timestamp>` as a starting point, and `pseti-grpc --config-template` for the bundled `server*.toml` profiles.
 
 ### Config File Structure
 
