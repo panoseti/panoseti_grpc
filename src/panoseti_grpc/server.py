@@ -146,7 +146,19 @@ class PanosetiServerConfig(BaseModel):
     nested Pydantic models here.  Unrecognised keys are ignored.
     """
 
-    port: int = Field(default_factory=lambda: int(os.getenv("GRPC_PORT", 50051)), ge=1024, le=65535)
+    # PSETI_GRPC_PORT is the simple, single-node knob for regular users --
+    # set it once and both `pseti-grpc server` (this default) and every
+    # `pseti-grpc` client command (stat/reflect/etc., via cli.py's --port
+    # default) agree on the port, no --port/--port-env plumbing needed.
+    # GRPC_PORT stays as the lower-priority legacy fallback (still relied on
+    # by this repo's own test suite -- see test_config.py) for anyone not
+    # yet on PSETI_GRPC_PORT. Neither is consulted at all once an explicit
+    # --port/--port-env value resolves in resolve_bind_port().
+    port: int = Field(
+        default_factory=lambda: int(os.getenv("PSETI_GRPC_PORT", os.getenv("GRPC_PORT", 50051))),
+        ge=1024,
+        le=65535,
+    )
     shutdown_grace_period: float = Field(5.0, ge=0)
     log_dir: str | None = None
     grpc_logging: bool = True

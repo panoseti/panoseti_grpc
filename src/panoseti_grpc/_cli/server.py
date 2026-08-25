@@ -53,10 +53,14 @@ def main(
         int | None,
         typer.Option(
             help=(
-                "Explicit bind port, highest precedence. Prefer --port-env "
-                "(or the HEADNODE_GRPC_PORT/DAQNODE_GRPC_PORT env vars) for "
-                "deployments so the same .env drives both server and clients."
-            )
+                "Explicit bind port, highest precedence. Developer/debug use "
+                "only -- hidden from --help. Regular use should rely on the "
+                "PSETI_GRPC_PORT env var (both server and every `pseti-grpc` "
+                "client command read it as their default), or --port-env "
+                "(the HEADNODE_GRPC_PORT/DAQNODE_GRPC_PORT env vars) for "
+                "role-scoped fleet deployments."
+            ),
+            hidden=True,
         ),
     ] = None,
     port_env: Annotated[
@@ -70,8 +74,11 @@ def main(
                 "unified_main.resolve_bind_port() for full precedence -- this "
                 "is the same resolver, shared so this entry point (the real "
                 "'pseti-grpc server' console script) and unified_main.py's "
-                "('python -m panoseti_grpc') can't drift apart again."
+                "('python -m panoseti_grpc') can't drift apart again. "
+                "Deployment/debug use only -- hidden from --help; regular use "
+                "should rely on the PSETI_GRPC_PORT env var instead."
             ),
+            hidden=True,
         ),
     ] = None,
     list_services: Annotated[bool, typer.Option(help="Print all registered services and exit.")] = False,

@@ -26,7 +26,7 @@ from .util.cli import BaseLazyGroup, display_tree_callback
 from .util.env_loader import load_pseti_grpc_env
 
 # Load .env variables (if any) before evaluating the option defaults below
-# (some read os.environ, e.g. HEADNODE_IP/HEADNODE_GRPC_PORT) and before any
+# (some read os.environ, e.g. PSETI_GRPC_HOST/PSETI_GRPC_PORT) and before any
 # subcommand runs -- mirrors panoseti's `pseti` CLI (control.pseti), which
 # does the same for the same reason.
 load_pseti_grpc_env()
@@ -88,8 +88,12 @@ app = typer.Typer(
 @app.callback()
 def main(
     ctx: typer.Context,
-    host: Annotated[str, typer.Option(help="Server hostname or IP address")] = os.getenv("HEADNODE_IP", "localhost"),
-    port: Annotated[int, typer.Option(help="Server gRPC port")] = int(os.getenv("HEADNODE_GRPC_PORT", "50051")),
+    host: Annotated[
+        str, typer.Option(help="Server hostname or IP address. Default: PSETI_GRPC_HOST env var, or localhost.")
+    ] = os.getenv("PSETI_GRPC_HOST", "localhost"),
+    port: Annotated[
+        int, typer.Option(help="Server gRPC port. Default: PSETI_GRPC_PORT env var, or 50051.")
+    ] = int(os.getenv("PSETI_GRPC_PORT", "50051")),
     timeout: Annotated[float, typer.Option(help="Global RPC timeout in seconds")] = 10.0,
     json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON output")] = False,
     grpc_logging: Annotated[
