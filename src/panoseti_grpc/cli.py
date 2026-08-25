@@ -113,7 +113,10 @@ def main(
         bool,
         typer.Option(
             "--env-template",
-            help="Copy the packaged .env_example to ./.env_grpc_<timestamp> and exit.",
+            help=(
+                "Copy the packaged .env_example to ./.env_grpc_<timestamp> and exit. "
+                "Point PSETI_GRPC_ENV_FILE at the generated file to load it."
+            ),
             callback=_env_template_callback,
             is_eager=True,
         ),
