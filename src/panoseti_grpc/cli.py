@@ -55,6 +55,25 @@ def _env_template_callback(value: bool) -> None:
     raise typer.Exit()
 
 
+def _config_template_callback(value: bool) -> None:
+    if not value:
+        return
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    dest = Path.cwd() / f"pseti_grpc_config_{timestamp}"
+    if dest.exists():
+        print(f"Refusing to overwrite existing directory: {dest}")
+        raise typer.Exit(code=1)
+    # importlib.resources (not a bare __file__-relative path) so this also
+    # works if the package is ever imported from a zipped wheel.
+    config_dir = importlib.resources.files("panoseti_grpc").joinpath("config")
+    with importlib.resources.as_file(config_dir) as src:
+        dest.mkdir(parents=True)
+        for toml_file in sorted(src.glob("*.toml")):
+            shutil.copy2(toml_file, dest / toml_file.name)
+    print(f"Wrote config template directory to {dest}")
+    raise typer.Exit()
+
+
 class GrpcLazyGroup(BaseLazyGroup):
     """
     Custom Click Group that lazy-loads commands from other modules.
@@ -122,6 +141,18 @@ def main(
                 "Point PSETI_GRPC_ENV_FILE at the generated file to load it."
             ),
             callback=_env_template_callback,
+            is_eager=True,
+        ),
+    ] = False,
+    config_template: Annotated[
+        bool,
+        typer.Option(
+            "--config-template",
+            help=(
+                "Copy the packaged config/*.toml files to "
+                "./pseti_grpc_config_<timestamp> and exit."
+            ),
+            callback=_config_template_callback,
             is_eager=True,
         ),
     ] = False,
