@@ -3,8 +3,12 @@ name: PSETI gRPC CI
 on:
   push:
     branches: [main, dev]
+    paths-ignore:
+      - 'README.md'
   pull_request:
     branches: [main, dev]
+    paths-ignore:
+      - 'README.md'
 
 # Concurrency group ensures that only the latest commit on a branch is tested.
 concurrency:
