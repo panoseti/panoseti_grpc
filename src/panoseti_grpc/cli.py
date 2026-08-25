@@ -26,7 +26,7 @@ from .util.cli import BaseLazyGroup, display_tree_callback
 from .util.env_loader import load_pseti_grpc_env
 
 # Load .env variables (if any) before evaluating the option defaults below
-# (some read os.environ, e.g. HEADNODE_IP/HEADNODE_GRPC_PORT) and before any
+# (some read os.environ, e.g. PSETI_GRPC_HOST/PSETI_GRPC_PORT) and before any
 # subcommand runs -- mirrors panoseti's `pseti` CLI (control.pseti), which
 # does the same for the same reason.
 load_pseti_grpc_env()
@@ -52,6 +52,25 @@ def _env_template_callback(value: bool) -> None:
     with importlib.resources.as_file(resource) as src:
         shutil.copyfile(src, dest)
     print(f"Wrote .env template to {dest}")
+    raise typer.Exit()
+
+
+def _config_template_callback(value: bool) -> None:
+    if not value:
+        return
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    dest = Path.cwd() / f"pseti_grpc_config_{timestamp}"
+    if dest.exists():
+        print(f"Refusing to overwrite existing directory: {dest}")
+        raise typer.Exit(code=1)
+    # importlib.resources (not a bare __file__-relative path) so this also
+    # works if the package is ever imported from a zipped wheel.
+    config_dir = importlib.resources.files("panoseti_grpc").joinpath("config")
+    with importlib.resources.as_file(config_dir) as src:
+        dest.mkdir(parents=True)
+        for toml_file in sorted(src.glob("*.toml")):
+            shutil.copy2(toml_file, dest / toml_file.name)
+    print(f"Wrote config template directory to {dest}")
     raise typer.Exit()
 
 
@@ -88,8 +107,12 @@ app = typer.Typer(
 @app.callback()
 def main(
     ctx: typer.Context,
-    host: Annotated[str, typer.Option(help="Server hostname or IP address")] = os.getenv("HEADNODE_IP", "localhost"),
-    port: Annotated[int, typer.Option(help="Server gRPC port")] = int(os.getenv("HEADNODE_GRPC_PORT", "50051")),
+    host: Annotated[
+        str, typer.Option(help="Server hostname or IP address. Default: PSETI_GRPC_HOST env var, or localhost.")
+    ] = os.getenv("PSETI_GRPC_HOST", "localhost"),
+    port: Annotated[
+        int, typer.Option(help="Server gRPC port. Default: PSETI_GRPC_PORT env var, or 50051.")
+    ] = int(os.getenv("PSETI_GRPC_PORT", "50051")),
     timeout: Annotated[float, typer.Option(help="Global RPC timeout in seconds")] = 10.0,
     json_output: Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON output")] = False,
     grpc_logging: Annotated[
@@ -113,8 +136,23 @@ def main(
         bool,
         typer.Option(
             "--env-template",
-            help="Copy the packaged .env_example to ./.env_grpc_<timestamp> and exit.",
+            help=(
+                "Copy the packaged .env_example to ./.env_grpc_<timestamp> and exit. "
+                "Point PSETI_GRPC_ENV_FILE at the generated file to load it."
+            ),
             callback=_env_template_callback,
+            is_eager=True,
+        ),
+    ] = False,
+    config_template: Annotated[
+        bool,
+        typer.Option(
+            "--config-template",
+            help=(
+                "Copy the packaged config/*.toml files to "
+                "./pseti_grpc_config_<timestamp> and exit."
+            ),
+            callback=_config_template_callback,
             is_eager=True,
         ),
     ] = False,

@@ -152,12 +152,18 @@ class DaqDataGatewayServicer(daq_data_pb2_grpc.DaqDataServicer):
                 host = str(node.ip_addr)
                 port = gw_cfg.edge_port
 
-                # Apply port-forwarding override when provided
+                # Apply port-forwarding override when provided; otherwise
+                # prefer this node's own direct-connect grpc_port (more
+                # specific than the gateway-wide edge_port default) when
+                # network_config.json has an entry for it.
                 if network_cfg:
                     for nnode in network_cfg.daq_nodes:
-                        if str(nnode.ip_addr) == host and nnode.port_forwarding.status:
-                            host = str(nnode.port_forwarding.gw_ip)
-                            port = nnode.port_forwarding.grpc_port
+                        if str(nnode.ip_addr) == host:
+                            if nnode.port_forwarding.status:
+                                host = str(nnode.port_forwarding.gw_ip)
+                                port = nnode.port_forwarding.grpc_port
+                            else:
+                                port = nnode.grpc_port
                             break
 
                 target = f"{host}:{port}"

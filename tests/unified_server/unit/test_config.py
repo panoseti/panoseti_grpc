@@ -14,7 +14,7 @@ from panoseti_grpc.daq_control.config import DaqControlServerConfig
 from panoseti_grpc.server import PanosetiServerConfig, ServiceToggles
 from panoseti_grpc.telemetry.config import TelemetryServerConfig
 
-_PORT_ENV_VARS = ("GRPC_PORT", "HEADNODE_GRPC_PORT", "DAQNODE_GRPC_PORT")
+_PORT_ENV_VARS = ("GRPC_PORT", "PSETI_GRPC_PORT", "HEADNODE_GRPC_PORT", "DAQNODE_GRPC_PORT")
 
 
 @pytest.fixture(autouse=True)
@@ -101,6 +101,23 @@ def test_no_profile_hardcodes_a_port(monkeypatch: Any) -> None:
     for profile in ("default", "daq_node", "headnode", "gateway"):
         cfg = PanosetiServerConfig.load_profile(profile)
         assert cfg.port == 50099, f"profile {profile!r} ignored GRPC_PORT -- an explicit TOML port line leaked back in"
+
+
+def test_psetigrpc_port_takes_precedence_over_grpc_port(monkeypatch: Any) -> None:
+    """PSETI_GRPC_PORT is the single-node knob and outranks legacy GRPC_PORT.
+
+    GRPC_PORT stays as the lower-priority fallback (still relied on by this
+    suite's own docker-compose.test.yml), but PSETI_GRPC_PORT -- read by
+    both `pseti-grpc server`'s bind port and every `pseti-grpc` client
+    command's default target port -- must win when both are set.
+    """
+    monkeypatch.setenv("GRPC_PORT", "50099")
+    cfg = PanosetiServerConfig.load_default()
+    assert cfg.port == 50099, "GRPC_PORT alone did not resolve"
+
+    monkeypatch.setenv("PSETI_GRPC_PORT", "50077")
+    cfg = PanosetiServerConfig.load_default()
+    assert cfg.port == 50077, "PSETI_GRPC_PORT did not outrank GRPC_PORT"
 
 
 def test_load_profile_alias_default() -> None:
@@ -387,15 +404,28 @@ def test_cli_server_app_exposes_port_env_option() -> None:
     live against real hardware (container crash-looped with "No such
     option: --port-env"). This test fails loudly if the two entry points
     drift apart on their CLI surface again.
+
+    Both --port and --port-env are intentionally `hidden=True`
+    (deployment/debug use only -- regular use should go through the
+    PSETI_GRPC_PORT env var). Check the underlying Click command's
+    registered params directly rather than grepping rendered --help text --
+    "--port" is a substring of "--port-env", so a naive text search can't
+    distinguish "hidden" from "absent" without false-negatives.
     """
+    from typer.main import get_command
     from typer.testing import CliRunner
 
     from panoseti_grpc._cli.server import app
 
     result = CliRunner().invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "--port-env" in result.output
-    assert "--port " in result.output or "--port\n" in result.output or "--port]" in result.output
+
+    click_cmd = get_command(app)
+    port_param = next(p for p in click_cmd.params if "--port" in getattr(p, "opts", []))
+    assert port_param.hidden is True, "--port should still be a real, usable option -- just hidden from --help"
+
+    port_env_param = next(p for p in click_cmd.params if "--port-env" in getattr(p, "opts", []))
+    assert port_env_param.hidden is True, "--port-env should still be a real, usable option -- just hidden from --help"
 
 
 # ---------------------------------------------------------------------------
