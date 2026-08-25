@@ -139,12 +139,24 @@ class NetworkDaqNode(BaseStrictModel):
     """Network-level mapping for a DAQ node."""
 
     ip_addr: str | IPvAnyAddress
+    # Direct-connection gRPC port -- used when port_forwarding.status is
+    # False (or absent), i.e. this node is reached directly at ip_addr
+    # rather than through a forwarded gateway. Distinct from
+    # port_forwarding.grpc_port, which only applies when status is True.
+    grpc_port: int = Field(50051, ge=1, le=65535)
     port_forwarding: PortForwarding
+
+
+class NetworkHeadnode(BaseStrictModel):
+    """Network-level configuration for the head node itself."""
+
+    grpc_port: int = Field(50051, ge=1, le=65535)
 
 
 class NetworkConfig(BaseStrictModel):
     """Global network routing and port-forwarding map (network_config.json)."""
 
+    headnode: NetworkHeadnode = Field(default_factory=NetworkHeadnode)
     modules: list[NetworkModule] = Field(default_factory=list)
     daq_nodes: list[NetworkDaqNode] = Field(default_factory=list)
 
