@@ -3,7 +3,23 @@
 import pytest
 from pydantic import ValidationError
 
-from panoseti_grpc.daq_data.client_models import NetworkConfig, NetworkDaqNode, NetworkHeadnode
+from panoseti_grpc.daq_data.client_models import NetworkConfig, NetworkDaqNode, NetworkHeadnode, PortForwarding
+
+
+def test_port_forwarding_grpc_port_defaults_to_none_when_omitted() -> None:
+    """None (not a 50051 literal) so DaqDataGatewayServicer.startup() can
+    tell "port_forwarding.status == True but grpc_port not set" apart from
+    "explicitly set" -- the former still switches host to gw_ip but falls
+    through to [daq_data.gateway].edge_port / EDGENODE_GRPC_PORT / 50051
+    for the port itself.
+    """
+    pf = PortForwarding.model_validate({"status": True, "gw_ip": "10.0.1.254"})
+    assert pf.grpc_port is None
+
+
+def test_port_forwarding_grpc_port_explicit_value() -> None:
+    pf = PortForwarding.model_validate({"status": True, "gw_ip": "10.0.1.254", "grpc_port": 50099})
+    assert pf.grpc_port == 50099
 
 
 def test_headnode_defaults_to_50051_when_omitted() -> None:
@@ -21,11 +37,15 @@ def test_headnode_grpc_port_out_of_range_raises() -> None:
         NetworkHeadnode.model_validate({"grpc_port": 70000})
 
 
-def test_daq_node_grpc_port_defaults_to_50051_when_omitted() -> None:
+def test_daq_node_grpc_port_defaults_to_none_when_omitted() -> None:
+    """None (not a 50051 literal) so DaqDataGatewayServicer.startup() can
+    tell "not set in network_config.json" apart from "explicitly set" and
+    fall through to EDGENODE_GRPC_PORT / the 50051 default.
+    """
     node = NetworkDaqNode.model_validate(
         {"ip_addr": "192.168.0.10", "port_forwarding": {"status": False, "gw_ip": "10.0.1.254"}}
     )
-    assert node.grpc_port == 50051
+    assert node.grpc_port is None
 
 
 def test_daq_node_grpc_port_explicit_value() -> None:
