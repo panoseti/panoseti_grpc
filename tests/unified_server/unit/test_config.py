@@ -395,6 +395,59 @@ def test_resolve_bind_port_distinguishes_head_and_daq_roles(monkeypatch: Any) ->
     assert head_port != daq_port
 
 
+# ---------------------------------------------------------------------------
+# unified_main.describe_bind_port_source -- startup-log-only companion to
+# resolve_bind_port() (kept as a separate function so resolve_bind_port()'s
+# return type, an int, never changes). Must mirror resolve_bind_port()'s
+# precedence exactly, since it's called on the same (port, port_env,
+# cfg_port) right after resolve_bind_port() itself.
+# ---------------------------------------------------------------------------
+
+
+def test_describe_bind_port_source_explicit_flag(monkeypatch: Any) -> None:
+    from panoseti_grpc.unified_main import describe_bind_port_source
+
+    monkeypatch.setenv("DAQNODE_GRPC_PORT", "50055")
+    assert describe_bind_port_source(port=60000, port_env="DAQNODE_GRPC_PORT", cfg_port=12345) == "--port=60000"
+
+
+def test_describe_bind_port_source_port_env(monkeypatch: Any) -> None:
+    from panoseti_grpc.unified_main import describe_bind_port_source
+
+    monkeypatch.setenv("DAQNODE_GRPC_PORT", "50055")
+    result = describe_bind_port_source(port=None, port_env="DAQNODE_GRPC_PORT", cfg_port=12345)
+    assert result == "--port-env DAQNODE_GRPC_PORT (env var DAQNODE_GRPC_PORT=50055)"
+
+
+def test_describe_bind_port_source_psg_env_var(monkeypatch: Any) -> None:
+    from panoseti_grpc.unified_main import describe_bind_port_source
+
+    monkeypatch.setenv("PSETI_GRPC_PORT", "50077")
+    assert describe_bind_port_source(port=None, port_env=None, cfg_port=50077) == "env var PSETI_GRPC_PORT=50077"
+
+
+def test_describe_bind_port_source_legacy_grpc_port_env_var(monkeypatch: Any) -> None:
+    from panoseti_grpc.unified_main import describe_bind_port_source
+
+    monkeypatch.setenv("GRPC_PORT", "50099")
+    result = describe_bind_port_source(port=None, port_env=None, cfg_port=50099)
+    assert result == "env var GRPC_PORT=50099 (legacy)"
+
+
+def test_describe_bind_port_source_explicit_toml(monkeypatch: Any) -> None:
+    """No CLI flag, no env var of any kind, cfg_port != 50051 -- must be an explicit TOML port."""
+    from panoseti_grpc.unified_main import describe_bind_port_source
+
+    result = describe_bind_port_source(port=None, port_env=None, cfg_port=60123)
+    assert result == "TOML config (explicit port=60123)"
+
+
+def test_describe_bind_port_source_default(monkeypatch: Any) -> None:
+    from panoseti_grpc.unified_main import describe_bind_port_source
+
+    assert describe_bind_port_source(port=None, port_env=None, cfg_port=50051) == "default (50051)"
+
+
 def test_cli_server_app_exposes_port_env_option() -> None:
     """Regression guard: `pseti-grpc server` is _cli/server.py's Typer app,
     NOT unified_main.py's argparse parser (that's only reached via
@@ -429,24 +482,33 @@ def test_cli_server_app_exposes_port_env_option() -> None:
 
 
 # ---------------------------------------------------------------------------
-# DaqDataGatewayConfig.edge_port — must track DAQNODE_GRPC_PORT so a
-# fleet-wide port change doesn't require also editing the gateway's TOML.
+# DaqDataGatewayConfig.edge_port — tier 2 of DaqDataGatewayServicer.
+# startup()'s per-node port precedence (see aggregator.py). A plain 50051
+# literal default (not env-driven -- that's EDGENODE_GRPC_PORT's job, tier
+# 3); startup() only trusts this field when it was explicitly set, which
+# it distinguishes via model_fields_set, not the resolved value itself.
 # ---------------------------------------------------------------------------
 
 
-def test_gateway_edge_port_defaults_from_daqnode_grpc_port_env(monkeypatch: Any) -> None:
+def test_gateway_edge_port_defaults_to_50051() -> None:
     from panoseti_grpc.daq_data.config import DaqDataGatewayConfig
 
-    monkeypatch.delenv("DAQNODE_GRPC_PORT", raising=False)
     assert DaqDataGatewayConfig().edge_port == 50051
 
-    monkeypatch.setenv("DAQNODE_GRPC_PORT", "50077")
-    assert DaqDataGatewayConfig().edge_port == 50077
 
-
-def test_gateway_edge_port_explicit_value_still_overrides(monkeypatch: Any) -> None:
-    """An explicit edge_port (e.g. from a per-site TOML) still wins -- only the *default* is env-driven."""
+def test_gateway_edge_port_explicit_value() -> None:
     from panoseti_grpc.daq_data.config import DaqDataGatewayConfig
 
-    monkeypatch.setenv("DAQNODE_GRPC_PORT", "50077")
     assert DaqDataGatewayConfig(edge_port=51234).edge_port == 51234
+
+
+def test_gateway_edge_port_unset_is_absent_from_model_fields_set() -> None:
+    """DaqDataGatewayServicer.startup() gates tier 2 on this -- an omitted
+    edge_port must NOT appear in model_fields_set (even though the field
+    itself still resolves to the 50051 literal default), or startup() would
+    wrongly treat that default as an explicit TOML value.
+    """
+    from panoseti_grpc.daq_data.config import DaqDataGatewayConfig
+
+    assert "edge_port" not in DaqDataGatewayConfig().model_fields_set
+    assert "edge_port" in DaqDataGatewayConfig(edge_port=50051).model_fields_set

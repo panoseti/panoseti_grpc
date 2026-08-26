@@ -59,6 +59,34 @@ def resolve_bind_port(port: int | None, port_env: str | None, cfg_port: int) -> 
     return cfg_port
 
 
+def describe_bind_port_source(port: int | None, port_env: str | None, cfg_port: int) -> str:
+    """Human-readable description of which precedence tier resolve_bind_port()
+    picked, for startup logging. Mirrors resolve_bind_port()'s exact logic
+    (kept alongside it, not inside it, so the return type of the actual
+    resolver -- an int -- never changes) plus one extra distinction that
+    function can't make on its own: whether ``cfg_port`` itself came from an
+    explicit TOML ``port =`` line (rare -- see resolve_bind_port()'s
+    docstring) versus PanosetiServerConfig.port's own PSETI_GRPC_PORT/
+    GRPC_PORT/50051 default_factory fallback, told apart by re-checking
+    those same two env vars here.
+    """
+    if port is not None:
+        return f"--port={port}"
+    if port_env:
+        env_val = os.getenv(port_env)
+        if env_val is not None:
+            return f"--port-env {port_env} (env var {port_env}={env_val})"
+    psg_val = os.getenv("PSETI_GRPC_PORT")
+    if psg_val is not None:
+        return f"env var PSETI_GRPC_PORT={psg_val}"
+    grpc_port_val = os.getenv("GRPC_PORT")
+    if grpc_port_val is not None:
+        return f"env var GRPC_PORT={grpc_port_val} (legacy)"
+    if cfg_port != 50051:
+        return f"TOML config (explicit port={cfg_port})"
+    return "default (50051)"
+
+
 def main() -> None:
     from panoseti_grpc.util.env_loader import load_pseti_grpc_env
 
@@ -171,11 +199,9 @@ def main() -> None:
         datefmt="%Y-%m-%dT%H:%M:%S",
     )
     logging.getLogger("panoseti_grpc.unified_main").info(
-        "Binding port %d (--port=%s --port-env=%s -> %s)",
+        "Binding port %d (source: %s)",
         cfg.port,
-        args.port,
-        args.port_env,
-        os.getenv(args.port_env) if args.port_env else None,
+        describe_bind_port_source(args.port, args.port_env, cfg.port),
     )
 
     with contextlib.suppress(KeyboardInterrupt):

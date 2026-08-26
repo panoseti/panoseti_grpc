@@ -90,7 +90,7 @@ def main(
         return
 
     from panoseti_grpc.server import PanosetiServer, PanosetiServerConfig, ServiceRegistry
-    from panoseti_grpc.unified_main import resolve_bind_port
+    from panoseti_grpc.unified_main import describe_bind_port_source, resolve_bind_port
 
     if list_services:
         logger.info("Registered PANOSETI gRPC services:")
@@ -120,8 +120,7 @@ def main(
         datefmt="%Y-%m-%dT%H:%M:%S",
     )
     logger.info(
-        f"Binding port {cfg.port} (--port={port} --port-env={port_env} -> "
-        f"{os.getenv(port_env) if port_env else None})"
+        f"Binding port {cfg.port} (source: {describe_bind_port_source(port, port_env, cfg.port)})"
     )
 
     with contextlib.suppress(KeyboardInterrupt):
