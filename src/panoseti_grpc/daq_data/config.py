@@ -8,7 +8,6 @@ has a bad value, rather than a KeyError buried in a call stack mid-observation.
 
 from __future__ import annotations
 
-import os
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -78,14 +77,19 @@ class DaqDataGatewayConfig(BaseModel):
     network_config_path: str | None = Field(
         None, description="Optional path to network_config.json for port forwarding."
     )
-    # Default sourced from DAQNODE_GRPC_PORT (mirrors PanosetiServerConfig.port's
-    # GRPC_PORT default_factory) rather than a bare 50051 literal, so a
-    # fleet-wide port change (env var only, no TOML edit) automatically keeps
-    # the gateway's fan-in pointed at the right port on every edge node that
-    # doesn't have an explicit per-node port_forwarding.grpc_port override in
-    # network_config.json (aggregator.py's per-node override still wins there).
+    # Tier 2 of DaqDataGatewayServicer.startup()'s per-node port precedence
+    # (network_config.json's own grpc_port for that node > this field, but
+    # ONLY when explicitly set in the TOML config > EDGENODE_GRPC_PORT env
+    # var > 50051 default). startup() checks `"edge_port" in
+    # model_fields_set` before trusting this field's value -- an
+    # unset-in-TOML value is deliberately NOT tier 2; it falls straight
+    # through to EDGENODE_GRPC_PORT instead. A plain 50051 literal (not an
+    # env-var-reading default_factory) is deliberate: since startup() only
+    # ever consults this field when it WAS explicitly set, an env-var
+    # default here would never actually be reached by that logic and would
+    # only invite confusion with EDGENODE_GRPC_PORT.
     edge_port: int = Field(
-        default_factory=lambda: int(os.getenv("DAQNODE_GRPC_PORT", "50051")),
+        50051,
         ge=1,
         le=65535,
         description="gRPC port on each edge node without an explicit port_forwarding override.",
