@@ -46,7 +46,11 @@ class PortForwarding(BaseStrictModel):
     reboot_port: list[int | None] | None = Field(None)
     cmd_port: list[int | None] | None = Field(None)
     port: int | None = None  # SSH forwarded port (legacy)
-    grpc_port: int = Field(50051, ge=1, le=65535)  # gRPC forwarded port
+    # gRPC forwarded port. None means "not explicitly set" -- when status is
+    # True but this is unset, DaqDataGatewayServicer.startup() still routes
+    # through the forwarded gw_ip, but falls through to the gateway's
+    # edge_port / EDGENODE_GRPC_PORT / 50051 chain for the port itself.
+    grpc_port: int | None = Field(None, ge=1, le=65535)
 
 
 class DaqNode(BaseModel):
@@ -143,7 +147,10 @@ class NetworkDaqNode(BaseStrictModel):
     # False (or absent), i.e. this node is reached directly at ip_addr
     # rather than through a forwarded gateway. Distinct from
     # port_forwarding.grpc_port, which only applies when status is True.
-    grpc_port: int = Field(50051, ge=1, le=65535)
+    # None (the default when omitted from network_config.json) means "not
+    # set here" -- DaqDataGatewayServicer.startup() then falls through to
+    # the EDGENODE_GRPC_PORT env var, then the built-in 50051 default.
+    grpc_port: int | None = Field(None, ge=1, le=65535)
     port_forwarding: PortForwarding
 
 

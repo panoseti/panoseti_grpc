@@ -150,21 +150,47 @@ class DaqDataGatewayServicer(daq_data_pb2_grpc.DaqDataServicer):
 
             for node in daq_cfg.daq_nodes:
                 host = str(node.ip_addr)
-                port = gw_cfg.edge_port
+                port: int | None = None
+                port_source = ""
 
-                # Apply port-forwarding override when provided; otherwise
-                # prefer this node's own direct-connect grpc_port (more
-                # specific than the gateway-wide edge_port default) when
-                # network_config.json has an entry for it.
+                # Tier 1 (highest): network_config.json's per-node grpc_port
+                # -- applies regardless of port_forwarding.status. When
+                # status is True, host still switches to the forwarded
+                # gateway IP even if that entry's own grpc_port is unset
+                # (status alone means "route through this host"); the port
+                # itself then falls through the remaining tiers below.
                 if network_cfg:
                     for nnode in network_cfg.daq_nodes:
                         if str(nnode.ip_addr) == host:
                             if nnode.port_forwarding.status:
                                 host = str(nnode.port_forwarding.gw_ip)
-                                port = nnode.port_forwarding.grpc_port
-                            else:
+                                if nnode.port_forwarding.grpc_port is not None:
+                                    port = nnode.port_forwarding.grpc_port
+                                    port_source = "network_config.json port_forwarding.grpc_port"
+                            elif nnode.grpc_port is not None:
                                 port = nnode.grpc_port
+                                port_source = "network_config.json daq_nodes[].grpc_port"
                             break
+
+                # Tier 2: the gateway-wide edge_port, only when explicitly
+                # set in the TOML config -- "explicitly set" (not just
+                # resolved via its own DAQNODE_GRPC_PORT/50051
+                # default_factory) is what model_fields_set tells us here.
+                if port is None and "edge_port" in gw_cfg.model_fields_set:
+                    port = gw_cfg.edge_port
+                    port_source = f"TOML config (explicit edge_port={port})"
+
+                # Tier 3: EDGENODE_GRPC_PORT env var.
+                if port is None:
+                    edgenode_port = os.getenv("EDGENODE_GRPC_PORT")
+                    if edgenode_port is not None:
+                        port = int(edgenode_port)
+                        port_source = f"env var EDGENODE_GRPC_PORT={edgenode_port}"
+
+                # Tier 4 (lowest): built-in default.
+                if port is None:
+                    port = 50051
+                    port_source = "default (50051)"
 
                 target = f"{host}:{port}"
                 if target in self._edge_stubs:
@@ -176,7 +202,7 @@ class DaqDataGatewayServicer(daq_data_pb2_grpc.DaqDataServicer):
                 await mgr.__aenter__()
                 self._channels.append(mgr)
                 self._edge_stubs[target] = daq_data_pb2_grpc.DaqDataStub(mgr.channel)
-                self.logger.info(f"Gateway opened channel to edge: {target}")
+                self.logger.info(f"Gateway opened channel to edge: {target} (port source: {port_source})")
 
         except Exception as exc:
             self.logger.error(f"Gateway startup error: {exc}", exc_info=True)
